@@ -186,6 +186,8 @@ export function Tasks({
     }
   }
   async function open(task: Task) {
+    setForm(null);
+    setEditing(false);
     setSelected(await api(`/tasks/${task.id}`));
     setRecords(await api(`/tasks/${task.id}/progress`));
     setEvents(await api(`/tasks/${task.id}/events`));

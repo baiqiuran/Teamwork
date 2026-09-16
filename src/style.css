@@ -1482,3 +1482,32 @@ select {
   font-size: 14px;
   line-height: 1.8;
 }
+.editor-actions {
+  z-index: 2;
+  padding: 14px 0;
+  box-shadow: 0 -8px 12px white;
+}
+.attachments summary {
+  font-size: 13px;
+  color: #687386;
+}
+.attachments details[open] summary {
+  margin-bottom: 12px;
+}
+@media (max-width: 680px) {
+  .sidebar nav {
+    overflow-x: auto;
+    min-width: 0;
+    max-width: 100%;
+    padding-bottom: 8px;
+  }
+  .sidebar nav button {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 10px 12px;
+  }
+  .editor-actions .primary,
+  .editor-actions .secondary {
+    padding: 12px 16px;
+  }
+}

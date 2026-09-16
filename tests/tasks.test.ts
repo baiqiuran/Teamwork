@@ -313,3 +313,71 @@ test("多个任务提交遇到冲突不部分更新，冲突选择后再变动�
   );
   assert.equal((await f.author(`/tasks/${a.id}`)).data.status, "pending");
 });
+
+test("同任务同目标但不同旧版本进入可解决冲突，统一选择后只更新一次", async (t) => {
+  const f = await fixture(t),
+    p = (await f.author("/projects", { name: "A", description: "" })).data;
+  const task = (
+    await f.author(`/projects/${p.id}/tasks`, { name: "A", description: "" })
+  ).data;
+  const other = (
+    await f.colleague("/diaries", {
+      title: "",
+      entries: [
+        {
+          id: randomUUID(),
+          body: "开始",
+          projectId: p.id,
+          taskId: task.id,
+          statusChange: { status: "in-progress", expectedVersion: 1 },
+        },
+      ],
+    })
+  ).data;
+  await f.colleague(`/diaries/${other.id}/submit`, {
+    version: 1,
+    requestId: randomUUID(),
+  });
+  let d = (
+    await f.author("/diaries", {
+      title: "",
+      entries: [1, 2].map((version) => ({
+        id: randomUUID(),
+        body: "完成",
+        projectId: p.id,
+        taskId: task.id,
+        statusChange: { status: "done", expectedVersion: version },
+      })),
+    })
+  ).data;
+  const conflict = await f.author(`/diaries/${d.id}/submit`, {
+    version: 1,
+    requestId: randomUUID(),
+  });
+  assert.equal(conflict.status, 409);
+  assert.equal(conflict.data.details.conflicts.length, 1);
+  d = (
+    await f.author(`/diaries/${d.id}/save`, {
+      version: 1,
+      title: "",
+      entries: d.draft.entries.map((e: object) => ({
+        ...e,
+        statusChange: {
+          status: "done",
+          expectedVersion: 2,
+          resolution: "apply",
+        },
+      })),
+    })
+  ).data;
+  assert.equal(
+    (
+      await f.author(`/diaries/${d.id}/submit`, {
+        version: d.version,
+        requestId: randomUUID(),
+      })
+    ).status,
+    200,
+  );
+  assert.equal((await f.author(`/tasks/${task.id}/events`)).data.length, 2);
+});

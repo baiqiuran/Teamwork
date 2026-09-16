@@ -4,20 +4,12 @@ import { z } from "zod";
 import { secret } from "./security.ts";
 import { HttpError } from "./http-error.ts";
 import type { JournalContext } from "./journal.ts";
-import { readPublished } from "./published.ts";
+import {
+  availableShare,
+  readShareProgress,
+  type ShareRow,
+} from "./share-access.ts";
 import type { ProjectRow, TaskRow } from "./projects.ts";
-interface ShareRow {
-  id: string;
-  token: string;
-  created_by: string;
-  type: "diary" | "project" | "task";
-  target_id: string | null;
-  modules: string;
-  from_date: string;
-  to_date: string;
-  created_at: number;
-  closed_at: number | null;
-}
 export function installSharing(
   app: Express,
   { db, now, authenticate }: JournalContext,
@@ -59,25 +51,10 @@ export function installSharing(
     closed: s.closed_at !== null,
     path: `/share/${s.token}`,
   });
-  function available(token: string) {
-    const row = db
-      .prepare("SELECT * FROM shares WHERE token = ?")
-      .get(token) as unknown as ShareRow | undefined;
-    if (!row || row.closed_at !== null)
-      throw new HttpError(410, "此公开链接无效或已关闭。");
-    return row;
-  }
-  function progress(row: ShareRow) {
-    return readPublished(
-      db,
-      { from: row.from_date, to: row.to_date },
-      {
-        projectId: row.type === "project" ? row.target_id! : undefined,
-        taskId: row.type === "task" ? row.target_id! : undefined,
-      },
-    );
-  }
-  function taskScope(row: ShareRow, records: ReturnType<typeof progress>) {
+  function taskScope(
+    row: ShareRow,
+    records: ReturnType<typeof readShareProgress>,
+  ) {
     const all = db
       .prepare("SELECT * FROM tasks ORDER BY created_at, id")
       .all() as unknown as TaskRow[];
@@ -136,7 +113,7 @@ export function installSharing(
       input.to,
       now(),
     );
-    res.status(201).json(view(available(token)));
+    res.status(201).json(view(availableShare(db, token)));
   });
   app.get("/api/shares", (req, res) => {
     const owner = authenticate(req);
@@ -164,9 +141,9 @@ export function installSharing(
     res.json({ ok: true });
   });
   app.get("/api/public/:token", (req, res) => {
-    const row = available(z.string().max(128).parse(req.params.token));
+    const row = availableShare(db, z.string().max(128).parse(req.params.token));
     const modules: string[] = JSON.parse(row.modules);
-    const records = progress(row),
+    const records = readShareProgress(db, row),
       tasks = taskScope(row, records);
     const selected = target(row.type, row.target_id);
     res.json({
@@ -205,5 +182,4 @@ export function installSharing(
         : {}),
     });
   });
-  return { available, progress };
 }

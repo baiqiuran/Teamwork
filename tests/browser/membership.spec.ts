@@ -194,13 +194,11 @@ test("项目任务关联、附件、冲突选择和三类公开页，可归档�
   await page
     .getByLabel("工作 1 更新状态", { exact: true })
     .selectOption("done");
-  await page
-    .getByLabel("工作 1 添加附件", { exact: true })
-    .setInputFiles({
-      name: "联调说明.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("联调附件"),
-    });
+  await page.getByLabel("工作 1 添加附件", { exact: true }).setInputFiles({
+    name: "联调说明.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("联调附件"),
+  });
   await expect(page.getByRole("status")).toContainText("附件已保存");
   const otherContext = await browser.newContext();
   await otherContext.request.post(`${origin}/api/login`, {

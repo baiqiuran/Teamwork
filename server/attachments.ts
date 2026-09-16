@@ -6,7 +6,7 @@ import { z } from "zod";
 import { digest } from "./security.ts";
 import { HttpError } from "./http-error.ts";
 import type { JournalContext, DiaryRow, Content } from "./journal.ts";
-import { readPublished } from "./published.ts";
+import { availableShare, readShareProgress } from "./share-access.ts";
 interface FileRow {
   id: string;
   diary_id: string;
@@ -190,24 +190,44 @@ export function installAttachments(
       throw new HttpError(404, "未找到附件。");
     send(res, row);
   });
+  app.post("/api/diaries/:id/attachments/cancel", (req, res) => {
+    const owner = authenticate(req),
+      row = access.owned(req);
+    access.writable(row);
+    const requestId = z.uuid().parse(req.body.requestId);
+    const uploaded = db
+      .prepare(
+        "SELECT id FROM attachments WHERE member_id = ? AND diary_id = ? AND request_id = ?",
+      )
+      .get(owner.id, row.id, requestId);
+    if (uploaded) {
+      const content = JSON.parse(row.draft) as Content;
+      for (const entry of content.entries)
+        if (entry.attachments)
+          entry.attachments = entry.attachments.filter(
+            (a) => a.id !== uploaded.id,
+          );
+      db.prepare(
+        "UPDATE diaries SET draft = ?, version = version + 1, updated_at = ? WHERE id = ?",
+      ).run(JSON.stringify(content), now(), row.id);
+    }
+    res.json(
+      access.view(
+        db
+          .prepare("SELECT * FROM diaries WHERE id = ?")
+          .get(row.id) as unknown as DiaryRow,
+      ),
+    );
+  });
   app.get("/api/public/:token/attachments/:id", (req, res) => {
-    const share = db
-      .prepare("SELECT * FROM shares WHERE token = ?")
-      .get(z.string().max(128).parse(req.params.token));
-    if (!share || share.closed_at !== null)
-      throw new HttpError(410, "此公开链接无效或已关闭。");
+    const share = availableShare(
+      db,
+      z.string().max(128).parse(req.params.token),
+    );
     if (!JSON.parse(String(share.modules)).includes("progress"))
       throw new HttpError(404, "未找到附件。");
     const id = z.uuid().parse(req.params.id);
-    const records = readPublished(
-      db,
-      { from: String(share.from_date), to: String(share.to_date) },
-      {
-        projectId:
-          share.type === "project" ? String(share.target_id) : undefined,
-        taskId: share.type === "task" ? String(share.target_id) : undefined,
-      },
-    );
+    const records = readShareProgress(db, share);
     if (!records.some((r) => has(r.published, id)))
       throw new HttpError(404, "未找到附件。");
     send(res, file(id));

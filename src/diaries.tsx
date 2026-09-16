@@ -32,8 +32,17 @@ export interface Diary {
   published: DiaryContent | null;
   editable: boolean;
 }
+interface PendingUpload {
+  entry: Entry;
+  file: File;
+  requestId: string;
+  version?: number;
+}
 const emptyEntry = (): Entry => ({ id: crypto.randomUUID(), body: "" });
 export function Diaries() {
+  const [pendingUpload, setPendingUpload] = useState<PendingUpload | null>(
+    null,
+  );
   const [conflicts, setConflicts] = useState<
     NonNullable<ApiError["details"]>["conflicts"]
   >([]);
@@ -58,15 +67,39 @@ export function Diaries() {
   }, []);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
-      if (dirty) {
+      if (dirty || pendingUpload) {
         event.preventDefault();
         event.returnValue = "";
       }
     };
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [dirty, pendingUpload]);
+  useEffect(() => {
+    if (!current?.diaryDate) return;
+    const id = current.id;
+    let disposed = false;
+    const checkWindow = async () => {
+      try {
+        const latest = await api<Diary>(`/diaries/${id}`);
+        if (!disposed)
+          setCurrent((value) =>
+            value?.id === id ? { ...value, editable: latest.editable } : value,
+          );
+      } catch {
+        /* Preserve unsaved text when connectivity is interrupted. */
+      }
+    };
+    const interval = window.setInterval(checkWindow, 60_000);
+    window.addEventListener("focus", checkWindow);
+    return () => {
+      disposed = true;
+      clearInterval(interval);
+      window.removeEventListener("focus", checkWindow);
+    };
+  }, [current?.id, current?.diaryDate]);
   function open(diary: Diary) {
+    setConflicts([]);
     setCurrent(diary);
     setContent(diary.draft);
     setDirty(false);
@@ -92,6 +125,7 @@ export function Diaries() {
     setNotice("");
   }
   async function create() {
+    if (pendingUpload) throw new Error("请先重试或放弃未完成上传的附件。");
     if (dirty && !window.confirm("当前修改尚未保存，放弃修改并新建？")) return;
     const diary = await api<Diary>("/diaries", {
       title: "",
@@ -100,26 +134,25 @@ export function Diaries() {
     open(diary);
     await refresh();
   }
-  async function save() {
-    if (!current) return;
+  async function persistDraft(force = false): Promise<Diary> {
+    if (!current) throw new Error("请先选择日报。");
+    if (!dirty && !force) return current;
     const diary = await api<Diary>(`/diaries/${current.id}/save`, {
       ...content,
       version: current.version,
     });
     open(diary);
+    return diary;
+  }
+  async function save() {
+    await persistDraft(true);
     setNotice("草稿已保存，仅你可见。");
     await refresh();
   }
   async function submit() {
     if (!current) return;
-    let diary = current;
-    if (dirty) {
-      diary = await api<Diary>(`/diaries/${current.id}/save`, {
-        ...content,
-        version: current.version,
-      });
-      open(diary);
-    }
+    if (pendingUpload) throw new Error("请先重试或放弃未完成上传的附件。");
+    const diary = await persistDraft();
     const result = await api<Diary>(`/diaries/${diary.id}/submit`, {
       version: diary.version,
       requestId: crypto.randomUUID(),
@@ -128,18 +161,20 @@ export function Diaries() {
     await refresh();
     setNotice("日报已提交，团队可以查看。");
   }
-  async function upload(entry: Entry, file: File) {
+  async function upload(entry: Entry, file: File, retry?: PendingUpload) {
     if (!current) return;
+    let pending: PendingUpload = retry ?? {
+      entry,
+      file,
+      requestId: crypto.randomUUID(),
+    };
+    setPendingUpload(pending);
+    const diary =
+      pending.version === undefined ? await persistDraft() : current;
+    pending = { ...pending, version: pending.version ?? diary.version };
+    setPendingUpload(pending);
     if (file.size > 20 * 1024 * 1024)
       throw new Error("单个文件不能超过 20 MB。");
-    let diary = current;
-    if (dirty) {
-      diary = await api<Diary>(`/diaries/${current.id}/save`, {
-        ...content,
-        version: current.version,
-      });
-      open(diary);
-    }
     const base64 = await new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result).split(",")[1]);
@@ -149,13 +184,14 @@ export function Diaries() {
     const updated = await api<Diary>(
       `/diaries/${diary.id}/entries/${entry.id}/attachments`,
       {
-        version: diary.version,
-        requestId: crypto.randomUUID(),
+        version: pending.version,
+        requestId: pending.requestId,
         name: file.name,
         base64,
       },
     );
     open(updated);
+    setPendingUpload(null);
     await refresh();
     setNotice("附件已保存到私人草稿，提交后才对团队可见。");
   }
@@ -179,6 +215,40 @@ export function Diaries() {
         <p role="alert" className="message error">
           {error}
         </p>
+      )}
+      {pendingUpload && !busy && (
+        <section className="conflict-panel">
+          <h2>附件尚未完成上传</h2>
+          <p>{pendingUpload.file.name} 尚未确认加入日报，请先处理。</p>
+          <button
+            className="secondary"
+            onClick={() =>
+              action(() =>
+                upload(pendingUpload.entry, pendingUpload.file, pendingUpload),
+              )
+            }
+          >
+            重试上传
+          </button>
+          <button
+            className="secondary"
+            onClick={() =>
+              action(async () => {
+                if (pendingUpload.version === undefined) await persistDraft();
+                const diary = await api<Diary>(
+                  `/diaries/${current!.id}/attachments/cancel`,
+                  { requestId: pendingUpload.requestId },
+                );
+                open(diary);
+                setPendingUpload(null);
+                setNotice("已放弃此附件，正文草稿保留。");
+                await refresh();
+              })
+            }
+          >
+            放弃此附件
+          </button>
+        </section>
       )}
       <div className="journal-layout">
         {conflicts && conflicts.length > 0 && (
@@ -240,6 +310,7 @@ export function Diaries() {
               disabled={busy}
               onClick={() =>
                 action(async () => {
+                  if (pendingUpload) throw new Error("请先处理未完成的附件。");
                   if (
                     dirty &&
                     !window.confirm("当前修改尚未保存，放弃修改并切换？")
@@ -297,7 +368,7 @@ export function Diaries() {
                 </details>
               )}
               <fieldset
-                disabled={busy || !current.editable}
+                disabled={busy || !current.editable || !!pendingUpload}
                 className="editor-fields"
               >
                 <label className="title-field">
@@ -497,27 +568,31 @@ export function Diaries() {
                             </li>
                           ))}
                         </ul>
-                        <label className="file-input">
-                          添加附件
-                          <input
-                            type="file"
-                            aria-label={`工作 ${index + 1} 添加附件`}
-                            accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.csv,.docx,.xlsx,.pptx"
-                            disabled={
-                              busy || (entry.attachments?.length ?? 0) >= 10
-                            }
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              e.target.value = "";
-                              if (file) void action(() => upload(entry, file));
-                            }}
-                          />
-                        </label>
-                        <small>
-                          每条最多 10 个，每个 20
-                          MB；图片、PDF、TXT、CSV、Office
-                          文档。上传会先保存当前草稿。
-                        </small>
+                        <details>
+                          <summary>添加附件</summary>
+                          <label className="file-input">
+                            添加附件
+                            <input
+                              type="file"
+                              aria-label={`工作 ${index + 1} 添加附件`}
+                              accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.csv,.docx,.xlsx,.pptx"
+                              disabled={
+                                busy || (entry.attachments?.length ?? 0) >= 10
+                              }
+                              onChange={(e) => {
+                                const file = e.target.files?.[0];
+                                e.target.value = "";
+                                if (file)
+                                  void action(() => upload(entry, file));
+                              }}
+                            />
+                          </label>
+                          <small>
+                            每条最多 10 个，每个 20
+                            MB；图片、PDF、TXT、CSV、Office
+                            文档。上传会先保存当前草稿。
+                          </small>
+                        </details>
                       </div>
                     </article>
                   ))}
@@ -541,7 +616,7 @@ export function Diaries() {
               <div className="editor-actions">
                 <button
                   className="text-button danger"
-                  disabled={busy || !current.editable}
+                  disabled={busy || !current.editable || !!pendingUpload}
                   onClick={() =>
                     action(async () => {
                       if (
@@ -564,8 +639,8 @@ export function Diaries() {
                 <div>
                   <span role="status">{notice}</span>
                   <button
-                    className="primary"
-                    disabled={busy || !current.editable}
+                    className="secondary"
+                    disabled={busy || !current.editable || !!pendingUpload}
                     onClick={() => action(save)}
                   >
                     {busy ? "保存中…" : "保存草稿"}
@@ -573,7 +648,7 @@ export function Diaries() {
                 </div>
                 <button
                   className="primary"
-                  disabled={busy || !current.editable}
+                  disabled={busy || !current.editable || !!pendingUpload}
                   onClick={() => action(submit)}
                 >
                   {current.diaryDate ? "重新提交" : "提交日报"}

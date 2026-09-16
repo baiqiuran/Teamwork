@@ -261,20 +261,24 @@ export function installProjects(
       string,
       NonNullable<Content["entries"][number]["statusChange"]>
     >();
+    const mixedVersions = new Set<string>();
     for (const entry of content.entries) {
       if (!entry.statusChange) continue;
       if (!entry.taskId) throw new HttpError(400, "状态更新必须关联任务。");
       const previous = changes.get(entry.taskId);
+      if (previous && previous.status !== entry.statusChange.status)
+        throw new HttpError(400, "同一任务的状态选择不一致，请统一后再提交。");
       if (
         previous &&
-        JSON.stringify(previous) !== JSON.stringify(entry.statusChange)
+        (previous.expectedVersion !== entry.statusChange.expectedVersion ||
+          previous.resolution !== entry.statusChange.resolution)
       )
-        throw new HttpError(400, "同一任务的状态选择不一致，请统一后再提交。");
+        mixedVersions.add(entry.taskId);
       changes.set(entry.taskId, entry.statusChange);
     }
     const conflicts = [...changes].flatMap(([id, change]) => {
       const latest = task(id);
-      return latest.version === change.expectedVersion
+      return latest.version === change.expectedVersion && !mixedVersions.has(id)
         ? []
         : [
             {
