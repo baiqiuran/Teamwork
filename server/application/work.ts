@@ -1,7 +1,7 @@
 import { DomainError } from "../domain/errors.ts";
 import {
   archiveWork,
-  assertTaskCreation,
+  createTask,
   definitionSchema,
   reviseDefinition,
   type Definition,
@@ -73,17 +73,11 @@ export class Work {
   }
   createTask(projectId: string, memberId: string, input: Definition) {
     return this.runtime.transaction(() => {
-      assertTaskCreation(this.project(projectId));
-      const t: TaskState = {
-        ...definitionSchema.parse(input),
+      const t = createTask(this.project(projectId), input, {
         id: this.runtime.id(),
-        projectId,
         createdBy: memberId,
         createdAt: this.runtime.now(),
-        archived: false,
-        status: "pending",
-        version: 1,
-      };
+      });
       this.repo.saveTask(t);
       return this.taskView(t);
     });
@@ -128,15 +122,13 @@ export class Work {
   }
   events(id: string) {
     this.task(id);
-    return this.repo
-      .events(id)
-      .map((e) => ({
-        id: e.id,
-        diaryId: e.diaryId,
-        member: this.reading.member(e.memberId),
-        before: e.before,
-        after: e.after,
-        at: e.at,
-      }));
+    return this.repo.events(id).map((e) => ({
+      id: e.id,
+      diaryId: e.diaryId,
+      member: this.reading.member(e.memberId),
+      before: e.before,
+      after: e.after,
+      at: e.at,
+    }));
   }
 }

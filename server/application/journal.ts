@@ -4,7 +4,7 @@ import {
   assertEntryAssociation,
   associateProject,
   associateTask,
-  definitionSchema,
+  createTask,
   planTaskChanges,
   type TaskState,
 } from "../domain/work.ts";
@@ -85,14 +85,12 @@ export class Journal {
     });
   }
   events() {
-    return this.repo
-      .deletions()
-      .map((e) => ({
-        diaryId: e.diaryId,
-        action: e.action,
-        at: e.at,
-        member: this.reading.member(e.memberId),
-      }));
+    return this.repo.deletions().map((e) => ({
+      diaryId: e.diaryId,
+      action: e.action,
+      at: e.at,
+      member: this.reading.member(e.memberId),
+    }));
   }
   submit(
     id: string,
@@ -155,16 +153,11 @@ export class Journal {
       if (!project) throw new DomainError("not-found", "未找到项目。");
       associateProject(entry, project);
       if (entry.newTask) {
-        const task: TaskState = {
-          ...definitionSchema.parse(entry.newTask),
+        const task = createTask(project, entry.newTask, {
           id: this.runtime.id(),
-          projectId: project.id,
           createdBy: memberId,
           createdAt: at,
-          archived: false,
-          status: "pending",
-          version: 1,
-        };
+        });
         this.work.saveTask(task);
         entry.taskId = task.id;
         delete entry.newTask;

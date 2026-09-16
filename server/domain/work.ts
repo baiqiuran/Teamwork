@@ -17,6 +17,21 @@ export interface TaskState extends ProjectState {
   status: TaskStatus;
   version: number;
 }
+export function createTask(
+  project: ProjectState,
+  input: Definition,
+  creation: Pick<TaskState, "id" | "createdBy" | "createdAt">,
+): TaskState {
+  assertTaskCreation(project);
+  return {
+    ...definitionSchema.parse(input),
+    ...creation,
+    projectId: project.id,
+    archived: false,
+    status: "pending",
+    version: 1,
+  };
+}
 export function assertCreator(
   record: ProjectState,
   memberId: string,
