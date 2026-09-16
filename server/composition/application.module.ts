@@ -11,6 +11,7 @@ import { InvitationsController } from "../interfaces/http/invitations.controller
 import { WorkController } from "../interfaces/http/work.controller.ts";
 import { JournalController } from "../interfaces/http/journal.controller.ts";
 import { SharingController } from "../interfaces/http/sharing.controller.ts";
+import { AttachmentsController } from "../interfaces/http/attachments.controller.ts";
 import { SessionGuard } from "../interfaces/http/session.guard.ts";
 import type { Resources } from "./resources.ts";
 
@@ -164,6 +165,7 @@ export function applicationModule(resources: Resources): DynamicModule {
   };
   const attachments: DynamicModule = {
     module: AttachmentsModule,
+    controllers: [AttachmentsController],
     imports: [infrastructure, sharing],
     providers: [
       {

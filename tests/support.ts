@@ -50,6 +50,7 @@ export async function fixture(t: TestContext) {
         cookie = response.headers.get("set-cookie")!.split(";")[0];
       return {
         status: response.status,
+        headers: response.headers,
         data: response.headers.get("content-type")?.includes("application/json")
           ? await response.json()
           : await response.text(),

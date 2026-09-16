@@ -2,7 +2,6 @@ import express, { type Express, type ErrorRequestHandler } from "express";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { HttpError } from "./http-error.ts";
-import { attachmentRoutes } from "./attachment-routes.ts";
 import type { Services } from "./context.ts";
 
 export function configureHttp(app: Express, services: Services) {
@@ -56,6 +55,4 @@ export function configureHttp(app: Express, services: Services) {
     (request, response, next) =>
       request.method === "POST" ? authLimiter(request, response, next) : next(),
   );
-
-  attachmentRoutes(app, services);
 }

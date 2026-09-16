@@ -45,7 +45,17 @@ test("附件跟随工作条目版本，草稿与公开范围隔离，关闭链�
       requestId: randomUUID(),
     })
   ).data;
-  assert.equal((await f.colleague(`/attachments/${file.id}`)).data, "附件内容");
+  const download = await f.colleague(`/attachments/${file.id}`);
+  assert.equal(download.data, "附件内容");
+  assert.equal(
+    download.headers.get("content-type"),
+    "application/octet-stream",
+  );
+  assert.equal(download.headers.get("cache-control"), "no-store");
+  assert.equal(
+    download.headers.get("content-disposition"),
+    `attachment; filename*=UTF-8''${encodeURIComponent("说明.txt")}`,
+  );
   const types = [
     ["diary", undefined],
     ["project", p.id],
@@ -145,6 +155,29 @@ test("附件支持 20MB 上限，类型和数量限制失败不丢失草稿", as
     base64: Buffer.from("html").toString("base64"),
   });
   assert.equal(invalid.status, 400);
+  const broken = await f.author(path, {
+    version: d.version,
+    requestId: randomUUID(),
+    name: "错误.txt",
+    base64: "a?==",
+  });
+  assert.equal(broken.status, 400);
+  assert.equal(broken.data.error, "文件内容不完整，请重新上传。");
+  const tooLarge = await f.author(path, {
+    version: d.version,
+    requestId: randomUUID(),
+    name: "超限.txt",
+    base64: Buffer.alloc(20 * 1024 * 1024 + 1, 65).toString("base64"),
+  });
+  assert.equal(tooLarge.status, 400);
+  const oversizedJson = await f.author("/diaries", {
+    title: "普通请求",
+    entries: [{ ...entry, body: "a".repeat(4 * 1024 * 1024) }],
+  });
+  // Baseline maps the parser's PayloadTooLargeError to this generic response.
+  // Migration preserves that contract while retaining the ordinary 4 MiB limit.
+  assert.equal(oversizedJson.status, 500);
+  assert.deepEqual(oversizedJson.data, { error: "操作未完成，请稍后重试。" });
   const large = await f.author(path, {
     version: d.version,
     requestId: randomUUID(),
