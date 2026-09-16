@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "./application.ts";
@@ -13,6 +13,13 @@ test("应用实例隔离身份与时钟，监听失败及重复关闭后仍能�
     await rm(directory, { recursive: true, force: true });
   });
   const time = Date.parse("2026-09-16T04:00:00Z");
+  const invalidDatabase = join(directory, "invalid.sqlite");
+  await writeFile(invalidDatabase, "This is not a SQLite database");
+  await assert.rejects(
+    createApp({ databasePath: invalidDatabase, setupKey: "lifecycle-key" }),
+  );
+  // A failed database initialization must release its file handle as well.
+  await rm(invalidDatabase);
   async function start(name: string, now = time) {
     const service = await createApp({
       databasePath: join(directory, name + ".sqlite"),
@@ -32,6 +39,12 @@ test("应用实例隔离身份与时钟，监听失败及重复关闭后仍能�
   }
   const first = await start("first"),
     second = await start("second");
+  const recovered = await start("invalid");
+  assert.equal(
+    (await (await fetch(recovered.origin + "/api/setup/status")).json())
+      .needsSetup,
+    true,
+  );
   const created = await fetch(first.origin + "/api/setup", {
     method: "POST",
     headers: { Origin: first.origin, "Content-Type": "application/json" },

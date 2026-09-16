@@ -2,9 +2,8 @@ import express, { type Express, type ErrorRequestHandler } from "express";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { HttpError } from "./http-error.ts";
-import type { Services } from "./context.ts";
 
-export function configureHttp(app: Express, services: Services) {
+export function configureHttp(app: Express) {
   app.disable("x-powered-by");
   app.use(
     helmet({

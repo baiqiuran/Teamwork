@@ -2,11 +2,10 @@ import { spawn, spawnSync } from "node:child_process";
 
 // Compile decorators before Node executes them; Vite remains a separate build.
 const compiler = "node_modules/typescript/bin/tsc";
-const first = spawnSync(
-  process.execPath,
-  [compiler, "-p", "tsconfig.server.json"],
-  { stdio: "inherit", windowsHide: true },
-);
+const first = spawnSync(process.execPath, ["scripts/build-server.mjs"], {
+  stdio: "inherit",
+  windowsHide: true,
+});
 if (first.status !== 0) process.exit(first.status ?? 1);
 const children = [
   spawn(

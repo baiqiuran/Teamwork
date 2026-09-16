@@ -57,7 +57,7 @@
 
 - Node.js **24.15.0 ≤ 版本 < 25**，与 [package.json](package.json) 的 `engines` 一致。
 - npm 和 Git；运行应用无需另装 SQLite 服务。
-- 运行浏览器测试时需要 Microsoft Edge，当前 Playwright 配置使用 `msedge` 通道。
+- 运行浏览器测试默认使用 Microsoft Edge；也支持 Playwright 配套 Chromium，配置见下文。
 
 在 PowerShell 或终端中执行：
 
@@ -113,7 +113,7 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 | 数据库     | Node 内置 `node:sqlite`，原生 SQL 仓储、WAL、外键及同步事务               |
 | 文件       | 本地私有目录，数据库保存附件归属与元数据                                  |
 | 身份与安全 | scrypt 密码哈希、Cookie 会话、Helmet、认证接口限流、Origin 校验           |
-| 验证       | Node 测试框架、真实 SQLite、Playwright/Edge、TypeScript 和架构依赖检查    |
+| 验证       | Node 测试框架、真实 SQLite、Playwright、TypeScript 和架构依赖检查         |
 
 具体依赖范围见 [package.json](package.json)，安装版本由 `package-lock.json` 固定。
 
@@ -185,17 +185,19 @@ CONTEXT.md                统一业务术语
 
 ## 开发与验证
 
-| 命令                         | 作用                                             |
-| ---------------------------- | ------------------------------------------------ |
-| `npm start`                  | 启动服务并提供 `dist/` 中的前端页面              |
-| `npm run dev`                | 监听后端编译，并由 Node 重启编译后的服务         |
-| `npm run build`              | 架构和类型检查、编译后端，并由 Vite 构建前端     |
-| `npm run typecheck`          | 仅运行 TypeScript 检查                           |
-| `npm run check:architecture` | 检查后端层次、前端功能依赖、循环引用与 SQL 位置  |
-| `npm run test:api`           | 运行真实 HTTP 服务和临时 SQLite 业务测试         |
-| `npm run test:ui`            | 运行 Playwright 浏览器测试，需要已有最新前端构建 |
-| `npm test`                   | 按顺序运行构建、接口测试和浏览器测试             |
-| `npm run format`             | 使用 Prettier 格式化源码、测试及文档             |
+| 命令                         | 作用                                               |
+| ---------------------------- | -------------------------------------------------- |
+| `npm start`                  | 启动服务并提供 `dist/` 中的前端页面                |
+| `npm run dev`                | 监听后端编译，并由 Node 重启编译后的服务           |
+| `npm run build`              | 架构和类型检查、编译后端，并由 Vite 构建前端       |
+| `npm run typecheck`          | 仅运行 TypeScript 检查                             |
+| `npm run check:architecture` | 检查后端层次、前端功能依赖、循环引用与 SQL 位置    |
+| `npm run test:api`           | 运行真实 HTTP 服务和临时 SQLite 业务测试           |
+| `npm run test:ui`            | 运行 Playwright 浏览器测试，需要已有最新前端构建   |
+| `npm test`                   | 按顺序运行构建、接口测试和浏览器测试               |
+| `npm run test:upgrade`       | 使用基线 `4414749` 在隔离数据上验证升级及回退      |
+| `npm run test:production`    | 临时目录干净安装、全量测试，再验证独立运行依赖环境 |
+| `npm run format`             | 使用 Prettier 格式化源码、测试及文档               |
 
 开发时，首次先执行 `npm run build`，再执行 `npm run dev`。当前 `dev` 命令只监听后端，没有另起 Vite 开发服务器或配置前端热更新；修改 React/CSS 后，在另一个终端执行 `npm run build` 并刷新页面。
 
@@ -217,6 +219,16 @@ npm run test:ui
 
 浏览器测试默认使用 Edge（可选浏览器配置见 [迁移记录](docs/nestjs-migration.md#浏览器环境)），自动启动独立的 `4311` 端口服务及 `data/e2e-*.sqlite` 数据库，`reuseExistingServer` 关闭。运行前确保该端口空闲。测试覆盖编辑与提交、任务冲突、分享、附件及桌面瀑布流，也保留少量窄屏回归检查；产品布局以桌面使用为主。产物位于 `test-results/`，失败时保留 trace。
 
+如果 Edge 创建页面超时，可使用配套 Chromium：
+
+```powershell
+npx playwright install chromium --only-shell
+$env:PLAYWRIGHT_CHANNEL = "chromium"
+npm run test:ui
+```
+
+`test:production` 需要 Git、npm 和已安装的测试浏览器，默认选择 Chromium。它只复制 Git 管理的源码及未忽略的新文件，在系统临时目录执行 `npm ci` 和完整测试；随后将编译产物及包清单复制到另一个目录，执行 `npm ci --omit=dev`，验证身份、提交及公开读取。两个目录都不包含真实数据，完成后清理。`test:upgrade` 需要本仓库的 `4414749` 历史和开发依赖，运行前先构建后端。
+
 ## 数据与备份
 
 默认数据布局：
@@ -229,7 +241,7 @@ data/
   attachments/            按附件 ID 保存的文件内容
 ```
 
-启动时自动执行幂等建表和已有的追加列迁移。DDD 整理沿用现有 SQLite 表与内容格式，旧数据可继续使用。
+启动时自动执行幂等建表和已有的追加列迁移。Nest 迁移沿用现有 SQLite 表与内容格式，旧数据可继续使用。升级和回退的隔离演练、已验证范围见 [迁移记录](docs/nestjs-migration.md)。实际切换前仍应按下列流程备份，并停止原服务后再启动新服务。
 
 备份与恢复采用以下停机流程：
 
@@ -280,7 +292,7 @@ data/
 | 重启后进入创建团队页面           | 检查工作目录及 `DAILY_DATABASE_PATH`，确认指向原数据库，不要直接另建团队                       |
 | 历史日报无法修改                 | 这是首次提交日期的锁定规则；服务器以北京时间判断当天                                           |
 | 分享附件下载失败                 | 检查链接是否关闭、对象是否归档、是否开放进展模块，以及附件是否仍在可见的已提交内容中           |
-| 浏览器测试找不到浏览器           | 检查本机 Edge；配置使用 `msedge`，仅安装其他 Chromium 浏览器不会满足该配置                     |
+| 浏览器测试找不到浏览器           | 检查本机 Edge，或安装配套 Chromium 并设置 `PLAYWRIGHT_CHANNEL=chromium`                        |
 
 ## 进一步阅读
 

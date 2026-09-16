@@ -16,7 +16,9 @@
     "test:api": "npm run build:server && tsx --test tests/*.test.ts",
     "test:ui": "npm run build:server && playwright test",
     "format": "prettier --write server src scripts tests docs *.json *.ts *.html *.md",
-    "build:server": "tsc -p tsconfig.server.json"
+    "build:server": "node scripts/build-server.mjs",
+    "test:upgrade": "node --import tsx scripts/verify-upgrade.mjs",
+    "test:production": "node scripts/verify-production.mjs"
   },
   "dependencies": {
     "@nestjs/common": "12.0.3",

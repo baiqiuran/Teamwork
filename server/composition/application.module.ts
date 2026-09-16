@@ -105,7 +105,6 @@ export function applicationModule(resources: Resources): DynamicModule {
           new SessionGuard(members, reflector),
       },
     ],
-    exports: [Membership],
   };
   const work: DynamicModule = {
     module: WorkModule,
@@ -123,7 +122,6 @@ export function applicationModule(resources: Resources): DynamicModule {
         ) => new Work(repo, shares, read, runtime),
       },
     ],
-    exports: [Work],
   };
   const journal: DynamicModule = {
     module: JournalModule,
@@ -142,7 +140,6 @@ export function applicationModule(resources: Resources): DynamicModule {
         ) => new Journal(diaries, tasks, files, read, runtime),
       },
     ],
-    exports: [Journal],
   };
   const sharing: DynamicModule = {
     module: SharingModule,
@@ -181,7 +178,6 @@ export function applicationModule(resources: Resources): DynamicModule {
         ) => new Attachments(repo, diaries, share, files, runtime, security),
       },
     ],
-    exports: [Attachments],
   };
   return {
     module: ApplicationModule,

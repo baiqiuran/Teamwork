@@ -46,7 +46,7 @@ flowchart LR
   APP --> DOMAIN[领域模型与规则]
   APP --> PORTS[应用层端口]
   INFRA[SQLite / 文件 / 加密适配器] -.实现.-> PORTS
-  ROOT[app.ts 装配入口] --> HTTP
+  ROOT[composition 模块与资源] --> HTTP
   ROOT --> APP
   ROOT --> INFRA
 ```
@@ -85,4 +85,10 @@ npm test
 
 业务验证保持既定边界：通过真实 HTTP、真实 SQLite 和隔离时钟验证完整行为，再用浏览器流程检查编辑、分享及布局。扩展功能时，业务规则放领域，跨仓储编排放应用，SQL 和文件操作放适配器，HTTP 只处理协议。
 
-Nest 的 Controller、Guard、Pipe 和异常 Filter 位于 HTTP 层，模块及工厂 Provider 位于装配层；领域和应用类保持框架独立。实际迁移进度见 [迁移记录](nestjs-migration.md)。
+Nest 的 Controller、Guard、Pipe 和异常 Filter 位于 HTTP 层，模块及工厂 Provider 位于装配层；领域和应用类保持框架独立。`MembershipModule` 提供身份与邀请入口及全局会话 Guard；`WorkModule`、`JournalModule`、`SharingModule`、`AttachmentsModule` 分别提供项目任务、日报、分享和附件入口。只在需要匿名访问的初始化、登录、邀请预览/加入与公开读取上显式标注匿名。所有 41 个业务接口通过 Controller 接入，没有旧 Express 业务路由。
+
+`InfrastructureModule` 在单个应用中提供一组仓储、时钟、事务、安全和文件端口；`ReadingModule` 导出共享读取模型。分享模块导出附件授权所需的 Sharing 用例，其余业务用例留在所属模块。模块导入是有向无环关系，不使用全局资源模块。
+
+`createApp` 先创建共享资源，再初始化 Nest；数据库初始化、容器初始化及正常关闭各路径都有对应清理。`close` 先关闭 HTTP，再关闭数据库，可重复调用。监听失败由调用者关闭；进程入口已在失败分支执行关闭。所有用例与仓储均由工厂 Provider 构造，不通过容器定位器在 HTTP 层查找服务。
+
+完整验证见 [迁移记录](nestjs-migration.md)。

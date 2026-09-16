@@ -3,7 +3,8 @@ import type { Runtime } from "../../application/ports.ts";
 
 export function openDatabase(path: string) {
   const db = new DatabaseSync(path);
-  db.exec(`
+  try {
+    db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
     PRAGMA busy_timeout = 5000;
@@ -20,40 +21,44 @@ export function openDatabase(path: string) {
     CREATE TABLE IF NOT EXISTS attachments (id TEXT PRIMARY KEY, diary_id TEXT NOT NULL, entry_id TEXT NOT NULL, member_id TEXT NOT NULL REFERENCES members(id), name TEXT NOT NULL, size INTEGER NOT NULL, request_id TEXT NOT NULL, fingerprint TEXT NOT NULL, UNIQUE(member_id, request_id));
     CREATE TABLE IF NOT EXISTS shares (id TEXT PRIMARY KEY, token TEXT NOT NULL UNIQUE, created_by TEXT NOT NULL REFERENCES members(id), type TEXT NOT NULL, from_date TEXT NOT NULL, to_date TEXT NOT NULL, created_at INTEGER NOT NULL, closed_at INTEGER);
   `);
-  // Keep additive migrations compatible with databases created by earlier releases.
-  for (const [table, additions] of Object.entries({
-    diaries: {
-      published: "TEXT",
-      first_at: "INTEGER",
-      submitted_at: "INTEGER",
-      diary_date: "TEXT",
-    },
-    shares: {
-      target_id: "TEXT",
-      modules: `TEXT NOT NULL DEFAULT '["progress"]'`,
-    },
-  })) {
-    const columns = db
-      .prepare(`PRAGMA table_info(${table})`)
-      .all()
-      .map((row) => row.name);
-    for (const [name, type] of Object.entries(additions)) {
-      if (!columns.includes(name))
-        db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+    // Keep additive migrations compatible with databases created by earlier releases.
+    for (const [table, additions] of Object.entries({
+      diaries: {
+        published: "TEXT",
+        first_at: "INTEGER",
+        submitted_at: "INTEGER",
+        diary_date: "TEXT",
+      },
+      shares: {
+        target_id: "TEXT",
+        modules: `TEXT NOT NULL DEFAULT '["progress"]'`,
+      },
+    })) {
+      const columns = db
+        .prepare(`PRAGMA table_info(${table})`)
+        .all()
+        .map((row) => row.name);
+      for (const [name, type] of Object.entries(additions)) {
+        if (!columns.includes(name))
+          db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
+      }
     }
+    const transaction: Runtime["transaction"] = (work) => {
+      db.exec("BEGIN IMMEDIATE");
+      try {
+        const value = work();
+        if (value && typeof value === "object" && "then" in value)
+          throw new Error("SQLite transactions must be synchronous");
+        db.exec("COMMIT");
+        return value;
+      } catch (error) {
+        db.exec("ROLLBACK");
+        throw error;
+      }
+    };
+    return { db, transaction, close: () => db.close() };
+  } catch (error) {
+    db.close();
+    throw error;
   }
-  const transaction: Runtime["transaction"] = (work) => {
-    db.exec("BEGIN IMMEDIATE");
-    try {
-      const value = work();
-      if (value && typeof value === "object" && "then" in value)
-        throw new Error("SQLite transactions must be synchronous");
-      db.exec("COMMIT");
-      return value;
-    } catch (error) {
-      db.exec("ROLLBACK");
-      throw error;
-    }
-  };
-  return { db, transaction, close: () => db.close() };
 }

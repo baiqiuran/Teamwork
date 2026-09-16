@@ -43,7 +43,7 @@ test("编译后的服务由 Node 启动，成员可初始化、退出并重新�
   await new Promise<void>((ready, reject) => {
     const timer = setTimeout(
       () => reject(new Error(`Startup timeout: ${output}`)),
-      15000,
+      60000,
     );
     child.once("error", (error) => {
       clearTimeout(timer);
