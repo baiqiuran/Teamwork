@@ -2,9 +2,18 @@
 
 已实现任务 01–13：单团队邀请与账号、私人工作条目草稿、北京时间提交与历史锁定、项目归集、任务状态和多人冲突、组合筛选、三类模块化分享、附件权限及归档恢复。
 
+团队日报及公开页的进展日报使用桌面多列瀑布流卡片，保留完整工作条目。数据库使用 SQLite。
+
 ## 本机运行
 
-需要 Node.js 24.15 或更高的 24.x 版本及 npm。在本目录运行：
+需要 Node.js 24.15 或更高的 24.x 版本及 npm。首次获取代码：
+
+```powershell
+git clone https://github.com/baiqiuran/Teamwork.git
+Set-Location Teamwork
+```
+
+在仓库根目录运行：
 
 ```powershell
 npm ci
@@ -15,6 +24,8 @@ npm start
 地址为 `http://127.0.0.1:4310`。首次启动打印带引导密钥的创建团队链接；建立后使用邮箱和密码登录。没有预置账号。密码至少 12 字符。任何成员都能生成 7 天有效、单次使用的邀请，只有生成者能撤销。
 
 当前仅监听本机，公开链接可在本机免登录浏览器中独立验证，尚未部署公网，其他电脑不能直接访问 localhost。部署需要另行确定主机、HTTPS 和可信来源。
+
+GitHub 仓库用于托管源码。GitHub Pages 提供静态网站托管，不能直接运行本项目的 Node.js 服务和 SQLite 业务接口；应用上线仍需支持 Node.js 与持久磁盘的运行环境。[GitHub Pages 官方说明](https://docs.github.com/en/pages/getting-started-with-github-pages/what-is-github-pages)。
 
 ## 使用路径
 
@@ -31,6 +42,7 @@ npm start
 ## 数据与安全边界
 
 - `data/daily-flow.sqlite` 保存业务数据及 WAL，`data/attachments/` 保存文件；备份时同时备份数据库和文件目录。重启保留现有账号和工作。
+- 仓库不包含本机数据库、上传附件、环境密钥、依赖目录和构建产物。首次启动会创建独立的空数据库；测试代码中的示例账号只用于隔离测试环境。
 - `PORT` 修改端口，`DAILY_DATABASE_PATH` 指定独立数据库文件，附件存于该数据库同目录下的 attachments。测试使用独立临时库。
 - `DAILY_SETUP_KEY` 可显式指定首次引导密钥；未建立团队前重启默认生成新密钥。
 - 密码使用带盐 scrypt，会话和邀请保存令牌摘要。会话使用 HttpOnly / SameSite Cookie，写接口检查 Origin；会话 7 天过期，退出立即作废。
@@ -51,4 +63,4 @@ npm test
 
 浏览器测试在 4311 端口使用独立 `data/e2e-*.sqlite`，验证真实账号、编辑与保存、@项目、任务状态冲突、附件、三类公开页和归档，包含 390px 窄屏检查。截图在 `test-results/`。前端修改后需重新构建；`npm run dev` 监听服务端。
 
-正式规格与任务位于父工作区 `.scratch/daily-flow/`，本 Git 仓库仅包含应用。代码只提交本地 main，不自动推送。任务 02–13 的最终审查基点为 `145bcf8`。
+本仓库包含运行应用所需的源码、依赖锁文件与测试。产品讨论和本地任务记录保留在原开发工作区，不是运行依赖。
