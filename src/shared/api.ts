@@ -1,14 +1,3 @@
-export interface Identity {
-  member: { id: string; name: string; email: string };
-  team: { id: number; name: string };
-}
-export interface Invitation {
-  id: string;
-  createdBy: string;
-  createdAt: number;
-  expiresAt: number;
-  status: "active" | "used" | "revoked" | "expired";
-}
 export class ApiError extends Error {
   status: number;
   constructor(

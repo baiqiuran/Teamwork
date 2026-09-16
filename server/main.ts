@@ -2,7 +2,7 @@ import { mkdirSync, existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import express from "express";
 import { createApp } from "./app.ts";
-import { secret } from "./security.ts";
+import { secret } from "./infrastructure/security.ts";
 
 const port = Number(process.env.PORT ?? 4310);
 if (!Number.isInteger(port) || port < 1 || port > 65535)

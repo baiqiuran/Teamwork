@@ -8,13 +8,14 @@
   },
   "scripts": {
     "dev": "tsx watch server/main.ts",
-    "build": "tsc --noEmit && vite build",
+    "build": "npm run check:architecture && tsc --noEmit && vite build",
     "start": "tsx server/main.ts",
     "typecheck": "tsc --noEmit",
+    "check:architecture": "node scripts/check-architecture.mjs",
     "test": "npm run build && npm run test:api && npm run test:ui",
     "test:api": "tsx --test tests/*.test.ts",
     "test:ui": "playwright test",
-    "format": "prettier --write server src tests *.json *.ts *.html README.md"
+    "format": "prettier --write server src scripts tests docs *.json *.ts *.html *.md"
   },
   "dependencies": {
     "express": "^5.2.1",

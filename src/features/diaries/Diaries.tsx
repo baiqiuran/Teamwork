@@ -1,37 +1,14 @@
 import { useEffect, useState } from "react";
-import { api, ApiError } from "./api";
-import { TaskAssociation, statusLabels, type TaskStatus } from "./tasks";
-import type { Project } from "./projects";
-
-export interface Entry {
-  id: string;
-  body: string;
-  attachments?: { id: string; name: string; size: number }[];
-  projectId?: string;
-  projectName?: string;
-  taskId?: string;
-  taskName?: string;
-  taskStatus?: TaskStatus;
-  newTask?: { name: string; description: string };
-  statusChange?: {
-    status: TaskStatus;
-    expectedVersion: number;
-    resolution?: "keep" | "apply";
-  };
-}
-export interface DiaryContent {
-  title: string;
-  entries: Entry[];
-}
-export interface Diary {
-  id: string;
-  draft: DiaryContent;
-  version: number;
-  diaryDate: string | null;
-  updatedAt: number;
-  published: DiaryContent | null;
-  editable: boolean;
-}
+import { api, ApiError } from "../../shared/api";
+import type {
+  Entry,
+  Diary,
+  DiaryContent,
+  TaskStatus,
+  Project,
+} from "../../shared/contracts";
+import { TaskAssociation } from "./TaskAssociation";
+import { statusLabels } from "../../shared/status";
 interface PendingUpload {
   entry: Entry;
   file: File;

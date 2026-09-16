@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
-import { beijingToday, DiaryRecords, type PublishedDiary } from "./reading";
-import { statusLabels, type Task } from "./tasks";
-import type { Project } from "./projects";
+import { api } from "../../shared/api";
+import { DiaryRecords } from "../../shared/components/DiaryRecords";
+import { beijingToday } from "../../shared/time";
+import { statusLabels } from "../../shared/status";
+import type { Project, Task, PublishedDiary } from "../../shared/contracts";
 type ShareType = "diary" | "project" | "task";
 type Module = "overview" | "tasks" | "progress";
 const moduleNames: Record<Module, string> = {

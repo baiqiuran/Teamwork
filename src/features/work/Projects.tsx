@@ -1,14 +1,9 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
-import { Tasks } from "./tasks";
-import { beijingToday, DiaryRecords, type PublishedDiary } from "./reading";
-export interface Project {
-  id: string;
-  name: string;
-  description: string;
-  creator: { id: string; name: string };
-  archived: boolean;
-}
+import { api } from "../../shared/api";
+import { DiaryRecords } from "../../shared/components/DiaryRecords";
+import { beijingToday } from "../../shared/time";
+import type { Project, PublishedDiary } from "../../shared/contracts";
+import { Tasks } from "./Tasks";
 export function Projects({ memberId }: { memberId: string }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
