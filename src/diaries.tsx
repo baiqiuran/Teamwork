@@ -1,9 +1,12 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import type { Project } from "./projects";
 
 export interface Entry {
   id: string;
   body: string;
+  projectId?: string;
+  projectName?: string;
 }
 export interface DiaryContent {
   title: string;
@@ -15,9 +18,13 @@ export interface Diary {
   version: number;
   diaryDate: string | null;
   updatedAt: number;
+  published: DiaryContent | null;
+  editable: boolean;
 }
 const emptyEntry = (): Entry => ({ id: crypto.randomUUID(), body: "" });
 export function Diaries() {
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [associating, setAssociating] = useState<string | null>(null);
   const [items, setItems] = useState<Diary[]>([]);
   const [current, setCurrent] = useState<Diary | null>(null);
   const [content, setContent] = useState<DiaryContent>({
@@ -31,6 +38,9 @@ export function Diaries() {
   const refresh = async () => setItems(await api<Diary[]>("/diaries/mine"));
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
+    api<Project[]>("/projects")
+      .then(setProjects)
+      .catch((e) => setError(e.message));
   }, []);
   useEffect(() => {
     const warn = (event: BeforeUnloadEvent) => {
@@ -84,6 +94,24 @@ export function Diaries() {
     setNotice("草稿已保存，仅你可见。");
     await refresh();
   }
+  async function submit() {
+    if (!current) return;
+    let diary = current;
+    if (dirty) {
+      diary = await api<Diary>(`/diaries/${current.id}/save`, {
+        ...content,
+        version: current.version,
+      });
+      open(diary);
+    }
+    const result = await api<Diary>(`/diaries/${diary.id}/submit`, {
+      version: diary.version,
+      requestId: crypto.randomUUID(),
+    });
+    open(result);
+    await refresh();
+    setNotice("日报已提交，团队可以查看。");
+  }
   return (
     <>
       <div className="journal-heading">
@@ -130,7 +158,10 @@ export function Diaries() {
               }
             >
               <strong>{item.draft.title || "未命名日报"}</strong>
-              <span>私人草稿 · {item.draft.entries.length} 条工作</span>
+              <span>
+                {item.diaryDate ? `${item.diaryDate} · 已提交` : "私人草稿"} ·{" "}
+                {item.draft.entries.length} 条工作
+              </span>
             </button>
           ))}
         </aside>
@@ -150,105 +181,207 @@ export function Diaries() {
           ) : (
             <>
               <div className="editor-meta">
-                <span>私人草稿 · 仅自己可见</span>
+                <span>
+                  {current.diaryDate
+                    ? `${current.diaryDate} · 已提交`
+                    : "私人草稿 · 仅自己可见"}
+                </span>
                 <span>{dirty ? "有未保存修改" : "已保存"}</span>
               </div>
-              <label className="title-field">
-                日报标题 <span className="muted">选填</span>
-                <input
-                  aria-label="日报标题"
-                  placeholder="为这份记录起个名字"
-                  value={content.title}
-                  disabled={busy}
-                  onChange={(e) => edit({ ...content, title: e.target.value })}
-                />
-              </label>
-              <div className="work-entries">
-                {content.entries.map((entry, index) => (
-                  <article className="work-entry" key={entry.id}>
-                    <div className="entry-heading">
-                      <label htmlFor={`body-${entry.id}`}>
-                        工作 {index + 1}
-                      </label>
-                      <div className="inline-actions">
-                        <button
-                          className="text-button"
-                          disabled={busy || index === 0}
-                          aria-label={`上移工作 ${index + 1}`}
-                          onClick={() => {
-                            const entries = [...content.entries];
-                            [entries[index - 1], entries[index]] = [
-                              entries[index],
-                              entries[index - 1],
-                            ];
-                            edit({ ...content, entries });
-                          }}
-                        >
-                          上移
-                        </button>
-                        <button
-                          className="text-button danger"
-                          disabled={busy}
-                          aria-label={`移除工作 ${index + 1}`}
-                          onClick={() => {
-                            if (
-                              entry.body &&
-                              !window.confirm("移除这条工作？保存后生效。")
-                            )
-                              return;
-                            edit({
-                              ...content,
-                              entries: content.entries.filter(
-                                (e) => e.id !== entry.id,
-                              ),
-                            });
-                          }}
-                        >
-                          移除
-                        </button>
-                      </div>
-                    </div>
-                    <textarea
-                      id={`body-${entry.id}`}
-                      value={entry.body}
-                      disabled={busy}
-                      placeholder="完成了什么？有哪些进展？\n可以换行、分段，或用 - 编写列表。"
-                      onChange={(e) =>
-                        edit({
-                          ...content,
-                          entries: content.entries.map((item) =>
-                            item.id === entry.id
-                              ? { ...item, body: e.target.value }
-                              : item,
-                          ),
-                        })
-                      }
-                    />
-                  </article>
-                ))}
-              </div>
-              <button
-                className="add-entry"
-                disabled={busy || content.entries.length >= 50}
-                onClick={() =>
-                  edit({
-                    ...content,
-                    entries: [...content.entries, emptyEntry()],
-                  })
-                }
+              {!current.editable && (
+                <p className="message">
+                  历史日报已锁定。此处保留的未重提修改仅你可见。
+                </p>
+              )}
+              {current.published && (
+                <details className="published-preview">
+                  <summary>查看团队正在阅读的提交版本</summary>
+                  <h3>{current.published.title || "工作日报"}</h3>
+                  {current.published.entries.map((e) => (
+                    <p className="entry-body" key={e.id}>
+                      {e.body}
+                    </p>
+                  ))}
+                </details>
+              )}
+              <fieldset
+                disabled={busy || !current.editable}
+                className="editor-fields"
               >
-                ＋ 新增一条工作
-              </button>
-              <p className="field-hint">
-                换行仍属于当前工作；新增条目后，可单独记录下一项工作。
-              </p>
+                <label className="title-field">
+                  日报标题 <span className="muted">选填</span>
+                  <input
+                    aria-label="日报标题"
+                    placeholder="为这份记录起个名字"
+                    value={content.title}
+                    disabled={busy}
+                    onChange={(e) =>
+                      edit({ ...content, title: e.target.value })
+                    }
+                  />
+                </label>
+                <div className="work-entries">
+                  {content.entries.map((entry, index) => (
+                    <article className="work-entry" key={entry.id}>
+                      <div className="entry-heading">
+                        <label htmlFor={`body-${entry.id}`}>
+                          工作 {index + 1}
+                        </label>
+                        <div className="inline-actions">
+                          <button
+                            className="text-button"
+                            disabled={busy || index === 0}
+                            aria-label={`上移工作 ${index + 1}`}
+                            onClick={() => {
+                              const entries = [...content.entries];
+                              [entries[index - 1], entries[index]] = [
+                                entries[index],
+                                entries[index - 1],
+                              ];
+                              edit({ ...content, entries });
+                            }}
+                          >
+                            上移
+                          </button>
+                          <button
+                            className="text-button danger"
+                            disabled={busy}
+                            aria-label={`移除工作 ${index + 1}`}
+                            onClick={() => {
+                              if (
+                                entry.body &&
+                                !window.confirm("移除这条工作？保存后生效。")
+                              )
+                                return;
+                              edit({
+                                ...content,
+                                entries: content.entries.filter(
+                                  (e) => e.id !== entry.id,
+                                ),
+                              });
+                            }}
+                          >
+                            移除
+                          </button>
+                        </div>
+                      </div>
+                      <textarea
+                        onKeyDown={(e) => {
+                          if (e.key === "@") {
+                            e.preventDefault();
+                            setAssociating(entry.id);
+                            api<Project[]>("/projects")
+                              .then(setProjects)
+                              .catch((e) => setError(e.message));
+                          }
+                        }}
+                        id={`body-${entry.id}`}
+                        value={entry.body}
+                        disabled={busy}
+                        placeholder="完成了什么？有哪些进展？\n可以换行、分段，或用 - 编写列表。"
+                        onChange={(e) =>
+                          edit({
+                            ...content,
+                            entries: content.entries.map((item) =>
+                              item.id === entry.id
+                                ? { ...item, body: e.target.value }
+                                : item,
+                            ),
+                          })
+                        }
+                      />
+                      <div className="entry-association">
+                        <button
+                          type="button"
+                          className="text-button"
+                          onClick={() => {
+                            setAssociating(
+                              associating === entry.id ? null : entry.id,
+                            );
+                            api<Project[]>("/projects")
+                              .then(setProjects)
+                              .catch((e) => setError(e.message));
+                          }}
+                        >
+                          {entry.projectId
+                            ? `@ ${projects.find((p) => p.id === entry.projectId)?.name || entry.projectName || "项目"}`
+                            : "@ 关联项目"}
+                        </button>
+                        <span className="muted">
+                          {entry.projectId
+                            ? "整个条目提交后归入此项目"
+                            : "保留在完整日报中"}
+                        </span>
+                        {associating === entry.id && (
+                          <label>
+                            关联项目
+                            <select
+                              aria-label={`工作 ${index + 1} 关联项目`}
+                              value={entry.projectId || ""}
+                              onChange={(e) => {
+                                const projectId = e.target.value || undefined;
+                                edit({
+                                  ...content,
+                                  entries: content.entries.map((item) =>
+                                    item.id === entry.id
+                                      ? {
+                                          ...item,
+                                          projectId,
+                                          projectName: projects.find(
+                                            (p) => p.id === projectId,
+                                          )?.name,
+                                        }
+                                      : item,
+                                  ),
+                                });
+                              }}
+                            >
+                              <option value="">不关联项目</option>
+                              {projects
+                                .filter(
+                                  (p) =>
+                                    !p.archived || p.id === entry.projectId,
+                                )
+                                .map((p) => (
+                                  <option value={p.id} key={p.id}>
+                                    {p.name}
+                                    {p.archived ? "（已归档）" : ""}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <button
+                  className="add-entry"
+                  disabled={busy || content.entries.length >= 50}
+                  onClick={() =>
+                    edit({
+                      ...content,
+                      entries: [...content.entries, emptyEntry()],
+                    })
+                  }
+                >
+                  ＋ 新增一条工作
+                </button>
+                <p className="field-hint">
+                  换行仍属于当前工作；新增条目后，可单独记录下一项工作。
+                </p>
+              </fieldset>
               <div className="editor-actions">
                 <button
                   className="text-button danger"
-                  disabled={busy}
+                  disabled={busy || !current.editable}
                   onClick={() =>
                     action(async () => {
-                      if (!window.confirm("删除这份私人草稿？此操作无法撤销。"))
+                      if (
+                        !window.confirm(
+                          "删除这份日报？已提交内容也会从团队和分享中移除。",
+                        )
+                      )
                         return;
                       await api(`/diaries/${current.id}/delete`, {
                         version: current.version,
@@ -259,18 +392,25 @@ export function Diaries() {
                     })
                   }
                 >
-                  删除草稿
+                  {current.diaryDate ? "删除日报" : "删除草稿"}
                 </button>
                 <div>
                   <span role="status">{notice}</span>
                   <button
                     className="primary"
-                    disabled={busy}
+                    disabled={busy || !current.editable}
                     onClick={() => action(save)}
                   >
                     {busy ? "保存中…" : "保存草稿"}
                   </button>
                 </div>
+                <button
+                  className="primary"
+                  disabled={busy || !current.editable}
+                  onClick={() => action(submit)}
+                >
+                  {current.diaryDate ? "重新提交" : "提交日报"}
+                </button>
               </div>
             </>
           )}

@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { api, ApiError, type Identity, type Invitation } from "./api";
 import "./style.css";
 import { Diaries } from "./diaries";
+import { TeamDiaries } from "./reading";
+import { Projects } from "./projects";
 
 function Brand() {
   return (
@@ -453,9 +455,9 @@ function Workspace({
   identity: Identity;
   onLogout: () => void;
 }) {
-  const [tab, setTab] = useState<"diaries" | "invitations" | "account">(
-    window.location.pathname === "/members" ? "invitations" : "diaries",
-  );
+  const [tab, setTab] = useState<
+    "diaries" | "team" | "projects" | "invitations" | "account"
+  >(window.location.pathname === "/members" ? "invitations" : "diaries");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function logout() {
@@ -482,6 +484,18 @@ function Workspace({
         </div>
         <p className="nav-caption">工作空间</p>
         <nav aria-label="团队导航">
+          <button
+            className={tab === "projects" ? "selected" : ""}
+            onClick={() => setTab("projects")}
+          >
+            项目与任务
+          </button>
+          <button
+            className={tab === "team" ? "selected" : ""}
+            onClick={() => setTab("team")}
+          >
+            团队日报
+          </button>
           <button
             className={tab === "diaries" ? "selected" : ""}
             onClick={() => {
@@ -536,7 +550,11 @@ function Workspace({
           <div hidden={tab !== "diaries"}>
             <Diaries />
           </div>
-          {tab === "diaries" ? null : tab === "invitations" ? (
+          {tab === "projects" ? (
+            <Projects memberId={identity.member.id} />
+          ) : tab === "team" ? (
+            <TeamDiaries />
+          ) : tab === "diaries" ? null : tab === "invitations" ? (
             <Invitations onExpired={onLogout} />
           ) : (
             <>

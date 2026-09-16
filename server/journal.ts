@@ -3,10 +3,16 @@ import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { HttpError } from "./http-error.ts";
+import { installProjects } from "./projects.ts";
 
 const text = (max: number) =>
   z.string().refine((value) => [...value].length <= max, `最多 ${max} 字`);
-const entrySchema = z.object({ id: z.uuid(), body: text(10_000) });
+const entrySchema = z.object({
+  id: z.uuid(),
+  body: text(10_000),
+  projectId: z.uuid().optional(),
+  projectName: z.string().optional(),
+});
 const contentSchema = z
   .object({ title: text(100), entries: z.array(entrySchema).max(50) })
   .refine(
@@ -15,13 +21,17 @@ const contentSchema = z
     "条目标识不能重复",
   );
 export type Content = z.infer<typeof contentSchema>;
-interface DiaryRow {
+export interface DiaryRow {
   id: string;
   author_id: string;
   draft: string;
   version: number;
   created_at: number;
   updated_at: number;
+  published: string | null;
+  first_at: number | null;
+  submitted_at: number | null;
+  diary_date: string | null;
 }
 export interface JournalContext {
   db: DatabaseSync;
@@ -31,12 +41,51 @@ export interface JournalContext {
 }
 export function installJournal(
   app: Express,
-  { db, now, authenticate }: JournalContext,
+  { db, now, authenticate, transaction }: JournalContext,
 ) {
   db.exec(`CREATE TABLE IF NOT EXISTS diaries (
     id TEXT PRIMARY KEY, author_id TEXT NOT NULL REFERENCES members(id), draft TEXT NOT NULL,
     version INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
   );`);
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS diary_events (diary_id TEXT PRIMARY KEY, member_id TEXT NOT NULL REFERENCES members(id), action TEXT NOT NULL, created_at INTEGER NOT NULL);`,
+  );
+  const projects = installProjects(app, { db, now, authenticate, transaction });
+  const columns = db
+    .prepare("PRAGMA table_info(diaries)")
+    .all()
+    .map((row) => row.name);
+  for (const [name, type] of [
+    ["published", "TEXT"],
+    ["first_at", "INTEGER"],
+    ["submitted_at", "INTEGER"],
+    ["diary_date", "TEXT"],
+  ]) {
+    if (!columns.includes(name))
+      db.exec(`ALTER TABLE diaries ADD COLUMN ${name} ${type}`);
+  }
+  db.exec(`CREATE TABLE IF NOT EXISTS submission_receipts (
+    member_id TEXT NOT NULL, request_id TEXT NOT NULL, diary_id TEXT NOT NULL,
+    input_version INTEGER NOT NULL, result TEXT NOT NULL, PRIMARY KEY(member_id, request_id)
+  );`);
+  const dateToday = () =>
+    new Date(now() + 8 * 3600_000).toISOString().slice(0, 10);
+  function writable(row: DiaryRow) {
+    if (row.diary_date && row.diary_date !== dateToday())
+      throw new HttpError(409, "历史日报已锁定，不能修改、重新提交或删除。");
+  }
+  function publicView(row: DiaryRow) {
+    return {
+      id: row.id,
+      author: db
+        .prepare("SELECT id, name FROM members WHERE id = ?")
+        .get(row.author_id),
+      published: JSON.parse(row.published!),
+      diaryDate: row.diary_date,
+      firstSubmittedAt: row.first_at,
+      submittedAt: row.submitted_at,
+    };
+  }
   function owned(request: Request) {
     const member = authenticate(request);
     const row = db
@@ -54,7 +103,11 @@ export function installJournal(
       version: row.version,
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      diaryDate: null,
+      diaryDate: row.diary_date,
+      published: row.published ? JSON.parse(row.published) : null,
+      firstSubmittedAt: row.first_at,
+      submittedAt: row.submitted_at,
+      editable: !row.diary_date || row.diary_date === dateToday(),
     };
   }
   function checkVersion(row: DiaryRow, version: unknown) {
@@ -98,6 +151,7 @@ export function installJournal(
   );
   app.post("/api/diaries/:id/save", (request, response) => {
     const row = owned(request);
+    writable(row);
     checkVersion(row, request.body.version);
     const content = contentSchema.parse(request.body);
     db.prepare(
@@ -113,9 +167,129 @@ export function installJournal(
     );
   });
   app.post("/api/diaries/:id/delete", (request, response) => {
+    const member = authenticate(request);
+    const deleted = db
+      .prepare(
+        "SELECT * FROM diary_events WHERE diary_id = ? AND member_id = ?",
+      )
+      .get(z.uuid().parse(request.params.id), member.id);
+    if (deleted) {
+      response.json({ ok: true });
+      return;
+    }
     const row = owned(request);
+    writable(row);
     checkVersion(row, request.body.version);
-    db.prepare("DELETE FROM diaries WHERE id = ?").run(row.id);
+    transaction(() => {
+      if (row.published)
+        db.prepare("INSERT INTO diary_events VALUES (?, ?, ?, ?)").run(
+          row.id,
+          member.id,
+          "delete",
+          now(),
+        );
+      db.prepare("DELETE FROM diaries WHERE id = ?").run(row.id);
+    });
     response.json({ ok: true });
+  });
+  app.get("/api/diary-events", (request, response) => {
+    authenticate(request);
+    response.json(
+      db
+        .prepare("SELECT * FROM diary_events ORDER BY created_at DESC")
+        .all()
+        .map((row) => ({
+          diaryId: row.diary_id,
+          action: row.action,
+          at: row.created_at,
+          member: db
+            .prepare("SELECT id, name FROM members WHERE id = ?")
+            .get(row.member_id),
+        })),
+    );
+  });
+  app.post("/api/diaries/:id/submit", (request, response) => {
+    const member = authenticate(request);
+    const input = z
+      .object({ version: z.number().int(), requestId: z.uuid() })
+      .parse(request.body);
+    const result = transaction(() => {
+      const receipt = db
+        .prepare(
+          "SELECT * FROM submission_receipts WHERE member_id = ? AND request_id = ?",
+        )
+        .get(member.id, input.requestId);
+      if (receipt) {
+        if (
+          receipt.diary_id !== request.params.id ||
+          receipt.input_version !== input.version
+        )
+          throw new HttpError(409, "提交标识已使用，请重新提交。");
+        return JSON.parse(String(receipt.result));
+      }
+      const row = owned(request);
+      writable(row);
+      checkVersion(row, input.version);
+      const content = contentSchema.parse(JSON.parse(row.draft));
+      content.entries = content.entries.filter((entry) => entry.body.trim());
+      if (!content.entries.length)
+        throw new HttpError(400, "请至少填写一条工作内容后再提交。");
+      projects.prepareEntries(content);
+      const timestamp = now();
+      const published = JSON.stringify(content);
+      db.prepare(
+        "UPDATE diaries SET published = ?, draft = ?, first_at = COALESCE(first_at, ?), diary_date = COALESCE(diary_date, ?), submitted_at = ?, updated_at = ?, version = version + 1 WHERE id = ?",
+      ).run(
+        published,
+        published,
+        timestamp,
+        dateToday(),
+        timestamp,
+        timestamp,
+        row.id,
+      );
+      const result = view(
+        db
+          .prepare("SELECT * FROM diaries WHERE id = ?")
+          .get(row.id) as unknown as DiaryRow,
+      );
+      db.prepare("INSERT INTO submission_receipts VALUES (?, ?, ?, ?, ?)").run(
+        member.id,
+        input.requestId,
+        row.id,
+        input.version,
+        JSON.stringify(result),
+      );
+      return result;
+    });
+    response.json(result);
+  });
+  app.get("/api/team-diaries", (request, response) => {
+    authenticate(request);
+    const from = request.query.from
+      ? z.iso.date().parse(request.query.from)
+      : "0001-01-01";
+    const to = request.query.to
+      ? z.iso.date().parse(request.query.to)
+      : "9999-12-31";
+    if (from > to) throw new HttpError(400, "开始日期不能晚于结束日期。");
+    response.json(
+      (
+        db
+          .prepare(
+            "SELECT * FROM diaries WHERE published IS NOT NULL AND diary_date BETWEEN ? AND ? ORDER BY diary_date DESC, submitted_at DESC, id",
+          )
+          .all(from, to) as unknown as DiaryRow[]
+      ).map(publicView),
+    );
+  });
+  app.get("/api/team-diaries/:id", (request, response) => {
+    authenticate(request);
+    const row = db
+      .prepare("SELECT * FROM diaries WHERE id = ? AND published IS NOT NULL")
+      .get(z.uuid().parse(request.params.id)) as unknown as
+      DiaryRow | undefined;
+    if (!row) throw new HttpError(404, "未找到已提交日报。");
+    response.json(publicView(row));
   });
 }

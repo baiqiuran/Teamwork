@@ -121,3 +121,33 @@ test("键盘编写多条私人草稿，刷新重开和窄屏切换", async ({ pa
     fullPage: true,
   });
 });
+
+test("提交后团队读取原版本，保存补充后仍保持原文，再提交更新", async ({
+  page,
+}) => {
+  await page.goto("/login");
+  await page.getByLabel("邮箱", { exact: true }).fill("lin@example.test");
+  await page.getByLabel("密码", { exact: true }).fill("QuietRiver2026!");
+  await page.getByLabel("密码", { exact: true }).press("Enter");
+  await page.getByRole("button", { name: "我的日报", exact: true }).click();
+  await page.getByRole("button", { name: /接口与文档/ }).click();
+  await page.getByRole("button", { name: "提交日报", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("日报已提交");
+  await page.getByLabel("工作 2", { exact: true }).fill("未重提的例会补充");
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await page.getByRole("button", { name: "团队日报", exact: true }).click();
+  await expect(
+    page.locator(".records").getByText("参加例会", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.locator(".records").getByText("未重提的例会补充", { exact: true }),
+  ).not.toBeVisible();
+  await page.getByRole("button", { name: "我的日报", exact: true }).click();
+  await page.getByRole("button", { name: /接口与文档/ }).click();
+  await page.getByRole("button", { name: "重新提交", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("日报已提交");
+  await page.getByRole("button", { name: "团队日报", exact: true }).click();
+  await expect(
+    page.locator(".records").getByText("未重提的例会补充", { exact: true }),
+  ).toBeVisible();
+});
