@@ -5,8 +5,7 @@ import express, { type Express } from "express";
 export function staticSite(app: Express, directory: string) {
   const serve = express.static(directory, { index: false });
   app.use((request, response, next) => {
-    if (request.path === "/api" || request.path.startsWith("/api/"))
-      return next();
+    if (/^\/api(?:\/|$)/i.test(request.path)) return next();
     serve(request, response, (error?: unknown) => {
       if (error) return next(error);
       if (request.method !== "GET" && request.method !== "HEAD") return next();

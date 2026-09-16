@@ -113,4 +113,11 @@ test("编译后的服务由 Node 启动，成员可初始化、退出并重新�
   assert.equal(missing.status, 404);
   assert.deepEqual(missing.body, { error: "未找到该接口。" });
   assert.equal(missing.headers.get("cache-control"), "no-store");
+  // Express API matching is case-insensitive; SPA fallback must use the same boundary.
+  const uppercase = await fetch(`${origin}/API/setup/status`);
+  assert.equal(uppercase.status, 200);
+  assert.deepEqual(await uppercase.json(), { needsSetup: false });
+  const uppercaseMissing = await fetch(`${origin}/API/unknown-api`);
+  assert.equal(uppercaseMissing.status, 404);
+  assert.deepEqual(await uppercaseMissing.json(), { error: "未找到该接口。" });
 });

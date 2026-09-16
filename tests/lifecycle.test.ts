@@ -74,6 +74,9 @@ test("应用实例隔离身份与时钟，监听失败及重复关闭后仍能�
   const unknown = await fetch(first.origin + "/api/not-found");
   assert.equal(unknown.status, 404);
   assert.deepEqual(await unknown.json(), { error: "未找到该接口。" });
+  const uppercaseUnknown = await fetch(first.origin + "/API/not-found");
+  assert.equal(uppercaseUnknown.status, 404);
+  assert.deepEqual(await uppercaseUnknown.json(), { error: "未找到该接口。" });
   const failed = await createApp({
     databasePath: join(directory, "failed.sqlite"),
     setupKey: "lifecycle-key",
