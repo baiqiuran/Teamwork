@@ -3,7 +3,6 @@ import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { HttpError } from "./http-error.ts";
 import { journalRoutes } from "./journal-routes.ts";
-import { workRoutes } from "./work-routes.ts";
 import { sharingRoutes } from "./sharing-routes.ts";
 import { attachmentRoutes } from "./attachment-routes.ts";
 import type { Services } from "./context.ts";
@@ -53,7 +52,6 @@ export function configureHttp(app: Express, services: Services) {
   );
 
   journalRoutes(app, services);
-  workRoutes(app, services);
   sharingRoutes(app, services);
   attachmentRoutes(app, services);
 }
