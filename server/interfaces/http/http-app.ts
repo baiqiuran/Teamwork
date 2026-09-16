@@ -2,7 +2,6 @@ import express, { type Express } from "express";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { HttpError } from "./http-error.ts";
-import { membershipRoutes } from "./membership-routes.ts";
 import { journalRoutes } from "./journal-routes.ts";
 import { workRoutes } from "./work-routes.ts";
 import { sharingRoutes } from "./sharing-routes.ts";
@@ -53,7 +52,6 @@ export function configureHttp(app: Express, services: Services) {
       request.method === "POST" ? authLimiter(request, response, next) : next(),
   );
 
-  membershipRoutes(app, services.membership);
   journalRoutes(app, services);
   workRoutes(app, services);
   sharingRoutes(app, services);
