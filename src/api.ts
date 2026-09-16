@@ -11,7 +11,19 @@ export interface Invitation {
 }
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  constructor(
+    status: number,
+    message: string,
+    public details?: {
+      conflicts?: {
+        taskId: string;
+        taskName: string;
+        latestVersion: number;
+        latestStatus: string;
+        requestedStatus: string;
+      }[];
+    },
+  ) {
     super(message);
     this.status = status;
   }
@@ -31,6 +43,10 @@ export async function api<T>(path: string, body?: object): Promise<T> {
   }
   const result = await response.json();
   if (!response.ok)
-    throw new ApiError(response.status, result.error ?? "操作未完成，请重试。");
+    throw new ApiError(
+      response.status,
+      result.error ?? "操作未完成，请重试。",
+      result.details,
+    );
   return result;
 }

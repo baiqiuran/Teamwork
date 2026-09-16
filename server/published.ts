@@ -28,7 +28,9 @@ export function readPublished(
     .flatMap((row) => {
       const content = JSON.parse(row.published!) as Content;
       const entries = content.entries.filter(
-        (e) => !filter.projectId || e.projectId === filter.projectId,
+        (e) =>
+          (!filter.projectId || e.projectId === filter.projectId) &&
+          (!filter.taskId || e.taskId === filter.taskId),
       );
       if (!entries.length) return [];
       return [
@@ -42,7 +44,10 @@ export function readPublished(
           firstSubmittedAt: row.first_at,
           published: {
             ...content,
-            title: filter.projectId && !filter.complete ? "" : content.title,
+            title:
+              (filter.projectId || filter.taskId) && !filter.complete
+                ? ""
+                : content.title,
             entries: filter.complete ? content.entries : entries,
           },
         },

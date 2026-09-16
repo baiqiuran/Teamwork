@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
+import { Tasks } from "./tasks";
 import { beijingToday, DiaryRecords, type PublishedDiary } from "./reading";
 export interface Project {
   id: string;
@@ -121,7 +122,9 @@ export function Projects({ memberId }: { memberId: string }) {
             onClick={() => action(() => open(p))}
           >
             <strong>{p.name}</strong>
-            <small>{p.creator.name} 创建</small>
+            <small>
+              {p.creator.name} 创建{p.archived ? " · 已归档" : ""}
+            </small>
           </button>
         ))}
       </div>
@@ -154,7 +157,39 @@ export function Projects({ memberId }: { memberId: string }) {
             <p className="entry-body">
               {selected.description || "暂无项目说明"}
             </p>
+            {selected.archived && (
+              <p className="message">
+                项目已归档，保留历史，停止新增进展。恢复后旧公开链接仍保持关闭。
+              </p>
+            )}
+            {selected.creator.id === memberId && (
+              <button
+                className="text-button danger"
+                disabled={busy}
+                onClick={() =>
+                  action(async () => {
+                    if (
+                      !window.confirm(
+                        selected.archived
+                          ? "恢复项目？旧公开链接不会自动重开。"
+                          : "归档项目并关闭其项目、任务专属链接？全团队日报中的历史条目仍保留。",
+                      )
+                    )
+                      return;
+                    const updated = await api<Project>(
+                      `/projects/${selected.id}/archive`,
+                      { archived: !selected.archived },
+                    );
+                    await refresh();
+                    await open(updated);
+                  })
+                }
+              >
+                {selected.archived ? "恢复项目" : "归档项目"}
+              </button>
+            )}
           </section>
+          <Tasks key={selected.id} project={selected} memberId={memberId} />
           <h2>工作进展</h2>
           <form
             className="filters"

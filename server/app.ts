@@ -5,11 +5,13 @@ import express, {
 } from "express";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
+import { dirname, resolve } from "node:path";
 import { z } from "zod";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { installJournal } from "./journal.ts";
 import { HttpError } from "./http-error.ts";
+import { installSharing } from "./sharing.ts";
 import {
   digest,
   dummyPasswordHash,
@@ -96,6 +98,10 @@ export function createApp(options: AppOptions) {
     }
     next();
   });
+  app.use(
+    "/api/diaries/:id/entries/:entryId/attachments",
+    express.json({ limit: "28mb" }),
+  );
   app.use(express.json({ limit: "4mb" }));
   const authLimiter = rateLimit({
     windowMs: 10 * 60 * 1000,
@@ -344,7 +350,12 @@ export function createApp(options: AppOptions) {
     });
   });
 
-  installJournal(app, { db, now, authenticate, transaction });
+  installJournal(
+    app,
+    { db, now, authenticate, transaction },
+    resolve(dirname(options.databasePath), "attachments"),
+  );
+  installSharing(app, { db, now, authenticate, transaction });
   app.use("/api", (_request, response) => {
     response.status(404).json({ error: "未找到该接口。" });
   });

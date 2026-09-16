@@ -1,12 +1,23 @@
 import { useEffect, useState } from "react";
-import { api } from "./api";
+import { api, ApiError } from "./api";
+import { TaskAssociation, statusLabels, type TaskStatus } from "./tasks";
 import type { Project } from "./projects";
 
 export interface Entry {
   id: string;
   body: string;
+  attachments?: { id: string; name: string; size: number }[];
   projectId?: string;
   projectName?: string;
+  taskId?: string;
+  taskName?: string;
+  taskStatus?: TaskStatus;
+  newTask?: { name: string; description: string };
+  statusChange?: {
+    status: TaskStatus;
+    expectedVersion: number;
+    resolution?: "keep" | "apply";
+  };
 }
 export interface DiaryContent {
   title: string;
@@ -23,6 +34,9 @@ export interface Diary {
 }
 const emptyEntry = (): Entry => ({ id: crypto.randomUUID(), body: "" });
 export function Diaries() {
+  const [conflicts, setConflicts] = useState<
+    NonNullable<ApiError["details"]>["conflicts"]
+  >([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [associating, setAssociating] = useState<string | null>(null);
   const [items, setItems] = useState<Diary[]>([]);
@@ -65,6 +79,8 @@ export function Diaries() {
     try {
       await work();
     } catch (e) {
+      if (e instanceof ApiError && e.details?.conflicts)
+        setConflicts(e.details.conflicts);
       setError(e instanceof Error ? e.message : "操作失败，请重试。");
     } finally {
       setBusy(false);
@@ -112,6 +128,37 @@ export function Diaries() {
     await refresh();
     setNotice("日报已提交，团队可以查看。");
   }
+  async function upload(entry: Entry, file: File) {
+    if (!current) return;
+    if (file.size > 20 * 1024 * 1024)
+      throw new Error("单个文件不能超过 20 MB。");
+    let diary = current;
+    if (dirty) {
+      diary = await api<Diary>(`/diaries/${current.id}/save`, {
+        ...content,
+        version: current.version,
+      });
+      open(diary);
+    }
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result).split(",")[1]);
+      reader.onerror = () => reject(new Error("无法读取文件，请重试。"));
+      reader.readAsDataURL(file);
+    });
+    const updated = await api<Diary>(
+      `/diaries/${diary.id}/entries/${entry.id}/attachments`,
+      {
+        version: diary.version,
+        requestId: crypto.randomUUID(),
+        name: file.name,
+        base64,
+      },
+    );
+    open(updated);
+    await refresh();
+    setNotice("附件已保存到私人草稿，提交后才对团队可见。");
+  }
   return (
     <>
       <div className="journal-heading">
@@ -134,6 +181,51 @@ export function Diaries() {
         </p>
       )}
       <div className="journal-layout">
+        {conflicts && conflicts.length > 0 && (
+          <section className="conflict-panel" role="alert">
+            <h2>任务有新的状态，请确认本次提交</h2>
+            {conflicts.map((c) => (
+              <div key={c.taskId}>
+                <p>
+                  <strong>{c.taskName}</strong>：最新{" "}
+                  {statusLabels[c.latestStatus as TaskStatus]}，你选择{" "}
+                  {statusLabels[c.requestedStatus as TaskStatus]}
+                </p>
+                {(["keep", "apply"] as const).map((choice) => (
+                  <button
+                    className="secondary"
+                    key={choice}
+                    onClick={() => {
+                      edit({
+                        ...content,
+                        entries: content.entries.map((e) =>
+                          e.taskId === c.taskId && e.statusChange
+                            ? {
+                                ...e,
+                                statusChange: {
+                                  ...e.statusChange,
+                                  expectedVersion: c.latestVersion,
+                                  resolution: choice,
+                                },
+                              }
+                            : e,
+                        ),
+                      });
+                      setConflicts(
+                        conflicts.filter((item) => item.taskId !== c.taskId),
+                      );
+                    }}
+                  >
+                    {choice === "keep" ? "保留最新状态" : "执行我选择的状态"}
+                  </button>
+                ))}
+              </div>
+            ))}
+            <button className="text-button" onClick={() => setConflicts([])}>
+              取消处理，保留草稿
+            </button>
+          </section>
+        )}
         <aside className="draft-list" aria-label="我的日报列表">
           <h2>
             最近记录 <span className="count">{items.length}</span>
@@ -327,6 +419,11 @@ export function Diaries() {
                                       ? {
                                           ...item,
                                           projectId,
+                                          taskId: undefined,
+                                          taskName: undefined,
+                                          taskStatus: undefined,
+                                          newTask: undefined,
+                                          statusChange: undefined,
                                           projectName: projects.find(
                                             (p) => p.id === projectId,
                                           )?.name,
@@ -351,6 +448,76 @@ export function Diaries() {
                             </select>
                           </label>
                         )}
+                      </div>
+                      <TaskAssociation
+                        entry={entry}
+                        index={index}
+                        onChange={(next) =>
+                          edit({
+                            ...content,
+                            entries: content.entries.map((e) =>
+                              e.id === next.id ? next : e,
+                            ),
+                          })
+                        }
+                      />
+                      <div className="attachments">
+                        <ul>
+                          {entry.attachments?.map((file) => (
+                            <li key={file.id}>
+                              <a
+                                href={`/api/attachments/${file.id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {file.name}
+                              </a>
+                              <small>{Math.ceil(file.size / 1024)} KB</small>
+                              <button
+                                className="text-button danger"
+                                aria-label={`移除附件 ${file.name}`}
+                                onClick={() =>
+                                  edit({
+                                    ...content,
+                                    entries: content.entries.map((e) =>
+                                      e.id === entry.id
+                                        ? {
+                                            ...e,
+                                            attachments: e.attachments?.filter(
+                                              (a) => a.id !== file.id,
+                                            ),
+                                          }
+                                        : e,
+                                    ),
+                                  })
+                                }
+                              >
+                                移除
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                        <label className="file-input">
+                          添加附件
+                          <input
+                            type="file"
+                            aria-label={`工作 ${index + 1} 添加附件`}
+                            accept=".png,.jpg,.jpeg,.webp,.pdf,.txt,.csv,.docx,.xlsx,.pptx"
+                            disabled={
+                              busy || (entry.attachments?.length ?? 0) >= 10
+                            }
+                            onChange={(e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = "";
+                              if (file) void action(() => upload(entry, file));
+                            }}
+                          />
+                        </label>
+                        <small>
+                          每条最多 10 个，每个 20
+                          MB；图片、PDF、TXT、CSV、Office
+                          文档。上传会先保存当前草稿。
+                        </small>
                       </div>
                     </article>
                   ))}

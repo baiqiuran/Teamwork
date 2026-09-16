@@ -3,15 +3,40 @@ import type { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { HttpError } from "./http-error.ts";
+import { installAttachments } from "./attachments.ts";
 import { installProjects } from "./projects.ts";
+import { dateRange, readPublished } from "./published.ts";
 
 const text = (max: number) =>
   z.string().refine((value) => [...value].length <= max, `最多 ${max} 字`);
 const entrySchema = z.object({
   id: z.uuid(),
   body: text(10_000),
+  attachments: z
+    .array(
+      z.object({
+        id: z.uuid(),
+        name: z.string().optional(),
+        size: z.number().optional(),
+      }),
+    )
+    .max(10)
+    .optional(),
   projectId: z.uuid().optional(),
   projectName: z.string().optional(),
+  taskId: z.uuid().optional(),
+  newTask: z
+    .object({ name: z.string().max(100), description: text(10_000) })
+    .optional(),
+  taskName: z.string().optional(),
+  taskStatus: z.enum(["pending", "in-progress", "done"]).optional(),
+  statusChange: z
+    .object({
+      status: z.enum(["pending", "in-progress", "done"]),
+      expectedVersion: z.number().int().positive(),
+      resolution: z.enum(["keep", "apply"]).optional(),
+    })
+    .optional(),
 });
 const contentSchema = z
   .object({ title: text(100), entries: z.array(entrySchema).max(50) })
@@ -42,6 +67,7 @@ export interface JournalContext {
 export function installJournal(
   app: Express,
   { db, now, authenticate, transaction }: JournalContext,
+  attachmentDirectory: string,
 ) {
   db.exec(`CREATE TABLE IF NOT EXISTS diaries (
     id TEXT PRIMARY KEY, author_id TEXT NOT NULL REFERENCES members(id), draft TEXT NOT NULL,
@@ -117,10 +143,17 @@ export function installJournal(
         "这份日报已在其他窗口更新，请重新打开后再编辑。",
       );
   }
+  const attachments = installAttachments(
+    app,
+    { db, now, authenticate, transaction },
+    { owned, writable, checkVersion, view },
+    attachmentDirectory,
+  );
   app.post("/api/diaries", (request, response) => {
     const member = authenticate(request);
     const content = contentSchema.parse(request.body);
     const id = randomUUID();
+    attachments.normalize(content, id, member.id);
     db.prepare(
       "INSERT INTO diaries (id, author_id, draft, created_at, updated_at) VALUES (?, ?, ?, ?, ?)",
     ).run(id, member.id, JSON.stringify(content), now(), now());
@@ -154,6 +187,7 @@ export function installJournal(
     writable(row);
     checkVersion(row, request.body.version);
     const content = contentSchema.parse(request.body);
+    attachments.normalize(content, row.id, row.author_id);
     db.prepare(
       "UPDATE diaries SET draft = ?, version = version + 1, updated_at = ? WHERE id = ?",
     ).run(JSON.stringify(content), now(), row.id);
@@ -231,10 +265,14 @@ export function installJournal(
       writable(row);
       checkVersion(row, input.version);
       const content = contentSchema.parse(JSON.parse(row.draft));
-      content.entries = content.entries.filter((entry) => entry.body.trim());
+      attachments.normalize(content, row.id, member.id);
+      content.entries = content.entries.filter(
+        (entry) => entry.body.trim() || entry.attachments?.length,
+      );
       if (!content.entries.length)
         throw new HttpError(400, "请至少填写一条工作内容后再提交。");
-      projects.prepareEntries(content);
+      projects.prepareEntries(content, member.id);
+      projects.updateTaskStatuses(content, member.id, row.id);
       const timestamp = now();
       const published = JSON.stringify(content);
       db.prepare(
@@ -266,21 +304,22 @@ export function installJournal(
   });
   app.get("/api/team-diaries", (request, response) => {
     authenticate(request);
-    const from = request.query.from
-      ? z.iso.date().parse(request.query.from)
-      : "0001-01-01";
-    const to = request.query.to
-      ? z.iso.date().parse(request.query.to)
-      : "9999-12-31";
-    if (from > to) throw new HttpError(400, "开始日期不能晚于结束日期。");
     response.json(
-      (
-        db
-          .prepare(
-            "SELECT * FROM diaries WHERE published IS NOT NULL AND diary_date BETWEEN ? AND ? ORDER BY diary_date DESC, submitted_at DESC, id",
-          )
-          .all(from, to) as unknown as DiaryRow[]
-      ).map(publicView),
+      readPublished(db, dateRange(request.query), {
+        memberId: request.query.memberId
+          ? z.uuid().parse(request.query.memberId)
+          : undefined,
+        projectId: request.query.projectId
+          ? z.uuid().parse(request.query.projectId)
+          : undefined,
+        complete: true,
+      }),
+    );
+  });
+  app.get("/api/members", (request, response) => {
+    authenticate(request);
+    response.json(
+      db.prepare("SELECT id, name FROM members ORDER BY name, id").all(),
     );
   });
   app.get("/api/team-diaries/:id", (request, response) => {

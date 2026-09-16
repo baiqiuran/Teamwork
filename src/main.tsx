@@ -5,6 +5,7 @@ import "./style.css";
 import { Diaries } from "./diaries";
 import { TeamDiaries } from "./reading";
 import { Projects } from "./projects";
+import { Sharing, PublicShare } from "./sharing";
 
 function Brand() {
   return (
@@ -456,8 +457,19 @@ function Workspace({
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<
-    "diaries" | "team" | "projects" | "invitations" | "account"
-  >(window.location.pathname === "/members" ? "invitations" : "diaries");
+    "diaries" | "team" | "projects" | "sharing" | "invitations" | "account"
+  >(
+    () =>
+      (
+        ({
+          "/members": "invitations",
+          "/team": "team",
+          "/projects": "projects",
+          "/sharing": "sharing",
+          "/account": "account",
+        }) as const
+      )[window.location.pathname as "/members"] || "diaries",
+  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function logout() {
@@ -484,40 +496,32 @@ function Workspace({
         </div>
         <p className="nav-caption">工作空间</p>
         <nav aria-label="团队导航">
-          <button
-            className={tab === "projects" ? "selected" : ""}
-            onClick={() => setTab("projects")}
-          >
-            项目与任务
-          </button>
-          <button
-            className={tab === "team" ? "selected" : ""}
-            onClick={() => setTab("team")}
-          >
-            团队日报
-          </button>
-          <button
-            className={tab === "diaries" ? "selected" : ""}
-            onClick={() => {
-              window.location.assign("/diaries");
-            }}
-          >
-            我的日报
-          </button>
-          <button
-            className={tab === "invitations" ? "selected" : ""}
-            aria-current={tab === "invitations" ? "page" : undefined}
-            onClick={() => setTab("invitations")}
-          >
-            <span aria-hidden="true">↗</span>成员邀请
-          </button>
-          <button
-            className={tab === "account" ? "selected" : ""}
-            aria-current={tab === "account" ? "page" : undefined}
-            onClick={() => setTab("account")}
-          >
-            <span aria-hidden="true">◎</span>我的账号
-          </button>
+          {(
+            [
+              ["diaries", "我的日报"],
+              ["team", "团队日报"],
+              ["projects", "项目与任务"],
+              ["sharing", "公开分享"],
+              ["invitations", "成员邀请"],
+              ["account", "我的账号"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              className={tab === key ? "selected" : ""}
+              aria-current={tab === key ? "page" : undefined}
+              onClick={() => {
+                window.history.replaceState(
+                  {},
+                  "",
+                  key === "invitations" ? "/members" : `/${key}`,
+                );
+                setTab(key);
+              }}
+            >
+              {label}
+            </button>
+          ))}
         </nav>
         <div className="sidebar-member">
           <span className="member-avatar" aria-hidden="true">
@@ -535,11 +539,16 @@ function Workspace({
           <span>
             工作空间 <span className="breadcrumb-divider">/</span>{" "}
             <strong>
-              {tab === "diaries"
-                ? "我的日报"
-                : tab === "invitations"
-                  ? "成员邀请"
-                  : "我的账号"}
+              {
+                {
+                  diaries: "我的日报",
+                  team: "团队日报",
+                  projects: "项目与任务",
+                  sharing: "公开分享",
+                  invitations: "成员邀请",
+                  account: "我的账号",
+                }[tab]
+              }
             </strong>
           </span>
           <span className="private-label">
@@ -550,7 +559,9 @@ function Workspace({
           <div hidden={tab !== "diaries"}>
             <Diaries />
           </div>
-          {tab === "projects" ? (
+          {tab === "sharing" ? (
+            <Sharing />
+          ) : tab === "projects" ? (
             <Projects memberId={identity.member.id} />
           ) : tab === "team" ? (
             <TeamDiaries />
@@ -650,4 +661,6 @@ function App() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<App />);
+createRoot(document.getElementById("root")!).render(
+  window.location.pathname.startsWith("/share/") ? <PublicShare /> : <App />,
+);

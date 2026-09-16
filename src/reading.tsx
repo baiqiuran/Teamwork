@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "./api";
 import type { DiaryContent } from "./diaries";
+import { statusLabels } from "./tasks";
+import type { Project } from "./projects";
 export interface PublishedDiary {
   id: string;
   author: { id: string; name: string };
@@ -10,7 +12,13 @@ export interface PublishedDiary {
 }
 export const beijingToday = () =>
   new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
-export function DiaryRecords({ records }: { records: PublishedDiary[] }) {
+export function DiaryRecords({
+  records,
+  publicToken,
+}: {
+  records: PublishedDiary[];
+  publicToken?: string;
+}) {
   return (
     <div className="records">
       {!records.length && (
@@ -33,7 +41,35 @@ export function DiaryRecords({ records }: { records: PublishedDiary[] }) {
           {d.published.entries.map((e, i) => (
             <section className="read-entry" key={e.id}>
               <span className="muted">工作 {i + 1}</span>
+              {e.projectName && (
+                <span className="association-tag">@ {e.projectName}</span>
+              )}
+              {e.taskName && (
+                <span className="association-tag">
+                  {e.taskName} · 提交时：
+                  {e.taskStatus ? statusLabels[e.taskStatus] : ""}
+                </span>
+              )}
               <p className="entry-body">{e.body}</p>
+              {e.attachments && (
+                <ul className="attachment-links">
+                  {e.attachments.map((file) => (
+                    <li key={file.id}>
+                      <a
+                        href={
+                          publicToken
+                            ? `/api/public/${encodeURIComponent(publicToken)}/attachments/${file.id}`
+                            : `/api/attachments/${file.id}`
+                        }
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        ↓ {file.name}
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </section>
           ))}
         </article>
@@ -42,6 +78,10 @@ export function DiaryRecords({ records }: { records: PublishedDiary[] }) {
   );
 }
 export function TeamDiaries() {
+  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [memberId, setMemberId] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [from, setFrom] = useState(beijingToday());
   const [to, setTo] = useState(beijingToday());
   const [records, setRecords] = useState<PublishedDiary[]>([]);
@@ -49,13 +89,23 @@ export function TeamDiaries() {
   async function load() {
     setError("");
     try {
-      setRecords(await api(`/team-diaries?from=${from}&to=${to}`));
+      setRecords(
+        await api(
+          `/team-diaries?from=${from}&to=${to}${memberId ? `&memberId=${memberId}` : ""}${projectId ? `&projectId=${projectId}` : ""}`,
+        ),
+      );
     } catch (e) {
       setError((e as Error).message);
     }
   }
   useEffect(() => {
     void load();
+    api<{ id: string; name: string }[]>("/members")
+      .then(setMembers)
+      .catch((e) => setError(e.message));
+    api<Project[]>("/projects")
+      .then(setProjects)
+      .catch((e) => setError(e.message));
   }, []);
   return (
     <>
@@ -90,6 +140,34 @@ export function TeamDiaries() {
           />
         </label>
         <button className="secondary">查看日报</button>
+        <label>
+          成员
+          <select
+            value={memberId}
+            onChange={(e) => setMemberId(e.target.value)}
+          >
+            <option value="">全部成员</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          项目
+          <select
+            value={projectId}
+            onChange={(e) => setProjectId(e.target.value)}
+          >
+            <option value="">全部项目</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
       </form>
       {error && (
         <p role="alert" className="message error">
