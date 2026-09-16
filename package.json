@@ -1,0 +1,38 @@
+{
+  "name": "daily-flow",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.15.0 <25"
+  },
+  "scripts": {
+    "dev": "tsx watch server/main.ts",
+    "build": "tsc --noEmit && vite build",
+    "start": "tsx server/main.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run build && npm run test:api && npm run test:ui",
+    "test:api": "tsx --test tests/membership.test.ts",
+    "test:ui": "playwright test",
+    "format": "prettier --write server src tests *.json *.ts *.html README.md"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.63.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^24.13.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "prettier": "^3.9.6",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0"
+  }
+}
