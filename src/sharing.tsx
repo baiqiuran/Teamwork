@@ -420,7 +420,11 @@ export function PublicShare() {
             </section>
           )}
           {active === "progress" && data.progress && (
-            <DiaryRecords records={data.progress} publicToken={token} />
+            <DiaryRecords
+              records={data.progress}
+              publicToken={token}
+              layout="masonry"
+            />
           )}
         </>
       )}
