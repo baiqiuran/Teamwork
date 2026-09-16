@@ -43,13 +43,29 @@ test("失败附件需明确处理后才可提交，正文草稿保留", async ({
   await page.getByLabel("日报标题", { exact: true }).fill("附件失败处理");
   await page.getByLabel("工作 1", { exact: true }).fill("正文不能丢失");
   await page.locator(".attachments summary").click();
+  await page.getByLabel("日报标题", { exact: true }).fill("长".repeat(101));
   await page
     .getByLabel("工作 1 添加附件", { exact: true })
     .setInputFiles({
-      name: "不支持.exe",
-      mimeType: "application/octet-stream",
-      buffer: Buffer.from("file"),
+      name: "正常.txt",
+      mimeType: "text/plain",
+      buffer: Buffer.from("正常内容"),
     });
+  await expect(page.getByRole("alert")).toContainText("长度限制");
+  await page.getByRole("button", { name: "放弃此附件", exact: true }).click();
+  await expect(page.getByLabel("日报标题", { exact: true })).toBeEnabled();
+  await expect(page.getByLabel("日报标题", { exact: true })).toHaveValue(
+    "长".repeat(101),
+  );
+  await expect(page.getByLabel("工作 1", { exact: true })).toHaveValue(
+    "正文不能丢失",
+  );
+  await page.getByLabel("日报标题", { exact: true }).fill("附件失败处理");
+  await page.getByLabel("工作 1 添加附件", { exact: true }).setInputFiles({
+    name: "不支持.exe",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from("file"),
+  });
   await expect(page.getByRole("alert")).toContainText("不支持");
   await expect(
     page.getByRole("button", { name: "提交日报", exact: true }),

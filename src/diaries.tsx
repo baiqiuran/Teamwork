@@ -234,7 +234,11 @@ export function Diaries() {
             className="secondary"
             onClick={() =>
               action(async () => {
-                if (pendingUpload.version === undefined) await persistDraft();
+                if (pendingUpload.version === undefined) {
+                  setPendingUpload(null);
+                  setNotice("已取消上传，请继续修改尚未保存的正文。");
+                  return;
+                }
                 const diary = await api<Diary>(
                   `/diaries/${current!.id}/attachments/cancel`,
                   { requestId: pendingUpload.requestId },
