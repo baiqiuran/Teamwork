@@ -9,6 +9,9 @@
   --accent: #4d55ce;
   --muted: #6f7688;
   --border: #e7e9f0;
+  --surface: #ffffff;
+  --ink: #252b3b;
+  --soft-accent: #eeeffb;
 }
 * {
   box-sizing: border-box;
@@ -1156,6 +1159,7 @@ select {
 }
 .filters {
   display: flex;
+  flex-direction: row;
   gap: 16px;
   flex-wrap: wrap;
   align-items: end;
@@ -1190,8 +1194,165 @@ select {
 .record-meta strong {
   color: #293449;
 }
+.record-meta {
+  align-items: center;
+  gap: 10px;
+}
+.record-avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--soft-accent);
+  color: var(--accent);
+  font-size: 14px;
+}
+.record-author {
+  display: grid;
+  gap: 1px;
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.record-author > span,
+.record-meta time {
+  font-size: 11px;
+  color: var(--muted);
+}
+.record-meta time {
+  white-space: nowrap;
+}
 .record-card h2 {
   font-size: 21px;
+  margin-top: 18px;
+  overflow-wrap: anywhere;
+}
+.read-entry-meta {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+.read-entry-meta .association-tag {
+  margin: 0;
+}
+.entry-number {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  margin-right: 2px;
+}
+.attachment-links a {
+  overflow-wrap: anywhere;
+}
+
+/* Team reading uses the desktop canvas, with one complete diary per card. */
+.content.content--team {
+  max-width: 1640px;
+  padding: 36px 40px;
+}
+.team-diary-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin-bottom: 26px;
+}
+.team-diary-heading h1 {
+  font-size: 28px;
+  letter-spacing: 0;
+}
+.team-diary-heading .subtitle {
+  margin-top: 5px;
+  font-size: 13px;
+}
+.team-reading-note {
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.team-diary-filters {
+  display: grid;
+  grid-template-columns: 160px 160px minmax(140px, 1fr) minmax(
+      160px,
+      1.2fr
+    ) auto;
+  gap: 16px;
+  margin: 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+.team-diary-filters label {
+  min-width: 0;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+  font-weight: 500;
+}
+.team-diary-filters input,
+.team-diary-filters select {
+  width: 100%;
+  height: 42px;
+  margin: 0;
+  font-size: 13px;
+  color: var(--ink);
+}
+.team-diary-filters .primary {
+  margin: 0;
+  height: 42px;
+  min-height: 42px;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.team-diary-results {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin: 24px 0 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.team-diary-results strong {
+  color: var(--ink);
+  font-size: 14px;
+  margin: 0 3px;
+}
+.records--masonry {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-auto-rows: 1px;
+  column-gap: 20px;
+  align-items: start;
+}
+.records--masonry > .record-cell {
+  min-width: 0;
+}
+.records--masonry .record-card {
+  margin: 0;
+  padding: 22px;
+  border-color: var(--border);
+  border-radius: 12px;
+}
+.records--masonry .record-card h2 {
+  font-size: 18px;
+  line-height: 1.5;
+}
+.records--masonry .entry-body {
+  font-size: 13px;
+  line-height: 1.85;
+}
+.records--masonry .read-entry {
+  margin-top: 16px;
+  padding-top: 14px;
+}
+.records--masonry > .empty {
+  grid-column: 1 / -1;
+  grid-row: span 110;
 }
 .read-entry {
   border-top: 1px solid #edf0f5;

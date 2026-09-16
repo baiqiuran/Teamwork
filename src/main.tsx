@@ -555,7 +555,7 @@ function Workspace({
             <span aria-hidden="true">◈</span> 团队内部
           </span>
         </header>
-        <main className="content">
+        <main className={`content${tab === "team" ? " content--team" : ""}`}>
           <div hidden={tab !== "diaries"}>
             <Diaries />
           </div>
