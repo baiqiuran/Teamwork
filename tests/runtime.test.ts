@@ -98,6 +98,17 @@ test("编译后的服务由 Node 启动，成员可初始化、退出并重新�
   assert.equal((await request("/me")).status, 401);
   assert.equal((await request("/login", credentials)).status, 200);
   assert.equal((await request("/me")).body.member.id, setup.body.member.id);
+  const malformed = await fetch(`${origin}/api/diaries`, {
+    method: "POST",
+    headers: {
+      Origin: origin,
+      "Content-Type": "application/json",
+      Cookie: cookie,
+    },
+    body: "{",
+  });
+  assert.equal(malformed.status, 400);
+  assert.deepEqual(await malformed.json(), { error: "请求格式不正确。" });
   const missing = await request("/unknown-api");
   assert.equal(missing.status, 404);
   assert.deepEqual(missing.body, { error: "未找到该接口。" });

@@ -9,6 +9,7 @@ import { Reading } from "../application/reading.ts";
 import { AccessController } from "../interfaces/http/access.controller.ts";
 import { InvitationsController } from "../interfaces/http/invitations.controller.ts";
 import { WorkController } from "../interfaces/http/work.controller.ts";
+import { JournalController } from "../interfaces/http/journal.controller.ts";
 import { SessionGuard } from "../interfaces/http/session.guard.ts";
 import type { Resources } from "./resources.ts";
 
@@ -124,6 +125,7 @@ export function applicationModule(resources: Resources): DynamicModule {
   };
   const journal: DynamicModule = {
     module: JournalModule,
+    controllers: [JournalController],
     imports: [infrastructure, reading],
     providers: [
       {
