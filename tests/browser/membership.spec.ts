@@ -75,3 +75,49 @@ test("无效邀请明确显示原因，不能继续注册", async ({ page }) => 
     page.getByRole("link", { name: "已有账号？前往登录 →" }),
   ).toBeVisible();
 });
+
+test("键盘编写多条私人草稿，刷新重开和窄屏切换", async ({ page }) => {
+  await page.goto("/login");
+  await page.getByLabel("邮箱", { exact: true }).fill("lin@example.test");
+  await page.getByLabel("密码", { exact: true }).fill("QuietRiver2026!");
+  await page.getByLabel("密码", { exact: true }).press("Enter");
+  await page.getByRole("button", { name: "我的日报", exact: true }).click();
+  await page.getByRole("button", { name: "＋ 新建日报", exact: true }).click();
+  await page.getByLabel("日报标题", { exact: true }).fill("接口与文档");
+  await page
+    .getByLabel("工作 1", { exact: true })
+    .fill("完成接口\n\n- 验证权限\n- 补充文档");
+  await page
+    .getByRole("button", { name: "＋ 新增一条工作", exact: true })
+    .press("Enter");
+  await page.getByLabel("工作 2", { exact: true }).fill("参加例会");
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("草稿已保存");
+  await page.reload();
+  await page.getByRole("button", { name: /接口与文档/ }).click();
+  await expect(page.getByLabel("工作 1", { exact: true })).toHaveValue(
+    "完成接口\n\n- 验证权限\n- 补充文档",
+  );
+  await expect(page.getByLabel("工作 2", { exact: true })).toHaveValue(
+    "参加例会",
+  );
+  await page.screenshot({
+    path: "test-results/diary-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "＋ 新建日报", exact: true }).click();
+  await page.getByRole("button", { name: /接口与文档/ }).click();
+  await expect(page.getByLabel("工作 2", { exact: true })).toHaveValue(
+    "参加例会",
+  );
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: "test-results/diary-mobile.png",
+    fullPage: true,
+  });
+});

@@ -8,6 +8,8 @@ import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
+import { installJournal } from "./journal.ts";
+import { HttpError } from "./http-error.ts";
 import {
   digest,
   dummyPasswordHash,
@@ -45,13 +47,6 @@ interface Invitation {
   expires_at: number;
   revoked_at: number | null;
   used_by: string | null;
-}
-class HttpError extends Error {
-  status: number;
-  constructor(status: number, message: string) {
-    super(message);
-    this.status = status;
-  }
 }
 
 export function createApp(options: AppOptions) {
@@ -101,7 +96,7 @@ export function createApp(options: AppOptions) {
     }
     next();
   });
-  app.use(express.json({ limit: "16kb" }));
+  app.use(express.json({ limit: "4mb" }));
   const authLimiter = rateLimit({
     windowMs: 10 * 60 * 1000,
     limit: 20,
@@ -349,6 +344,7 @@ export function createApp(options: AppOptions) {
     });
   });
 
+  installJournal(app, { db, now, authenticate, transaction });
   app.use("/api", (_request, response) => {
     response.status(404).json({ error: "未找到该接口。" });
   });
@@ -360,12 +356,14 @@ export function createApp(options: AppOptions) {
   ) => {
     if (error instanceof z.ZodError) {
       response.status(400).json({
-        error: "请检查输入：姓名不能为空、邮箱需有效、密码需要 12–128 个字符。",
+        error: "请检查输入内容及长度限制。",
       });
       return;
     }
     if (error instanceof HttpError) {
-      response.status(error.status).json({ error: error.message });
+      response
+        .status(error.status)
+        .json({ error: error.message, details: error.details });
       return;
     }
     if (error instanceof SyntaxError) {

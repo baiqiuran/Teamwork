@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { api, ApiError, type Identity, type Invitation } from "./api";
 import "./style.css";
+import { Diaries } from "./diaries";
 
 function Brand() {
   return (
@@ -452,7 +453,9 @@ function Workspace({
   identity: Identity;
   onLogout: () => void;
 }) {
-  const [tab, setTab] = useState<"invitations" | "account">("invitations");
+  const [tab, setTab] = useState<"diaries" | "invitations" | "account">(
+    window.location.pathname === "/members" ? "invitations" : "diaries",
+  );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function logout() {
@@ -477,8 +480,16 @@ function Workspace({
             <small>团队工作空间</small>
           </div>
         </div>
-        <p className="nav-caption">团队设置</p>
+        <p className="nav-caption">工作空间</p>
         <nav aria-label="团队导航">
+          <button
+            className={tab === "diaries" ? "selected" : ""}
+            onClick={() => {
+              window.location.assign("/diaries");
+            }}
+          >
+            我的日报
+          </button>
           <button
             className={tab === "invitations" ? "selected" : ""}
             aria-current={tab === "invitations" ? "page" : undefined}
@@ -509,14 +520,23 @@ function Workspace({
         <header className="topbar">
           <span>
             工作空间 <span className="breadcrumb-divider">/</span>{" "}
-            <strong>{tab === "invitations" ? "成员邀请" : "我的账号"}</strong>
+            <strong>
+              {tab === "diaries"
+                ? "我的日报"
+                : tab === "invitations"
+                  ? "成员邀请"
+                  : "我的账号"}
+            </strong>
           </span>
           <span className="private-label">
             <span aria-hidden="true">◈</span> 团队内部
           </span>
         </header>
         <main className="content">
-          {tab === "invitations" ? (
+          <div hidden={tab !== "diaries"}>
+            <Diaries />
+          </div>
+          {tab === "diaries" ? null : tab === "invitations" ? (
             <Invitations onExpired={onLogout} />
           ) : (
             <>

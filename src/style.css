@@ -928,3 +928,211 @@ nav button.selected {
     }
   }
 }
+.journal-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 32px;
+}
+.journal-heading h1 {
+  font-size: 32px;
+  margin: 8px 0;
+}
+.journal-layout {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+.draft-list h2 {
+  font-size: 15px;
+  margin: 0 0 18px;
+}
+.muted,
+.field-hint {
+  color: #687386;
+  font-size: 13px;
+}
+.draft-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  width: 100%;
+  padding: 16px;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: 10px;
+  margin-bottom: 8px;
+}
+.draft-item strong {
+  overflow-wrap: anywhere;
+}
+.draft-item span {
+  font-size: 12px;
+  color: #687386;
+}
+.draft-item.selected {
+  background: white;
+  border-color: #d7dcec;
+  box-shadow: 0 3px 10px #17233a05;
+}
+.diary-editor {
+  min-width: 0;
+  background: white;
+  border: 1px solid #e0e5ed;
+  border-radius: 16px;
+  padding: 28px;
+}
+.editor-meta {
+  display: flex;
+  justify-content: space-between;
+  color: #69758a;
+  font-size: 12px;
+  margin-bottom: 24px;
+}
+.title-field {
+  font-size: 13px;
+  font-weight: 600;
+}
+.title-field input {
+  font-size: 21px;
+  margin-top: 8px;
+  border: 0;
+  border-bottom: 1px solid #e0e5ed;
+  border-radius: 0;
+  padding: 12px 0;
+  width: 100%;
+}
+.work-entry {
+  margin-top: 24px;
+  border: 1px solid #e0e5ed;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.entry-heading {
+  background: #f8f9fc;
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.inline-actions {
+  display: flex;
+  gap: 14px;
+}
+.work-entry textarea {
+  width: 100%;
+  border: 0;
+  padding: 18px;
+  min-height: 180px;
+  resize: vertical;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1.8;
+  display: block;
+}
+.work-entry textarea:focus {
+  outline: 2px solid #807bf5;
+  outline-offset: -2px;
+}
+.add-entry {
+  margin-top: 18px;
+  border: 1px dashed #bdc4d5;
+  border-radius: 8px;
+  width: 100%;
+  background: white;
+  color: #555dc6;
+  padding: 14px;
+}
+.editor-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  margin-top: 28px;
+  padding-top: 20px;
+  border-top: 1px solid #e0e5ed;
+  position: sticky;
+  bottom: 0;
+  background: white;
+}
+.editor-actions > div {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.editor-actions [role="status"] {
+  font-size: 12px;
+  color: #687386;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+input,
+textarea,
+select {
+  box-sizing: border-box;
+}
+[hidden] {
+  display: none !important;
+}
+@media (max-width: 1050px) {
+  .journal-layout {
+    grid-template-columns: 1fr;
+  }
+  .draft-list {
+    display: flex;
+    gap: 8px;
+    overflow: auto;
+    align-items: center;
+  }
+  .draft-list h2 {
+    flex-shrink: 0;
+    margin: 0 8px 0 0;
+  }
+  .draft-item {
+    min-width: 170px;
+    width: 170px;
+    margin: 0;
+  }
+  .diary-editor {
+    padding: 20px;
+  }
+}
+@media (max-width: 680px) {
+  .journal-heading {
+    align-items: flex-start;
+    gap: 12px;
+  }
+  .journal-heading h1 {
+    font-size: 24px;
+  }
+  .journal-heading > .primary {
+    padding: 12px;
+    white-space: nowrap;
+  }
+  .diary-editor {
+    padding: 16px;
+  }
+  .editor-actions {
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .editor-actions > div {
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .work-entry textarea {
+    padding: 12px;
+  }
+  .editor-meta {
+    gap: 10px;
+  }
+  .content {
+    min-width: 0;
+  }
+}

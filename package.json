@@ -12,7 +12,7 @@
     "start": "tsx server/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "npm run build && npm run test:api && npm run test:ui",
-    "test:api": "tsx --test tests/membership.test.ts",
+    "test:api": "tsx --test tests/*.test.ts",
     "test:ui": "playwright test",
     "format": "prettier --write server src tests *.json *.ts *.html README.md"
   },
