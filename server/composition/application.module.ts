@@ -10,6 +10,7 @@ import { AccessController } from "../interfaces/http/access.controller.ts";
 import { InvitationsController } from "../interfaces/http/invitations.controller.ts";
 import { WorkController } from "../interfaces/http/work.controller.ts";
 import { JournalController } from "../interfaces/http/journal.controller.ts";
+import { SharingController } from "../interfaces/http/sharing.controller.ts";
 import { SessionGuard } from "../interfaces/http/session.guard.ts";
 import type { Resources } from "./resources.ts";
 
@@ -144,6 +145,7 @@ export function applicationModule(resources: Resources): DynamicModule {
   };
   const sharing: DynamicModule = {
     module: SharingModule,
+    controllers: [SharingController],
     imports: [infrastructure, reading],
     providers: [
       {
