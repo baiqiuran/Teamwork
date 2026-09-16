@@ -161,23 +161,19 @@ test("邀请第二位成员加入同一团队，普通成员也可邀请且重�
     ownInvitations.data.invitations[0].createdBy,
     joined.data.member.id,
   );
-  const reused = await service
-    .client()
-    .request("/join", {
-      token: invitation.data.token,
-      name: "未授权成员",
-      email: "intruder@example.test",
-      password: "ThirdMember2026!",
-    });
+  const reused = await service.client().request("/join", {
+    token: invitation.data.token,
+    name: "未授权成员",
+    email: "intruder@example.test",
+    password: "ThirdMember2026!",
+  });
   assert.equal(reused.status, 410);
   assert.equal(
     (
-      await service
-        .client()
-        .request("/login", {
-          email: "intruder@example.test",
-          password: "ThirdMember2026!",
-        })
+      await service.client().request("/login", {
+        email: "intruder@example.test",
+        password: "ThirdMember2026!",
+      })
     ).status,
     401,
   );
@@ -242,14 +238,12 @@ test("邀请只有生成者可以撤销，撤销及满七天的邀请均不能�
   time = Date.parse("2026-09-23T04:00:00Z");
   assert.equal(
     (
-      await service
-        .client()
-        .request("/join", {
-          token: expiring.data.token,
-          name: "新人",
-          email: "new@example.test",
-          password: "NewMember2026!",
-        })
+      await service.client().request("/join", {
+        token: expiring.data.token,
+        name: "新人",
+        email: "new@example.test",
+        password: "NewMember2026!",
+      })
     ).status,
     410,
   );

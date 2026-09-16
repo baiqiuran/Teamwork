@@ -54,7 +54,7 @@ test("从本机引导建立团队，再通过邀请加入、管理邀请并重�
   await second.getByRole("button", { name: "退出登录" }).click();
   await second.getByLabel("邮箱", { exact: true }).fill("zhou@example.test");
   await second.getByLabel("密码", { exact: true }).fill("SecondMember2026!");
-  await second.getByRole("button", { name: "登录", exact: true }).click();
+  await second.getByLabel("密码", { exact: true }).press("Enter");
   await expect(second.getByText("周宁", { exact: true })).toBeVisible();
   await page.reload();
   await expect(page.getByText("已接受", { exact: true })).toBeVisible();
@@ -63,4 +63,15 @@ test("从本机引导建立团队，再通过邀请加入、管理邀请并重�
     fullPage: true,
   });
   await secondContext.close();
+});
+
+test("无效邀请明确显示原因，不能继续注册", async ({ page }) => {
+  await page.goto("/join#invite=invalid-invitation");
+  await expect(page.getByRole("alert")).toContainText("邀请无效");
+  await expect(
+    page.getByRole("button", { name: "加入团队", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("link", { name: "已有账号？前往登录 →" }),
+  ).toBeVisible();
 });

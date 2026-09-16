@@ -210,12 +210,10 @@ export function createApp(options: AppOptions) {
       );
       issueSession(response, id);
     });
-    response
-      .status(201)
-      .json({
-        member: { id, name: input.name, email: input.email },
-        team: team(),
-      });
+    response.status(201).json({
+      member: { id, name: input.name, email: input.email },
+      team: team(),
+    });
   });
   app.get("/api/me", (request, response) => {
     response.json({ member: authenticate(request), team: team() });
@@ -262,13 +260,11 @@ export function createApp(options: AppOptions) {
     db.prepare(
       "INSERT INTO invitations (id, token_hash, created_by, created_at, expires_at) VALUES (?, ?, ?, ?, ?)",
     ).run(id, digest(token), member.id, now(), expiresAt);
-    response
-      .status(201)
-      .json({
-        invitation: { id, expiresAt },
-        token,
-        joinPath: `/join#invite=${token}`,
-      });
+    response.status(201).json({
+      invitation: { id, expiresAt },
+      token,
+      joinPath: `/join#invite=${token}`,
+    });
   });
   app.get("/api/invitations", (request, response) => {
     const member = authenticate(request);
@@ -347,12 +343,10 @@ export function createApp(options: AppOptions) {
       );
       issueSession(response, id);
     });
-    response
-      .status(201)
-      .json({
-        member: { id, name: input.name, email: input.email },
-        team: team(),
-      });
+    response.status(201).json({
+      member: { id, name: input.name, email: input.email },
+      team: team(),
+    });
   });
 
   app.use("/api", (_request, response) => {
@@ -365,12 +359,9 @@ export function createApp(options: AppOptions) {
     _next,
   ) => {
     if (error instanceof z.ZodError) {
-      response
-        .status(400)
-        .json({
-          error:
-            "请检查输入：姓名不能为空、邮箱需有效、密码需要 12–128 个字符。",
-        });
+      response.status(400).json({
+        error: "请检查输入：姓名不能为空、邮箱需有效、密码需要 12–128 个字符。",
+      });
       return;
     }
     if (error instanceof HttpError) {
