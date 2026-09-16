@@ -2,27 +2,21 @@ import { test, expect } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { once } from "node:events";
-import express from "express";
 import { randomUUID } from "node:crypto";
-import { createApp } from "../../server/app.ts";
+import { createApp } from "../application.ts";
 
 test("页面在北京时间跨日后显示私有未重提内容并禁用修改，团队仍读原文", async ({
   browser,
 }) => {
   const directory = await mkdtemp(join(tmpdir(), "daily-window-ui-"));
   let time = Date.parse("2026-09-16T15:59:00Z");
-  const service = createApp({
+  const service = await createApp({
     databasePath: join(directory, "test.sqlite"),
     setupKey: "clock-ui-key",
+    staticDirectory: resolve("dist"),
     now: () => time,
   });
-  service.app.use(express.static(resolve("dist")));
-  service.app.get("/{*path}", (_req, res) =>
-    res.sendFile(resolve("dist/index.html")),
-  );
-  const server = service.app.listen(0, "127.0.0.1");
-  await once(server, "listening");
+  const server = await service.listen(0, "127.0.0.1");
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("No address");
   const origin = `http://127.0.0.1:${address.port}`,
@@ -37,6 +31,7 @@ test("页面在北京时间跨日后显示私有未重提内容并禁用修改�
         password: "QuietRiver2026!",
         teamName: "午夜团队",
         setupKey: "clock-ui-key",
+        staticDirectory: resolve("dist"),
       },
     });
     const d = await (
@@ -80,9 +75,7 @@ test("页面在北京时间跨日后显示私有未重提内容并禁用修改�
     await expect(page.getByLabel("工作 1", { exact: true })).toBeEnabled();
   } finally {
     await context.close();
-    server.closeAllConnections();
-    await new Promise<void>((r) => server.close(() => r()));
-    service.close();
+    await service.close();
     await rm(directory, { recursive: true, force: true });
   }
 });

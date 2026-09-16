@@ -7,22 +7,28 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
-    "dev": "tsx watch server/main.ts",
-    "build": "npm run check:architecture && tsc --noEmit && vite build",
-    "start": "tsx server/main.ts",
+    "dev": "node scripts/dev.mjs",
+    "build": "npm run check:architecture && npm run typecheck && npm run build:server && vite build",
+    "start": "node build/server/main.js",
     "typecheck": "tsc --noEmit",
     "check:architecture": "node scripts/check-architecture.mjs",
     "test": "npm run build && npm run test:api && npm run test:ui",
-    "test:api": "tsx --test tests/*.test.ts",
-    "test:ui": "playwright test",
-    "format": "prettier --write server src scripts tests docs *.json *.ts *.html *.md"
+    "test:api": "npm run build:server && tsx --test tests/*.test.ts",
+    "test:ui": "npm run build:server && playwright test",
+    "format": "prettier --write server src scripts tests docs *.json *.ts *.html *.md",
+    "build:server": "tsc -p tsconfig.server.json"
   },
   "dependencies": {
+    "@nestjs/common": "12.0.3",
+    "@nestjs/core": "12.0.3",
+    "@nestjs/platform-express": "12.0.3",
     "express": "^5.2.1",
     "express-rate-limit": "^8.7.0",
     "helmet": "^8.3.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
     "zod": "^4.6.5"
   },
   "devDependencies": {

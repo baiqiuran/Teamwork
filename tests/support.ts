@@ -1,33 +1,29 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { once } from "node:events";
 import type { TestContext } from "node:test";
-import { createApp } from "../server/app.ts";
+import { createApp } from "./application.ts";
 
 export async function fixture(t: TestContext) {
   const directory = await mkdtemp(join(tmpdir(), "daily-journal-"));
   let time = Date.parse("2026-09-16T15:59:00Z");
   const databasePath = join(directory, "test.sqlite");
-  let service: ReturnType<typeof createApp>;
-  let server: ReturnType<typeof service.app.listen>;
+  let service: Awaited<ReturnType<typeof createApp>>;
+  let server: Awaited<ReturnType<typeof service.listen>>;
   let origin = "";
   async function start() {
-    service = createApp({
+    service = await createApp({
       databasePath,
       setupKey: "test-key",
       now: () => time,
     });
-    server = service.app.listen(0, "127.0.0.1");
-    await once(server, "listening");
+    server = await service.listen(0, "127.0.0.1");
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("No address");
     origin = `http://127.0.0.1:${address.port}`;
   }
   async function stop() {
-    server.closeAllConnections();
-    await new Promise<void>((r) => server.close(() => r()));
-    service.close();
+    await service.close();
   }
   await start();
   t.after(async () => {

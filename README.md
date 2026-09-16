@@ -2,7 +2,7 @@
 
 日序帮助团队成员记录每日工作，将日报中的工作条目归集到项目和任务，并通过可关闭的公开链接分享进展。
 
-项目采用 **TypeScript 全栈 + DDD 模块化单体**。React 页面与 Express 接口同源运行，SQLite 保存业务数据，附件保存在本地私有目录。团队日报和公开页的进展日报采用桌面多列瀑布流卡片。
+项目采用 **TypeScript 全栈 + DDD 模块化单体**。React 页面与 NestJS（Express 适配器）接口同源运行，SQLite 保存业务数据，附件保存在本地私有目录。团队日报和公开页的进展日报采用桌面多列瀑布流卡片。
 
 当前提供单团队、本机运行版本。公开链接支持免登录读取；外网访问仍需完成部署适配。
 
@@ -73,7 +73,7 @@ npm start
 
 首次启动会自动建立数据目录及数据库，并在终端打印带引导密钥的创建团队链接。打开该链接，填写团队名称、姓名、邮箱和密码。**没有预置账号或默认密码**，密码长度为 12–128 个字符。创建成功后使用自己的邮箱密码登录。
 
-`npm start` 启动一个 Express 服务，同时提供构建后的前端页面和 `/api` 接口。停止服务可在运行终端按 `Ctrl+C`；重启后账号、日报及附件仍保留。
+`npm start` 使用 Node 运行编译后的 NestJS 服务，同时提供构建后的前端页面和 `/api` 接口。停止服务可在运行终端按 `Ctrl+C`；重启后账号、日报及附件仍保留。
 
 ## 配置
 
@@ -108,7 +108,7 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 | 部分       | 技术与职责                                                                |
 | ---------- | ------------------------------------------------------------------------- |
 | 前端       | React 19、TypeScript 7、Vite 8、原生 CSS；通过同源 HTTP/JSON 接口读写数据 |
-| 后端       | Node.js 24、Express 5，使用 `tsx` 运行服务端 TypeScript                   |
+| 后端       | Node.js 24、NestJS 12、Express 5，运行编译后的 JavaScript                 |
 | 校验       | Zod 4，处理输入格式和领域内容约束                                         |
 | 数据库     | Node 内置 `node:sqlite`，原生 SQL 仓储、WAL、外键及同步事务               |
 | 文件       | 本地私有目录，数据库保存附件归属与元数据                                  |
@@ -128,7 +128,7 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 
 ```mermaid
 flowchart LR
-  UI[React 页面] --> HTTP[Express 接口]
+  UI[React 页面] --> HTTP[NestJS / Express 接口]
   HTTP --> APP[应用用例]
   APP --> DOMAIN[领域规则]
   APP --> PORTS[仓储与存储接口]
@@ -136,7 +136,7 @@ flowchart LR
   INFRA --> DATA[(数据库与附件)]
 ```
 
-领域层不依赖 HTTP、数据库或文件系统。应用层使用端口，具体适配器由 `server/app.ts` 统一组装。前端按功能组织，共享接口类型、日期工具和日报阅读卡片。
+领域层不依赖 HTTP、数据库或文件系统。应用层使用端口，具体适配器由 `server/composition/` 中的模块与工厂 Provider 装配，`server/app.ts` 管理异步生命周期。前端按功能组织，共享接口类型、日期工具和日报阅读卡片。
 
 ### 目录结构
 
@@ -149,7 +149,8 @@ server/
     files.ts              附件文件存储
     security.ts           令牌、摘要和密码处理
   interfaces/http/        HTTP 接口与中间件
-  app.ts                  应用装配与测试入口
+  composition/            Nest 模块、Provider 和资源所有权
+  app.ts                  异步应用创建、监听与关闭入口
   main.ts                 进程启动与静态资源服务
 src/
   app/                    工作空间、导航与页面组合
@@ -172,7 +173,7 @@ docs/
 CONTEXT.md                统一业务术语
 ```
 
-`dist/`、`data/`、`node_modules/` 和测试产物在本机生成，不纳入 Git。
+`build/`、`dist/`、`data/`、`node_modules/` 和测试产物在本机生成，不纳入 Git。
 
 ### 一致性与安全
 
@@ -187,8 +188,8 @@ CONTEXT.md                统一业务术语
 | 命令                         | 作用                                             |
 | ---------------------------- | ------------------------------------------------ |
 | `npm start`                  | 启动服务并提供 `dist/` 中的前端页面              |
-| `npm run dev`                | 使用 `tsx watch` 监听服务端代码变更              |
-| `npm run build`              | 架构检查、TypeScript 检查，然后由 Vite 构建前端  |
+| `npm run dev`                | 监听后端编译，并由 Node 重启编译后的服务         |
+| `npm run build`              | 架构和类型检查、编译后端，并由 Vite 构建前端     |
 | `npm run typecheck`          | 仅运行 TypeScript 检查                           |
 | `npm run check:architecture` | 检查后端层次、前端功能依赖、循环引用与 SQL 位置  |
 | `npm run test:api`           | 运行真实 HTTP 服务和临时 SQLite 业务测试         |
@@ -214,7 +215,7 @@ npm run test:ui
 
 接口测试通过真实 HTTP 和隔离数据库验证持久化、成员隔离、跨日锁定、提交幂等、项目归集、任务冲突与回滚、筛选、模块化分享、附件及归档撤权。
 
-浏览器测试使用 Edge，自动启动独立的 `4311` 端口服务及 `data/e2e-*.sqlite` 数据库，`reuseExistingServer` 关闭。运行前确保该端口空闲。测试覆盖编辑与提交、任务冲突、分享、附件及桌面瀑布流，也保留少量窄屏回归检查；产品布局以桌面使用为主。产物位于 `test-results/`，失败时保留 trace。
+浏览器测试默认使用 Edge（可选浏览器配置见 [迁移记录](docs/nestjs-migration.md#浏览器环境)），自动启动独立的 `4311` 端口服务及 `data/e2e-*.sqlite` 数据库，`reuseExistingServer` 关闭。运行前确保该端口空闲。测试覆盖编辑与提交、任务冲突、分享、附件及桌面瀑布流，也保留少量窄屏回归检查；产品布局以桌面使用为主。产物位于 `test-results/`，失败时保留 trace。
 
 ## 数据与备份
 
@@ -262,7 +263,7 @@ data/
 - 域名、HTTPS、反向代理及进程托管。
 - 根据入口调整监听方式及可信 Host/Origin 校验，并配置 HTTPS 会话 Cookie；当前不是只设置一个域名变量即可上线。
 - 持久数据目录、读写权限、备份与恢复流程。
-- 构建后提供 `dist/`，同时保留服务端源码及运行依赖。当前 `npm start` 使用 devDependencies 中的 `tsx`，安装时需保留它，直接 `npm ci --omit=dev` 不能按现有脚本启动。
+- 构建时安装开发依赖；运行时保留 `build/server/`、`dist/`、包清单、锁文件与运行依赖。`npm start` 不再依赖 `tsx`、编译器或 Nest CLI。
 
 当前业务范围为单团队、邀请加入和只读公开分享；尚未提供邮件发送、密码找回、审批、多团队或自动化公网部署。
 
@@ -289,3 +290,5 @@ data/
 - [运行与构建脚本](package.json)、[浏览器测试配置](playwright.config.ts)。
 
 产品讨论及本地任务记录保留在原开发工作区，运行本仓库不依赖这些外部文件。
+
+迁移的逐项进度与兼容验证见 [NestJS 迁移记录](docs/nestjs-migration.md)。

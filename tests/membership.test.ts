@@ -3,9 +3,8 @@ import { test, type TestContext } from "node:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { once } from "node:events";
 import { request as httpRequest } from "node:http";
-import { createApp } from "../server/app.ts";
+import { createApp } from "./application.ts";
 
 const firstMember = {
   name: "林晓",
@@ -20,23 +19,18 @@ async function start(
   options: { databasePath?: string; now?: () => number } = {},
 ) {
   const directory = await mkdtemp(join(tmpdir(), "daily-flow-"));
-  const service = createApp({
+  const service = await createApp({
     databasePath: options.databasePath ?? join(directory, "test.sqlite"),
     setupKey: "local-test-key",
     now: options.now,
   });
-  const server = service.app.listen(0, "127.0.0.1");
-  await once(server, "listening");
+  const server = await service.listen(0, "127.0.0.1");
   const address = server.address();
   if (!address || typeof address === "string")
     throw new Error("Missing server address");
   const origin = `http://127.0.0.1:${address.port}`;
   const stop = async () => {
-    server.closeAllConnections();
-    await new Promise<void>((resolve, reject) =>
-      server.close((error) => (error ? reject(error) : resolve())),
-    );
-    service.close();
+    await service.close();
   };
   t.after(async () => {
     if (server.listening) await stop();

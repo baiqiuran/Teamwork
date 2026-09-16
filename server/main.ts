@@ -1,8 +1,8 @@
-import { mkdirSync, existsSync } from "node:fs";
+import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import express from "express";
 import { createApp } from "./app.ts";
 import { secret } from "./infrastructure/security.ts";
+import { z } from "zod";
 
 const port = Number(process.env.PORT ?? 4310);
 if (!Number.isInteger(port) || port < 1 || port > 65535)
@@ -12,38 +12,31 @@ const databasePath = resolve(
 );
 mkdirSync(dirname(databasePath), { recursive: true });
 const setupKey = process.env.DAILY_SETUP_KEY ?? secret();
-const service = createApp({ databasePath, setupKey });
-const dist = resolve("dist");
-service.app.use(express.static(dist, { index: false }));
-service.app.get("/{*path}", (_request, response) => {
-  if (!existsSync(resolve(dist, "index.html"))) {
-    response.status(503).send("请先运行 npm run build。");
-    return;
-  }
-  response
-    .set("Cache-Control", "no-store")
-    .sendFile(resolve(dist, "index.html"));
+const service = await createApp({
+  databasePath,
+  setupKey,
+  staticDirectory: resolve("dist"),
 });
-const server = service.app.listen(port, "127.0.0.1", async () => {
+try {
+  await service.listen(port);
   const origin = `http://127.0.0.1:${port}`;
   console.log(`日序已启动：${origin}`);
-  const status = await fetch(`${origin}/api/setup/status`).then((response) =>
-    response.json(),
-  );
+  const status = z
+    .object({ needsSetup: z.boolean() })
+    .parse(
+      await fetch(`${origin}/api/setup/status`).then((response) =>
+        response.json(),
+      ),
+    );
   if (status.needsSetup)
     console.log(`首次创建团队（仅本机使用）：${origin}/setup#key=${setupKey}`);
-});
-server.on("error", (error) => {
-  console.error(error.message);
-  service.close();
+} catch (error) {
+  console.error(error instanceof Error ? error.message : "启动失败。");
+  await service.close();
   process.exitCode = 1;
-});
-function shutdown() {
-  server.close(() => {
-    service.close();
-    process.exit(0);
-  });
-  server.closeAllConnections();
 }
-process.on("SIGINT", shutdown);
-process.on("SIGTERM", shutdown);
+async function shutdown() {
+  await service.close();
+}
+process.once("SIGINT", shutdown);
+process.once("SIGTERM", shutdown);

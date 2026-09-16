@@ -1,8 +1,6 @@
-import express, { type ErrorRequestHandler } from "express";
-import { z } from "zod";
+import express, { type Express } from "express";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
-import { DomainError } from "../../domain/errors.ts";
 import { HttpError } from "./http-error.ts";
 import { membershipRoutes } from "./membership-routes.ts";
 import { journalRoutes } from "./journal-routes.ts";
@@ -11,8 +9,7 @@ import { sharingRoutes } from "./sharing-routes.ts";
 import { attachmentRoutes } from "./attachment-routes.ts";
 import type { Services } from "./context.ts";
 
-export function createHttpApp(services: Services) {
-  const app = express();
+export function configureHttp(app: Express, services: Services) {
   app.disable("x-powered-by");
   app.use(
     helmet({
@@ -61,48 +58,4 @@ export function createHttpApp(services: Services) {
   workRoutes(app, services);
   sharingRoutes(app, services);
   attachmentRoutes(app, services);
-  app.use("/api", (_request, response) => {
-    response.status(404).json({ error: "未找到该接口。" });
-  });
-  const errorHandler: ErrorRequestHandler = (
-    error,
-    _request,
-    response,
-    _next,
-  ) => {
-    if (error instanceof z.ZodError) {
-      response.status(400).json({
-        error: "请检查输入内容及长度限制。",
-      });
-      return;
-    }
-    if (error instanceof DomainError) {
-      const status = {
-        invalid: 400,
-        unauthenticated: 401,
-        forbidden: 403,
-        "not-found": 404,
-        conflict: 409,
-        gone: 410,
-      }[error.code];
-      response
-        .status(status)
-        .json({ error: error.message, details: error.details });
-      return;
-    }
-    if (error instanceof HttpError) {
-      response
-        .status(error.status)
-        .json({ error: error.message, details: error.details });
-      return;
-    }
-    if (error instanceof SyntaxError) {
-      response.status(400).json({ error: "请求格式不正确。" });
-      return;
-    }
-    console.error("Request failed:", error);
-    response.status(500).json({ error: "操作未完成，请稍后重试。" });
-  };
-  app.use(errorHandler);
-  return app;
 }

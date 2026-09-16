@@ -9,7 +9,13 @@ export default defineConfig({
   use: {
     baseURL: "http://127.0.0.1:4311",
     browserName: "chromium",
-    channel: "msedge",
+    // Keep Edge by default; use the bundled headless Chromium when requested.
+    channel:
+      process.env.PLAYWRIGHT_CHANNEL === "chromium" ||
+      process.env.PLAYWRIGHT_EXECUTABLE_PATH
+        ? undefined
+        : "msedge",
+    launchOptions: { executablePath: process.env.PLAYWRIGHT_EXECUTABLE_PATH },
     trace: "retain-on-failure",
   },
   webServer: {

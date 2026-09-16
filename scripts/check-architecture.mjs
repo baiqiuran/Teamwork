@@ -85,8 +85,11 @@ function check(from, target) {
   )
     violation(from, target, "SQLite is private to infrastructure");
   if (
-    ["express", "helmet", "express-rate-limit"].includes(target) &&
+    (["express", "helmet", "express-rate-limit"].includes(target) ||
+      target.startsWith("@nestjs/")) &&
     !from.startsWith("server/interfaces/http/") &&
+    !from.startsWith("server/composition/") &&
+    from !== "server/app.ts" &&
     from !== "server/main.ts"
   )
     violation(

@@ -25,7 +25,8 @@ server/
     files.ts              本地附件字节读写
     security.ts           随机令牌、摘要、密码哈希
   interfaces/http/        路由、请求校验、Cookie、错误映射、安全中间件
-  app.ts                  装配具体适配器；保留 createApp 接口供运行与测试使用
+  composition/            Nest 模块、工厂 Provider 与共享资源所有者
+  app.ts                  异步 createApp、listen 与幂等 close
   main.ts                 进程、环境配置、本机监听及静态资源
 src/
   app/                    页面组合和工作空间导航
@@ -72,7 +73,7 @@ flowchart LR
 
 ## 兼容与验证
 
-继续使用 SQLite，保留原表、列、数据目录、HTTP 路径、Cookie 名称和 `createApp({ databasePath, setupKey, now })` 测试入口。不需要业务数据迁移。启动时仍执行已有的幂等建表及追加列逻辑，兼容旧版本数据库。公开页及团队日报的桌面瀑布流交互不变。
+继续使用 SQLite，保留原表、列、数据目录、HTTP 路径、Cookie 名称和 `await createApp({ databasePath, setupKey, now })` 测试入口（支持可选静态页面目录，返回异步 listen 与 close）。不需要业务数据迁移。启动时仍执行已有的幂等建表及追加列逻辑，兼容旧版本数据库。公开页及团队日报的桌面瀑布流交互不变。
 
 ```sh
 npm run check:architecture
@@ -83,3 +84,5 @@ npm test
 架构检查扫描 TypeScript/TSX 的导入及 SQL 字面量，检查后端依赖方向、前端功能隔离、SQL 位置以及循环依赖。使用项目已有的 Prettier TypeScript 解析器，不增加运行时依赖；它是针对当前静态源码的约束，不是安全沙箱。构建自动运行该检查。
 
 业务验证保持既定边界：通过真实 HTTP、真实 SQLite 和隔离时钟验证完整行为，再用浏览器流程检查编辑、分享及布局。扩展功能时，业务规则放领域，跨仓储编排放应用，SQL 和文件操作放适配器，HTTP 只处理协议。
+
+Nest 的 Controller、Guard、Pipe 和异常 Filter 位于 HTTP 层，模块及工厂 Provider 位于装配层；领域和应用类保持框架独立。实际迁移进度见 [迁移记录](nestjs-migration.md)。
