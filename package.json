@@ -11,7 +11,7 @@
     "build": "npm run check:architecture && npm run typecheck && npm run build:server && vite build",
     "start": "node build/server/main.js",
     "typecheck": "tsc --noEmit",
-    "check:architecture": "node scripts/check-architecture.mjs",
+    "check:architecture": "node --test scripts/architecture-rules.test.mjs && node scripts/check-architecture.mjs",
     "test": "npm run build && npm run test:api && npm run test:ui",
     "test:api": "npm run build:server && tsx --test tests/*.test.ts",
     "test:ui": "npm run build:server && playwright test",

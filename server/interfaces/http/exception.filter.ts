@@ -6,7 +6,7 @@ import {
 } from "@nestjs/common";
 import type { Response } from "express";
 import { z } from "zod";
-import { DomainError } from "../../domain/errors.ts";
+import { DomainError } from "../../shared/domain/errors.ts";
 import { HttpError } from "./http-error.ts";
 
 @Catch()

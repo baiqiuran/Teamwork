@@ -668,6 +668,34 @@ nav button.selected {
 .account-card dl {
   margin: 0 0 28px;
 }
+.ai-connection-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+.ai-connection-guide {
+  max-width: 640px;
+  margin: 20px 0;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f7f8fd;
+}
+.ai-connection-guide ol {
+  padding-left: 22px;
+  line-height: 1.8;
+}
+.ai-connection-guide label {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0;
+}
+.ai-connection-guide textarea {
+  width: 100%;
+  overflow-wrap: anywhere;
+  font-family: monospace;
+  resize: vertical;
+}
 .account-card dl > div {
   display: grid;
   grid-template-columns: 100px minmax(0, 1fr);
@@ -1275,10 +1303,9 @@ select {
 }
 .team-diary-filters {
   display: grid;
-  grid-template-columns: 160px 160px minmax(140px, 1fr) minmax(
-      160px,
-      1.2fr
-    ) auto;
+  grid-template-columns:
+    160px 160px minmax(140px, 1fr) minmax(160px, 1.2fr)
+    auto;
   gap: 16px;
   margin: 0;
   padding: 20px;

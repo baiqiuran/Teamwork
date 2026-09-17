@@ -1,15 +1,28 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { openDatabase } from "../infrastructure/sqlite/database.ts";
-import { attachmentRepository } from "../infrastructure/sqlite/attachment-repository.ts";
-import { diaryRepository } from "../infrastructure/sqlite/diary-repository.ts";
-import { membershipRepository } from "../infrastructure/sqlite/membership-repository.ts";
-import { sharingRepository } from "../infrastructure/sqlite/sharing-repository.ts";
-import { workRepository } from "../infrastructure/sqlite/work-repository.ts";
-import { localFiles } from "../infrastructure/files.ts";
+import { attachmentRepository } from "../modules/attachments/infrastructure/sqlite/attachment-repository.ts";
+import { diaryRepository } from "../modules/journal/infrastructure/sqlite/diary-repository.ts";
+import { membershipRepository } from "../modules/membership/infrastructure/sqlite/membership-repository.ts";
+import { sharingRepository } from "../modules/sharing/infrastructure/sqlite/sharing-repository.ts";
+import { workRepository } from "../modules/work/infrastructure/sqlite/work-repository.ts";
+import { localFiles } from "../modules/attachments/infrastructure/files.ts";
 import * as security from "../infrastructure/security.ts";
-import { aiAuthorizationRepository } from "../infrastructure/sqlite/ai-authorization-repository.ts";
-import { aiOperationRepository } from "../infrastructure/sqlite/ai-operation-repository.ts";
+import { aiAuthorizationRepository } from "../modules/ai/infrastructure/sqlite/ai-authorization-repository.ts";
+import { aiOperationRepository } from "../modules/ai/infrastructure/sqlite/ai-operation-repository.ts";
+import type { Runtime, Security } from "../shared/application/ports.ts";
+import type { MembershipRepository } from "../modules/membership/application/ports.ts";
+import type { DiaryRepository } from "../modules/journal/application/ports.ts";
+import type { WorkRepository } from "../modules/work/application/ports.ts";
+import type { SharingRepository } from "../modules/sharing/application/ports.ts";
+import type {
+  AttachmentRepository,
+  FileStorage,
+} from "../modules/attachments/application/ports.ts";
+import type {
+  AiAuthorizationRepository,
+  AiOperationRepository,
+} from "../modules/ai/application/ports.ts";
 
 export interface AppOptions {
   databasePath: string;
@@ -23,10 +36,46 @@ export interface AppOptions {
   mcpMaxBodyBytes?: number;
 }
 
+/** The composition root exposes ports, never concrete adapter return types. */
+export interface Resources {
+  members: MembershipRepository;
+  diaries: DiaryRepository;
+  work: WorkRepository;
+  shares: SharingRepository;
+  attachments: AttachmentRepository;
+  ai: AiAuthorizationRepository;
+  aiOperations: AiOperationRepository;
+  runtime: Runtime;
+  security: Security;
+  files: FileStorage;
+  setupKey: string;
+  publicUrl?: string;
+  mcpMemberLimit?: number;
+  mcpGrantLimit?: number;
+  close(): void;
+}
+
 /** One owner per application, including when container initialization fails. */
-export function createResources(options: AppOptions) {
-  const redirects = options.codexRedirectUris ?? ["http://127.0.0.1/callback"];
-  if (!redirects.length) throw new Error("至少登记一个 Codex 回调地址。");
+export function createResources(options: AppOptions): Resources {
+  const configuredRedirects = options.codexRedirectUris ?? [
+    "http://127.0.0.1/callback",
+  ];
+  if (!configuredRedirects.length)
+    throw new Error("至少登记一个 Codex 回调地址。");
+  // Codex binds its callback path to the complete MCP URL with the first nine SHA-256 bytes.
+  const codexCallback = options.publicUrl
+    ? `http://127.0.0.1/callback/${createHash("sha256")
+        .update(new URL("/mcp", options.publicUrl).href)
+        .digest()
+        .subarray(0, 9)
+        .toString("base64url")}`
+    : undefined;
+  const redirects = [
+    ...new Set([
+      ...configuredRedirects,
+      ...(codexCallback ? [codexCallback] : []),
+    ]),
+  ];
   for (const value of redirects) {
     const url = new URL(value);
     if (
@@ -75,4 +124,3 @@ export function createResources(options: AppOptions) {
     throw error;
   }
 }
-export type Resources = ReturnType<typeof createResources>;

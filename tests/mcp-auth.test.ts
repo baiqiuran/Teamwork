@@ -1,13 +1,71 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createHash } from "node:crypto";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fixture } from "./support.ts";
+import { createApp } from "./application.ts";
 import {
   Client,
   StreamableHTTPClientTransport,
 } from "@modelcontextprotocol/client";
 import { z } from "zod";
 import { request as httpRequest } from "node:http";
+
+test("公网 MCP 自动补登 Codex 按服务地址生成的本机回调", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "daily-flow-callback-"));
+  let app: Awaited<ReturnType<typeof createApp>> | undefined;
+  t.after(async () => {
+    await app?.close();
+    await rm(directory, { recursive: true, force: true });
+  });
+  app = await createApp({
+    databasePath: join(directory, "test.sqlite"),
+    setupKey: "test-key",
+    publicUrl: "https://8.148.245.224",
+    codexRedirectUris: ["http://127.0.0.1/callback"],
+  });
+  const server = await app.listen(0);
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("No address");
+  const query = new URLSearchParams({
+    client_id: "daily-flow-codex",
+    redirect_uri: "http://127.0.0.1:53458/callback/UmO3e8VUyNbu",
+    resource: "https://8.148.245.224/mcp",
+    response_type: "code",
+    code_challenge_method: "S256",
+    code_challenge: "A".repeat(43),
+    scope: "progress:read",
+    state: "test-state",
+  });
+  const response = await new Promise<{
+    status: number | undefined;
+    location: string | undefined;
+    body: string;
+  }>((resolve, reject) => {
+    const request = httpRequest(
+      `http://127.0.0.1:${address.port}/oauth/authorize?${query}`,
+      { headers: { Host: "8.148.245.224" } },
+      (reply) => {
+        let body = "";
+        reply.setEncoding("utf8");
+        reply.on("data", (chunk) => (body += chunk));
+        reply.on("end", () =>
+          resolve({
+            status: reply.statusCode,
+            location: reply.headers.location,
+            body,
+          }),
+        );
+      },
+    );
+    request.on("error", reject);
+    request.end();
+  });
+  assert.equal(response.status, 302, response.body);
+  assert.match(response.location ?? "", /^\/ai\/authorize\?/);
+});
 
 test("成员批准能力后以一次性 PKCE 授权码读取自己的 MCP 身份", async (t) => {
   const f = await fixture(t);

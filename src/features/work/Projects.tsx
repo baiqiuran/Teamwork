@@ -222,7 +222,7 @@ export function Projects({ memberId }: { memberId: string }) {
               查看进展
             </button>
           </form>
-          <DiaryRecords records={records} />
+          <DiaryRecords records={records} layout="masonry" />
         </>
       )}
     </>

@@ -45,13 +45,13 @@ codex mcp login daily_flow --scopes progress:read,drafts:write,diaries:submit,ta
 
 密码只填写在日序网页。授权页默认仅勾选查询和自己的草稿，其余能力由成员明确勾选；授权后无需逐次确认。网页“AI 连接”可查看能力、最近活动、逐个撤销并读取本人操作记录。扩大权限需要重新授权；旧连接保留原范围，可按需撤销。
 
-**回调登记是管理员配置步骤。** Codex 0.145.0 的实际回调会在 `/callback` 后附上连接标识，管理员须从授权请求的 `redirect_uri` 取得完整路径并通过 `DAILY_CODEX_REDIRECT_URIS` 登记。只记录回调地址，不保存或发送整条包含 state/PKCE 的授权 URL。不带端口的登记仅允许该本机主机与精确路径使用动态端口；路径和主机不支持通配符。服务地址或 Codex 配置变化后须核对实际回调。更新登记并重启服务后重新发起登录。
+Codex 0.145.0 的实际回调会在 `/callback` 后附上由完整 MCP 服务 URL 派生的标识，而不是连接名称。配置 `DAILY_PUBLIC_URL` 时，服务自动补登该公网 MCP 地址对应的精确 Codex 回调；本机模式、其他客户端或自定义回调仍须由管理员从授权请求的 `redirect_uri` 取得完整路径，通过 `DAILY_CODEX_REDIRECT_URIS` 登记。只记录回调地址，不保存或发送整条包含 state/PKCE 的授权 URL。不带端口的登记仅允许该本机主机与精确路径使用动态端口；路径和主机不支持通配符。服务地址或 Codex 配置变化后须核对实际回调。更新额外登记后重启服务并重新发起登录。
 
 ```powershell
-$env:DAILY_CODEX_REDIRECT_URIS = '["http://127.0.0.1/callback/实际连接标识"]'
+$env:DAILY_CODEX_REDIRECT_URIS = '["http://127.0.0.1/callback/实际回调尾段"]'
 ```
 
-默认登记 `/callback` 供兼容客户端和接口测试使用；它不代表任意 `/callback/*`。测试中的 app-server 实际回调带连接标识；本版没有宣称 `authorization_response_iss_parameter_supported`，以实际互通结果为准。OAuth 响应仍携带 issuer。
+默认登记 `/callback` 供兼容客户端和接口测试使用；它不代表任意 `/callback/*`。公网模式的自动补登只匹配当前 MCP URL 派生的一个路径；本版没有宣称 `authorization_response_iss_parameter_supported`，以实际互通结果为准。OAuth 响应仍携带 issuer。
 
 成员授权不按 30/90 天过期。访问凭证 15 分钟有效，刷新凭证每次原子轮换，只保存摘要。授权码 2 分钟有效且单次使用，绑定客户端、回调、资源和 PKCE S256。Codex 刷新时可以省略 resource，服务从可信站点地址确定唯一资源；提供错误 resource 仍被拒绝。撤销同时阻断旧访问凭证、刷新和回执重放；网页会话继续可用。
 
@@ -86,9 +86,9 @@ location / {
 }
 ```
 
-域名、证书文件及进程托管配置由真实服务器环境补齐。不要将 4310 暴露公网。代理覆盖来源头，不能沿用客户端伪造的 `X-Forwarded-For`。应用校验 Host 和存在的 Origin；网页写操作仍必须同源并带 Cookie，MCP 使用 Bearer。HTTPS 代理访问的会话 Cookie 带 Secure。发现、OAuth 和 MCP 路由不会回退为 SPA HTML。
+域名或公网 IP、证书文件及进程托管配置由真实服务器环境补齐。不要将 4310 暴露公网。代理覆盖来源头，不能沿用客户端伪造的 `X-Forwarded-For`。应用校验 Host 和存在的 Origin；网页写操作仍必须同源并带 Cookie，MCP 使用 Bearer。HTTPS 代理访问的会话 Cookie 带 Secure。发现、OAuth 和 MCP 路由不会回退为 SPA HTML。
 
-本轮只在隔离环境模拟可信 HTTPS 代理头并验证安全约束，尚未提供真实服务器与域名：**公网 TLS、DNS、跨电脑 Codex 接入和真实团队登录未验收、未部署**。
+2026-09-18 已在单台 Ubuntu ECS 上完成公网 IP HTTPS、真实团队网页登录、OAuth 发现及匿名 MCP 鉴权验收，见[部署手册](deployment.md)。域名 DNS 切换和跨电脑 Codex 实际授权连接仍需单独验收。
 
 ## 升级与恢复
 

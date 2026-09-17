@@ -6,9 +6,9 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import type { Request } from "express";
-import type { Membership } from "../../application/membership.ts";
-import type { Member } from "../../domain/membership.ts";
-import { DomainError } from "../../domain/errors.ts";
+import type { Membership } from "../../modules/membership/application/membership.ts";
+import type { Member } from "../../modules/membership/domain/membership.ts";
+import { DomainError } from "../../shared/domain/errors.ts";
 import { cookieToken } from "./context.ts";
 
 const ANONYMOUS = Symbol("AnonymousAccess");

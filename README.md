@@ -2,11 +2,11 @@
 
 日序帮助团队成员记录每日工作，将日报中的工作条目归集到项目和任务，并通过可关闭的公开链接分享进展。
 
-项目采用 **TypeScript 全栈 + DDD 模块化单体**。React 页面与 NestJS（Express 适配器）接口同源运行，SQLite 保存业务数据，附件保存在本地私有目录。团队日报和公开页的进展日报采用桌面多列瀑布流卡片。
+项目采用 **TypeScript 全栈 + DDD 模块化单体**。React 页面与 NestJS（Express 适配器）接口同源运行，SQLite 保存业务数据，附件保存在本地私有目录。团队日报、项目页工作进展和公开页的进展日报采用桌面多列瀑布流卡片。
 
-当前提供单团队网页及成员授权的 MCP 服务，已验证 Codex 接入。公开链接支持免登录读取；已具备可信 HTTPS 代理配置，真实公网部署尚未验收。
+当前提供单团队网页及成员授权的 MCP 服务，已验证 Codex 接入。公开链接支持免登录读取。2026-09-18 已在单台 Ubuntu ECS 上完成公网 IP HTTPS 部署与真实网页登录验收，操作路径见[部署手册](docs/deployment.md)。
 
-[快速开始](#快速开始) · [配置](#配置) · [技术架构](#技术架构) · [开发与验证](#开发与验证) · [数据与备份](#数据与备份) · [常见问题](#常见问题)
+[快速开始](#快速开始) · [配置](#配置) · [Codex 接入](#codex-接入) · [技术架构](#技术架构) · [开发与验证](#开发与验证) · [数据与备份](#数据与备份) · [常见问题](#常见问题)
 
 ## 功能与使用流程
 
@@ -76,6 +76,23 @@ npm start
 
 `npm start` 使用 Node 运行编译后的 NestJS 服务，同时提供构建后的前端页面和 `/api` 接口。停止服务可在运行终端按 `Ctrl+C`；重启后账号、日报及附件仍保留。
 
+### 已有数据时启动或更新
+
+日常启动只需在仓库根目录执行 `npm start`。代码更新后，先停止旧服务，按[数据与备份](#数据与备份)保留数据库与附件，再执行 `npm ci`、`npm run build` 和 `npm start`。同一数据库只运行一个应用进程。
+
+每次启动都要保留相同的工作目录和环境配置，尤其是 `DAILY_DATABASE_PATH`、已登记的 `DAILY_CODEX_REDIRECT_URIS`，以及公网环境的 `DAILY_PUBLIC_URL`。PowerShell 的 `$env:` 设置仅影响当前终端及其子进程；新终端需要重新设置，长期运行应写入自己的启动脚本或进程管理器配置。
+
+本机默认入口：
+
+| 入口     | 地址与用途                                                       |
+| -------- | ---------------------------------------------------------------- |
+| 网页登录 | <http://127.0.0.1:4310/login>，使用已有成员账号                  |
+| 团队日报 | <http://127.0.0.1:4310/team>，读取团队已提交内容                 |
+| AI 连接  | <http://127.0.0.1:4310/ai>，管理本人授权和操作记录               |
+| MCP      | `http://127.0.0.1:4310/mcp`，供支持 Streamable HTTP 的客户端连接 |
+
+直接在未认证浏览器中打开 `/mcp` 返回 401 属于预期行为；网页登录使用 Cookie，MCP 使用单独的 OAuth 凭证。
+
 ## 配置
 
 | 环境变量                                           | 默认值                          | 作用                                                         |
@@ -83,7 +100,7 @@ npm start
 | `PORT`                                             | `4310`                          | HTTP 端口，必须是 1–65535 的整数                             |
 | `DAILY_DATABASE_PATH`                              | `data/daily-flow.sqlite`        | 数据库路径；相对路径以启动时的工作目录为基准，父目录自动创建 |
 | `DAILY_PUBLIC_URL`                                 | 空，本机模式                    | 可信 HTTPS 源地址，启用同机反向代理模式                      |
-| `DAILY_CODEX_REDIRECT_URIS`                        | `["http://127.0.0.1/callback"]` | Codex 精确回调登记 JSON 数组                                 |
+| `DAILY_CODEX_REDIRECT_URIS`                        | `["http://127.0.0.1/callback"]` | 额外的精确回调；公网模式会自动补登当前 Codex 回调            |
 | `DAILY_MCP_MEMBER_LIMIT` / `DAILY_MCP_GRANT_LIMIT` | `240` / `120`                   | 每分钟每成员 / 每连接请求上限                                |
 | `DAILY_MCP_MAX_BODY_BYTES`                         | `16777216`                      | MCP 请求上限，允许 4–16 MiB                                  |
 | `DAILY_SETUP_KEY`                                  | 每次启动随机生成                | 首次建立团队的引导密钥；团队建立后不再用于登录               |
@@ -112,7 +129,76 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 
 网页和 MCP 共用业务数据与规则。默认授权查询和本人草稿，提交、任务和分享须由成员明确勾选；授权持续到主动撤销。AI 更新内容后，网页重新读取即可看到结果；旧版本写入返回冲突。
 
-连接配置、精确回调登记、工具列表、权限、HTTPS 代理及升级恢复见 [MCP 使用与部署手册](docs/mcp.md)。应用不会改写个人 Codex 配置。
+### 本机连接步骤
+
+以下步骤适用于 Codex 与日序运行在同一台电脑；已验证 Codex CLI/app-server **0.145.0**。跨电脑使用需先完成 HTTPS 部署，再将示例中的服务地址替换为实际 HTTPS 域名或受信任的公网 IP 地址。日序服务必须保持运行。
+
+1. 启动日序并使用自己的成员账号登录网页。
+2. 编辑实际使用的 Codex 配置文件，默认是 `~/.codex/config.toml`（Windows 为 `%USERPROFILE%\.codex\config.toml`；设置了 `CODEX_HOME` 时使用该目录）。保留原有配置，新增以下段落；已有 `daily_flow` 时修改对应段落，避免重复定义。
+
+   ```toml
+   [mcp_servers.daily_flow]
+   url = "http://127.0.0.1:4310/mcp"
+
+   [mcp_servers.daily_flow.oauth]
+   client_id = "daily-flow-codex"
+   callback_url = "http://127.0.0.1/callback"
+   ```
+
+3. 执行以下命令，核对连接并发起授权。`--scopes` 指定申请的能力，最终授予哪些能力仍由网页勾选决定。
+
+   ```sh
+   codex mcp get daily_flow
+   codex mcp login daily_flow --scopes progress:read,drafts:write,diaries:submit,tasks:write,shares:manage
+   ```
+
+4. **本机模式首次接入须登记实际回调。** 当前 Codex 会在 `/callback` 后附加由 MCP 服务 URL 派生的标识，并非连接名；配置中的基础地址并不代表所有回调路径均被允许。从本次授权请求的 `redirect_uri` 取得完整回调，按下面示例替换路径中的占位文字。只登记回调地址，不保存整条包含 state 和 PKCE 参数的授权 URL。
+
+   ```powershell
+   # 先停止日序；替换为本次 Codex 实际生成的精确路径。
+   $env:DAILY_CODEX_REDIRECT_URIS = '["http://127.0.0.1/callback/替换为实际回调尾段"]'
+   npm start
+   ```
+
+   无端口登记允许这个本机主机与精确路径使用动态端口；不支持路径通配符。多个已登记回调应合并到同一个 JSON 数组，保留仍在使用的路径。在另一个终端重新执行第 3 步的登录命令。服务地址变化后需要重新核对回调，不能复制其他环境的回调尾段。
+
+   配置 `DAILY_PUBLIC_URL` 的公网模式会自动补登与该地址 `/mcp` 对应的 Codex 回调；其他客户端或自定义回调仍需按实际 `redirect_uri` 额外登记。
+
+5. 在日序授权页选择能力并点击“允许所选能力”。返回 Codex 后发起一次只读查询，例如“查询今天团队的工作进展”。若当前 Codex 对话尚未加载新工具，可重启 Codex 后再试；仅保存配置或网页显示已授权，还不能替代实际工具调用验证。
+
+应用不会自动改写个人 Codex 配置。Codex 配置及 OAuth 说明另见 [OpenAI 官方 MCP 文档](https://learn.chatgpt.com/docs/extend/mcp?surface=cli)；其他客户端或版本需重新验证回调与凭证续期行为。
+
+### 授权范围与使用示例
+
+| 授权能力         | 范围                                 | 示例指令                                   |
+| ---------------- | ------------------------------------ | ------------------------------------------ |
+| `progress:read`  | 团队已提交日报、项目、任务及状态记录 | “查询今天团队的工作进展”                   |
+| `drafts:write`   | 查询、新建和补充自己的草稿           | “新建一份日报草稿，记录今天整理了部署文档” |
+| `diaries:submit` | 提交自己的日报，遵守首次提交日期规则 | “提交刚才这份草稿”                         |
+| `tasks:write`    | 创建任务、独立或随日报更新状态       | “把已选任务改为进行中”                     |
+| `shares:manage`  | 查看、创建和关闭本人公开链接         | “关闭我刚生成的公开链接”                   |
+
+全部授权时提供 20 个工具；授权较少时只显示相应工具。`get_context` 返回当前成员、授权及服务器北京时间。提交包含任务创建或状态变更的草稿，还需要 `tasks:write`。
+
+查询“今天”以服务器北京时间为准，团队进展只包含已提交内容。日报为 0 份不代表成员没有工作；私人草稿不会计入团队进展。任务当前状态与今天发生的状态变更应分别说明，不能把历史状态当成今日完成量。查询失败时应明确报告失败，不能把上次结果当成最新数据。
+
+未指定已有日报时默认新建草稿；项目或任务同名时先选择明确对象。公开分享必须明确对象、日期和模块，其中日报分享公开所选日期内全团队完整提交内容。附件上传下载、项目管理和成员邀请继续在网页操作，MCP 只读取附件元数据并保留已有引用。
+
+### 授权管理与重新认证
+
+在网页“AI 连接”查看本人各连接的能力、最近活动及操作记录，可逐个撤销。撤销立即阻断该连接的访问及续期，网页登录仍可使用。重新授权产生新连接，旧连接可按需单独撤销。
+
+已撤销的连接保留历史记录，并提供“重新授权”按钮。点击后可复制按原权限范围生成的登录命令；如果 Codex 配置使用其他连接名称，可在指引中修改。执行命令并完成浏览器授权后，点击“刷新连接”查看新记录。首次连接可使用页面顶部的“连接 Codex”指引。
+
+**持续授权不等于访问凭证永久有效。** 访问凭证有效期为 15 分钟，正常情况下由 Codex 使用轮换的刷新凭证续期。如果出现 `Auth required`、`invalid_token` 或 `invalid_grant`：
+
+1. 核对日序仍在运行、`daily_flow` 服务地址未变，并在网页查看该连接是否已撤销。
+2. 核对当前 Codex 使用的是接入时的配置目录；网页已登录不代表 MCP 已认证。
+3. 若仍无法认证，重新执行上面的 `codex mcp login daily_flow --scopes ...` 完整命令，在网页完成授权，再实际调用只读工具验证。
+
+这些错误本身不能确定是主动撤销、凭证保存、续期还是配置问题。若网页明确显示“已撤销”，需要重新授权，旧连接不会自动续期恢复。隔离环境的续期验收不能替代对实际连接状态的检查。不应通过关闭认证、复制旧凭证或延长访问凭证有效期来掩盖错误。
+
+完整工具列表、幂等与冲突规则、HTTPS 代理及升级恢复见 [MCP 使用与部署手册](docs/mcp.md)。
 
 ## 技术架构
 
@@ -124,11 +210,12 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 | 数据库     | Node 内置 `node:sqlite`，原生 SQL 仓储、WAL、外键及同步事务               |
 | 文件       | 本地私有目录，数据库保存附件归属与元数据                                  |
 | 身份与安全 | scrypt 密码哈希、Cookie 会话、Helmet、认证接口限流、Origin 校验           |
+| AI 接口    | MCP SDK 2.0.0、Streamable HTTP、成员 OAuth 分项授权、刷新轮换与操作审计   |
 | 验证       | Node 测试框架、真实 SQLite、Playwright、TypeScript 和架构依赖检查         |
 
 具体依赖范围见 [package.json](package.json)，安装版本由 `package-lock.json` 固定。
 
-业务处于同一个“团队工作进展”限界上下文，分为成员邀请、日报、项目任务、公开分享、附件五个模块。后端按 DDD 分层：
+业务处于同一个“团队工作进展”限界上下文，包含成员邀请、日报、项目任务、公开分享、附件，以及 AI 授权与操作编排。后端按 `server/modules/<业务模块>/` 组织，每个模块内部按 DDD 分层；网页和 MCP 共用应用用例与数据库：
 
 | 层                | 职责                                                         |
 | ----------------- | ------------------------------------------------------------ |
@@ -140,6 +227,9 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 ```mermaid
 flowchart LR
   UI[React 页面] --> HTTP[NestJS / Express 接口]
+  AI[Codex] --> MCP[MCP / OAuth 接口]
+  MCP --> AUTH[成员授权与操作编排]
+  AUTH --> APP
   HTTP --> APP[应用用例]
   APP --> DOMAIN[领域规则]
   APP --> PORTS[仓储与存储接口]
@@ -147,39 +237,45 @@ flowchart LR
   INFRA --> DATA[(数据库与附件)]
 ```
 
-领域层不依赖 HTTP、数据库或文件系统。应用层使用端口，具体适配器由 `server/composition/` 中的模块与工厂 Provider 装配，`server/app.ts` 管理异步生命周期。前端按功能组织，共享接口类型、日期工具和日报阅读卡片。
+领域层不依赖 HTTP、数据库或文件系统。仓储端口各归所属模块，跨模块编排使用公开用例和端口；共享内核只包含通用错误、时间和运行时契约。具体适配器由 `server/composition/` 中按模块拆分的工厂 Provider 装配，`server/app.ts` 管理异步生命周期。前端按功能组织，共享接口类型、日期工具和日报阅读卡片。依赖规则与领域归属详见[架构说明](docs/architecture.md)。
 
 ### 目录结构
 
 ```text
 server/
-  domain/                 领域模型与规则
-  application/            用例、读取模型与端口
-  infrastructure/
-    sqlite/               数据库初始化、迁移、仓储和事务
-    files.ts              附件文件存储
-    security.ts           令牌、摘要和密码处理
-  interfaces/http/        HTTP 接口与中间件
-  composition/            Nest 模块、Provider 和资源所有权
+  modules/                按业务模块集中领域、用例、仓储与协议入口
+    membership/           账号、网页会话与邀请
+    journal/              日报聚合、提交、条目关联及发布读取模型
+    work/                 项目、任务与状态事件
+    sharing/              公开范围、链接与读取
+    attachments/          文件规则、元数据、存储与下载授权
+    ai/                   AI 授权、命令编排、回执及 MCP 入口
+  shared/
+    domain/               通用错误、日期范围与北京时间
+    application/          时钟、ID、事务和安全端口
+  infrastructure/         共享 SQLite 连接/迁移与加密适配器
+  interfaces/http/        共享 Guard、Pipe、站点安全与错误映射
+  composition/            分模块 Nest 装配、DI token 和资源所有权
   app.ts                  异步应用创建、监听与关闭入口
   main.ts                 进程启动与静态资源服务
 src/
   app/                    工作空间、导航与页面组合
   features/
     membership/           账号与邀请
+    ai/                   授权、连接、重新授权指引与操作记录
     diaries/              日报编辑、任务关联与团队阅读
     work/                 项目与任务管理
     sharing/              分享管理与公开页
   shared/                 接口类型、工具与共用组件
-  main.tsx                前端入口
-  style.css               页面样式
 tests/
-  *.test.ts               HTTP 业务测试
+  *.test.ts               HTTP/MCP 业务测试
   browser/                浏览器流程与布局测试
 scripts/
-  check-architecture.mjs   分层、循环引用和 SQL 位置检查
+  check-architecture.mjs   模块归属、分层、路径、SQL 和循环检查
+  architecture-rules.mjs   允许的领域依赖和跨模块应用入口
+  architecture-rules.test.mjs  架构规则正反例验证
 docs/
-  architecture.md         分层与一致性说明
+  architecture.md         领域归属、分层与一致性说明
   adr/                    架构决策
 CONTEXT.md                统一业务术语
 ```
@@ -279,9 +375,9 @@ data/
 
 ## 部署边界
 
-当前代码在本机运行：单个 Node.js 进程提供前端和 API，SQLite 与附件依赖本地持久磁盘。源码推送 GitHub 后，应用仍需启动服务才能使用。
+应用由单个 Node.js 进程提供前端和 API，SQLite 与附件依赖本地持久磁盘。现有 ECS 部署使用 systemd、Nginx 和公网 IP HTTPS；重建、更新及恢复步骤见[阿里云 ECS 部署手册](docs/deployment.md)。源码推送 GitHub 后，仍需在目标服务器构建并启动服务才能使用。
 
-公网部署前需要落实以下环境配置（完整步骤见 [MCP 手册](docs/mcp.md#运行配置与-https)）：
+在新环境重建公网部署时，需要落实以下配置（操作步骤见[部署手册](docs/deployment.md)）：
 
 - 域名、HTTPS、反向代理及进程托管。
 - 同机可信代理配合 `DAILY_PUBLIC_URL`；代理覆盖 Host、X-Forwarded-Proto 和 X-Forwarded-For，网页继续同源校验，HTTPS Cookie 自动带 Secure。
@@ -299,14 +395,19 @@ data/
 | 修改页面后没有变化               | `npm run dev` 只监听后端；重新构建前端并刷新                                                          |
 | 端口被占用 / `EADDRINUSE`        | 停止占用端口的已知服务，或设置其他 `PORT`；浏览器测试固定使用 4311                                    |
 | 页面提示只能本机访问或来源不匹配 | 从同一 `127.0.0.1` / `localhost` 地址和端口打开页面；远程模式核对 DAILY_PUBLIC_URL 与代理 Host/Origin |
-| 同事打不开分享链接               | `127.0.0.1` 指向打开链接者自己的电脑；跨电脑访问需配置真实 HTTPS 域名和反向代理                       |
+| 同事打不开分享链接               | `127.0.0.1` 指向打开链接者自己的电脑；跨电脑访问需使用已部署的 HTTPS 公网地址与反向代理               |
 | 重启后进入创建团队页面           | 检查工作目录及 `DAILY_DATABASE_PATH`，确认指向原数据库，不要直接另建团队                              |
 | 历史日报无法修改                 | 这是首次提交日期的锁定规则；服务器以北京时间判断当天                                                  |
 | 分享附件下载失败                 | 检查链接是否关闭、对象是否归档、是否开放进展模块，以及附件是否仍在可见的已提交内容中                  |
 | 浏览器测试找不到浏览器           | 检查本机 Edge，或安装配套 Chromium 并设置 `PLAYWRIGHT_CHANNEL=chromium`                               |
+| Codex 提示 `Auth required`       | 按[授权管理与重新认证](#授权管理与重新认证)检查连接与配置，必要时重新登录；不要复用旧查询结果         |
+| Codex 提示回调未登记             | 登记实际 `redirect_uri` 的精确主机和路径，携带配置重启日序后重新发起登录                              |
+| Codex 找不到日序工具             | 用 `codex mcp get daily_flow` 检查配置；完成授权后重新加载 Codex，再验证工具调用                      |
+| 查询今天没有日报                 | 核对服务器北京时间与提交日期；保存草稿不会更新团队阅读内容                                            |
 
 ## 进一步阅读
 
+- [阿里云 ECS 部署手册](docs/deployment.md)：公网 IP HTTPS、首次初始化、备份恢复及更新。
 - [MCP 实施验收记录](docs/mcp-verification.md)：M01–M30 证据、实际 Codex、升级恢复与公网边界。
 - [MCP 接入、权限与部署](docs/mcp.md)：Codex 连接、长期授权、撤销、工具边界与升级恢复。
 - [业务术语](CONTEXT.md)：团队、日报、工作条目、任务及公开链接的统一含义。
