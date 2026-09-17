@@ -1,9 +1,11 @@
 import { DatabaseSync } from "node:sqlite";
 import type { Runtime } from "../../application/ports.ts";
+import { migrateAi, assertAiVersion } from "./ai-migrations.ts";
 
 export function openDatabase(path: string) {
   const db = new DatabaseSync(path);
   try {
+    assertAiVersion(db);
     db.exec(`
     PRAGMA journal_mode = WAL;
     PRAGMA foreign_keys = ON;
@@ -43,17 +45,41 @@ export function openDatabase(path: string) {
           db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`);
       }
     }
+    migrateAi(db);
+    let active = false,
+      rollbackOnly = false;
+    const runSynchronous = <T>(work: () => T): T => {
+      const value = work();
+      if (value && typeof value === "object" && "then" in value)
+        throw new Error("SQLite transactions must be synchronous");
+      return value;
+    };
     const transaction: Runtime["transaction"] = (work) => {
+      // Composed use cases join the existing unit of work; never open a nested
+      // SQLite transaction or commit a partial operation/receipt.
+      if (active) {
+        try {
+          return runSynchronous(work);
+        } catch (error) {
+          rollbackOnly = true;
+          throw error;
+        }
+      }
       db.exec("BEGIN IMMEDIATE");
+      active = true;
+      rollbackOnly = false;
       try {
-        const value = work();
-        if (value && typeof value === "object" && "then" in value)
-          throw new Error("SQLite transactions must be synchronous");
+        const value = runSynchronous(work);
+        if (rollbackOnly)
+          throw new Error("Transaction was marked for rollback");
         db.exec("COMMIT");
         return value;
       } catch (error) {
         db.exec("ROLLBACK");
         throw error;
+      } finally {
+        active = false;
+        rollbackOnly = false;
       }
     };
     return { db, transaction, close: () => db.close() };

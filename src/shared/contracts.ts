@@ -50,6 +50,8 @@ export interface Project {
 
 export type TaskStatus = "pending" | "in-progress" | "done";
 export interface TaskEvent {
+  kind: "diary" | "direct";
+  channel: "web" | "mcp";
   id: string;
   member: { name: string };
   before: TaskStatus;

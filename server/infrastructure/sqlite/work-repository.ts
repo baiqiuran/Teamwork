@@ -70,7 +70,9 @@ export function workRepository(db: DatabaseSync): WorkRepository {
       );
     },
     addEvent: (e) => {
-      db.prepare("INSERT INTO task_events VALUES (?, ?, ?, ?, ?, ?, ?)").run(
+      db.prepare(
+        "INSERT INTO task_events (id,task_id,diary_id,member_id,before_status,after_status,created_at,kind,channel) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+      ).run(
         e.id,
         e.taskId,
         e.diaryId,
@@ -78,12 +80,14 @@ export function workRepository(db: DatabaseSync): WorkRepository {
         e.before,
         e.after,
         e.at,
+        e.kind,
+        e.channel,
       );
     },
     events: (id) =>
       db
         .prepare(
-          "SELECT id, task_id AS taskId, diary_id AS diaryId, member_id AS memberId, before_status AS before, after_status AS after, created_at AS at FROM task_events WHERE task_id = ? ORDER BY created_at, rowid",
+          "SELECT id, task_id AS taskId, diary_id AS diaryId, member_id AS memberId, before_status AS before, after_status AS after, created_at AS at, kind, channel FROM task_events WHERE task_id = ? ORDER BY created_at, rowid",
         )
         .all(id) as unknown as TaskEvent[],
   };

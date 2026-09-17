@@ -96,6 +96,7 @@ export class Journal {
     id: string,
     memberId: string,
     input: { version: number; requestId: string },
+    channel: "web" | "mcp" = "web",
   ) {
     return this.runtime.transaction(() => {
       const previous = this.repo.receipt(memberId, input.requestId);
@@ -118,6 +119,8 @@ export class Journal {
           id: this.runtime.id(),
           taskId: change.task.id,
           diaryId: id,
+          kind: "diary",
+          channel,
           memberId,
           before: change.before,
           after: change.task.status,

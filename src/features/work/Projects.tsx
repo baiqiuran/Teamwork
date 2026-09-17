@@ -20,6 +20,13 @@ export function Projects({ memberId }: { memberId: string }) {
   const refresh = async () => setProjects(await api("/projects"));
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
+    const projectId = new URLSearchParams(window.location.search).get(
+      "project",
+    );
+    if (projectId)
+      api<Project>(`/projects/${encodeURIComponent(projectId)}`)
+        .then(open)
+        .catch((e) => setError(e.message));
   }, []);
   async function action(work: () => Promise<void>) {
     setBusy(true);

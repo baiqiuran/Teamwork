@@ -103,15 +103,13 @@ export class Membership {
     };
   }
   invitations(memberId: string) {
-    return this.repo
-      .invitations(memberId)
-      .map((s) => ({
-        id: s.id,
-        createdBy: s.createdBy,
-        createdAt: s.createdAt,
-        expiresAt: s.expiresAt,
-        status: new Invitation(s).status(this.runtime.now()),
-      }));
+    return this.repo.invitations(memberId).map((s) => ({
+      id: s.id,
+      createdBy: s.createdBy,
+      createdAt: s.createdAt,
+      expiresAt: s.expiresAt,
+      status: new Invitation(s).status(this.runtime.now()),
+    }));
   }
   private availableInvitation(token: string) {
     const state = this.repo.invitationByToken(this.security.digest(token));

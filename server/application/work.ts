@@ -2,13 +2,14 @@ import { DomainError } from "../domain/errors.ts";
 import {
   archiveWork,
   createTask,
+  changeTaskStatus,
   definitionSchema,
   reviseDefinition,
   type Definition,
   type ProjectState,
   type TaskState,
 } from "../domain/work.ts";
-import type { DateRange } from "../domain/diary.ts";
+import type { DateRange, TaskStatus } from "../domain/diary.ts";
 import type { Runtime, SharingRepository, WorkRepository } from "./ports.ts";
 import type { Reading } from "./reading.ts";
 
@@ -89,6 +90,39 @@ export class Work {
       return this.view(p);
     });
   }
+  updateStatus(
+    id: string,
+    memberId: string,
+    status: TaskStatus,
+    expectedVersion: number,
+    channel: "web" | "mcp",
+  ) {
+    return this.runtime.transaction(() => {
+      const current = this.task(id),
+        task = changeTaskStatus(
+          current,
+          this.project(current.projectId),
+          status,
+          expectedVersion,
+        );
+      const changed = task !== current;
+      if (changed) {
+        this.repo.saveTask(task);
+        this.repo.addEvent({
+          id: this.runtime.id(),
+          taskId: id,
+          diaryId: null,
+          kind: "direct",
+          channel,
+          memberId,
+          before: current.status,
+          after: task.status,
+          at: this.runtime.now(),
+        });
+      }
+      return { task: this.taskView(task), changed };
+    });
+  }
   reviseTask(id: string, memberId: string, input: Definition) {
     return this.runtime.transaction(() => {
       const t = reviseDefinition(this.task(id), memberId, input, "task");
@@ -125,6 +159,8 @@ export class Work {
     return this.repo.events(id).map((e) => ({
       id: e.id,
       diaryId: e.diaryId,
+      kind: e.kind,
+      channel: e.channel,
       member: this.reading.member(e.memberId),
       before: e.before,
       after: e.after,

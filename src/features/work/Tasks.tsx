@@ -31,6 +31,13 @@ export function Tasks({
     setSelected(null);
     setForm(null);
     load().catch((e) => setError(e.message));
+    const taskId = new URLSearchParams(window.location.search).get("task");
+    if (taskId)
+      api<Task>(`/tasks/${encodeURIComponent(taskId)}`)
+        .then((task) => {
+          if (task.projectId === project.id) return open(task);
+        })
+        .catch((e) => setError(e.message));
   }, [project.id]);
   async function action(work: () => Promise<void>) {
     setBusy(true);
@@ -204,6 +211,11 @@ export function Tasks({
                 timeZone: "Asia/Shanghai",
               })}{" "}
               · {statusLabels[e.before]} → {statusLabels[e.after]}
+              <small>
+                {" "}
+                · {e.kind === "direct" ? "独立变更" : "日报提交"} /{" "}
+                {e.channel === "mcp" ? "Codex" : "网页"}
+              </small>
             </p>
           ))}
           <h3>成员进展</h3>

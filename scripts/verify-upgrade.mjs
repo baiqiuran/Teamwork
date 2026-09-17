@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { mkdir, mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile, rm, cp } from "node:fs/promises";
 import { dirname, resolve, sep } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
@@ -202,14 +202,33 @@ try {
   await running.stop();
   running = undefined;
 
+  const backup = resolve(directory, "backup");
+  await mkdir(backup);
+  await cp(options.databasePath, resolve(backup, "test.sqlite"));
+  await cp(resolve(directory, "attachments"), resolve(backup, "attachments"), {
+    recursive: true,
+  });
   running = await start(modern.createApp);
   assert.deepEqual(
     await running.request("/me"),
     identity,
     "old session survives without logging in again",
   );
-  for (let i = 0; i < paths.length; i++)
-    assert.deepEqual(await running.request(paths[i]), snapshots[i], paths[i]);
+  for (let i = 0; i < paths.length; i++) {
+    const actual = await running.request(paths[i]);
+    if (paths[i].endsWith("/events")) {
+      assert.ok(
+        actual.every(
+          (event) => event.kind === "diary" && event.channel === "web",
+        ),
+      );
+      assert.deepEqual(
+        actual.map(({ kind, channel, ...event }) => event),
+        snapshots[i],
+        paths[i],
+      );
+    } else assert.deepEqual(actual, snapshots[i], paths[i]);
+  }
   assert.deepEqual(await running.request(`/diaries/${diary.id}`), draft);
   assert.deepEqual(
     await running.request(`/diaries/${privateDraft.id}`),
@@ -254,20 +273,30 @@ try {
   await running.stop();
   running = undefined;
 
+  // Restore a matched, stopped backup. Old binaries must not write the upgraded event schema.
+  for (const suffix of ["", "-wal", "-shm"]) {
+    const target = resolve(options.databasePath + suffix);
+    assert.ok(target.startsWith(directory + sep));
+    await rm(target, { force: true });
+  }
+  await cp(resolve(backup, "test.sqlite"), options.databasePath);
+  await cp(resolve(backup, "attachments"), resolve(directory, "attachments"), {
+    recursive: true,
+  });
   running = await start(old.createApp);
   assert.deepEqual(await running.request("/me"), identity);
   for (let i = 0; i < paths.length; i++)
     assert.deepEqual(
       await running.request(paths[i]),
-      updated[i],
+      snapshots[i],
       `rollback ${paths[i]}`,
     );
-  assert.deepEqual(await running.request(`/diaries/${diary.id}`), resubmitted);
+  assert.deepEqual(await running.request(`/diaries/${diary.id}`), draft);
   assert.equal(
     (await running.request("/members")).some(
       (member) => member.id === joined.member.id,
     ),
-    true,
+    false,
   );
   assert.equal(
     await running.request(
@@ -282,7 +311,7 @@ try {
   await running.request("/logout", {});
   await running.request("/login", credentials);
   console.log(
-    "Upgrade and rollback passed: existing session, credentials, invitation, private drafts, submission receipt, task history, three public links, attachments, new writes and baseline reads.",
+    "Upgrade and backup restore passed: old sessions, accounts, invitation, private drafts, submission receipts, event migration, public links and attachments preserved; restoring the old backup intentionally discards new writes.",
   );
 } finally {
   if (running) await running.stop();

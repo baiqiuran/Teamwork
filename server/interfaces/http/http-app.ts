@@ -2,8 +2,21 @@ import express, { type Express, type ErrorRequestHandler } from "express";
 import helmet from "helmet";
 import { rateLimit } from "express-rate-limit";
 import { HttpError } from "./http-error.ts";
+import { SiteAddress } from "./site-address.ts";
 
-export function configureHttp(app: Express) {
+export function configureHttp(
+  app: Express,
+  publicUrl?: string,
+  mcpMaxBodyBytes = 16777216,
+) {
+  if (
+    !Number.isInteger(mcpMaxBodyBytes) ||
+    mcpMaxBodyBytes < 4194304 ||
+    mcpMaxBodyBytes > 16777216
+  )
+    throw new Error("MCP 请求上限须为 4–16 MiB。");
+  const site = new SiteAddress(publicUrl);
+  if (publicUrl) app.set("trust proxy", "loopback");
   app.disable("x-powered-by");
   app.use(
     helmet({
@@ -13,16 +26,22 @@ export function configureHttp(app: Express) {
       referrerPolicy: { policy: "no-referrer" },
     }),
   );
-  app.use("/api", (_request, response, next) => {
+  app.use(["/api", "/oauth", "/mcp"], (_request, response, next) => {
     response.set("Cache-Control", "no-store");
     next();
   });
+  app.use(
+    ["/api", "/mcp", "/oauth", "/.well-known"],
+    (request, _response, next) => {
+      const origin = site.forRequest(request);
+      if (request.get("origin") && request.get("origin") !== origin)
+        throw new HttpError(403, "请求来源不匹配。");
+      next();
+    },
+  );
   app.use("/api", (request, _response, next) => {
-    const host = request.get("host") ?? "";
-    if (!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host))
-      throw new HttpError(403, "当前应用仅允许本机访问。");
     if (!["GET", "HEAD", "OPTIONS"].includes(request.method)) {
-      if (request.get("origin") !== `${request.protocol}://${host}`)
+      if (request.get("origin") !== site.forRequest(request))
         throw new HttpError(403, "请求来源不匹配，请从应用页面重试。");
       if (!request.is("application/json"))
         throw new HttpError(415, "请使用 JSON 请求。");
@@ -33,7 +52,12 @@ export function configureHttp(app: Express) {
     "/api/diaries/:id/entries/:entryId/attachments",
     express.json({ limit: "28mb" }),
   );
+  app.use("/mcp", express.json({ limit: mcpMaxBodyBytes }));
   app.use(express.json({ limit: "4mb" }));
+  app.use(
+    "/oauth/token",
+    express.urlencoded({ extended: false, limit: "16kb" }),
+  );
   // Preserve the JSON contract before Nest wraps parser errors in HttpException.
   const parseError: ErrorRequestHandler = (error, _request, _response, next) =>
     next(

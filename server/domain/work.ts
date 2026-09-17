@@ -71,7 +71,30 @@ export function archiveWork<T extends ProjectState>(
   return { ...record, archived };
 }
 export function assertTaskCreation(project: ProjectState) {
-  if (project.archived) throw new DomainError("conflict", "项目已归档。");
+  if (project.archived) throw new DomainError("archived", "项目已归档。");
+}
+export function changeTaskStatus(
+  task: TaskState,
+  project: ProjectState,
+  status: TaskStatus,
+  expectedVersion: number,
+) {
+  assertTaskCreation(project);
+  if (task.archived) throw new DomainError("archived", "任务已归档。");
+  if (task.version !== expectedVersion)
+    throw new DomainError(
+      "version-conflict",
+      "任务状态已被更新，请读取最新版本并等待成员处理指令。",
+      {
+        taskId: task.id,
+        latestVersion: task.version,
+        latestStatus: task.status,
+        requestedStatus: status,
+      },
+    );
+  return task.status === status
+    ? task
+    : { ...task, status, version: task.version + 1 };
 }
 export function assertEntryAssociation(entry: WorkEntry) {
   if ((entry.taskId || entry.newTask) && !entry.projectId)
@@ -81,13 +104,13 @@ export function assertEntryAssociation(entry: WorkEntry) {
 }
 export function associateProject(entry: WorkEntry, project: ProjectState) {
   if (project.archived)
-    throw new DomainError("conflict", "项目已归档，请调整工作条目关联。");
+    throw new DomainError("archived", "项目已归档，请调整工作条目关联。");
   entry.projectName = project.name;
 }
 export function associateTask(entry: WorkEntry, task: TaskState) {
   if (task.projectId !== entry.projectId)
     throw new DomainError("invalid", "任务必须属于当前条目的项目。");
-  if (task.archived) throw new DomainError("conflict", "任务已归档。");
+  if (task.archived) throw new DomainError("archived", "任务已归档。");
   entry.taskName = task.name;
   entry.taskStatus = task.status;
 }
@@ -131,7 +154,7 @@ export function planTaskChanges(
   });
   if (conflicts.length)
     throw new DomainError(
-      "conflict",
+      "version-conflict",
       "任务状态已被更新，请选择如何处理后重新提交。",
       { conflicts },
     );

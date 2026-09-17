@@ -1,6 +1,8 @@
 import { createHash, randomBytes, scrypt, timingSafeEqual } from "node:crypto";
 
 export const secret = () => randomBytes(32).toString("base64url");
+export const challenge = (value: string) =>
+  createHash("sha256").update(value).digest("base64url");
 export const digest = (value: string) =>
   createHash("sha256").update(value).digest("hex");
 

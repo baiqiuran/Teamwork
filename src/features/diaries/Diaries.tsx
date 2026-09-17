@@ -38,6 +38,11 @@ export function Diaries() {
   const refresh = async () => setItems(await api<Diary[]>("/diaries/mine"));
   useEffect(() => {
     refresh().catch((e) => setError(e.message));
+    const diaryId = new URLSearchParams(window.location.search).get("diary");
+    if (diaryId)
+      api<Diary>(`/diaries/${encodeURIComponent(diaryId)}`)
+        .then(open)
+        .catch((e) => setError(e.message));
     api<Project[]>("/projects")
       .then(setProjects)
       .catch((e) => setError(e.message));

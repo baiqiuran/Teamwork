@@ -15,20 +15,33 @@ const setupKey = process.env.DAILY_SETUP_KEY ?? secret();
 const service = await createApp({
   databasePath,
   setupKey,
+  publicUrl: process.env.DAILY_PUBLIC_URL,
+  mcpMemberLimit: process.env.DAILY_MCP_MEMBER_LIMIT
+    ? Number(process.env.DAILY_MCP_MEMBER_LIMIT)
+    : undefined,
+  mcpGrantLimit: process.env.DAILY_MCP_GRANT_LIMIT
+    ? Number(process.env.DAILY_MCP_GRANT_LIMIT)
+    : undefined,
+  mcpMaxBodyBytes: process.env.DAILY_MCP_MAX_BODY_BYTES
+    ? Number(process.env.DAILY_MCP_MAX_BODY_BYTES)
+    : undefined,
+  codexRedirectUris: process.env.DAILY_CODEX_REDIRECT_URIS
+    ? z
+        .array(z.string().url())
+        .min(1)
+        .parse(JSON.parse(process.env.DAILY_CODEX_REDIRECT_URIS))
+    : undefined,
   staticDirectory: resolve("dist"),
 });
 try {
   await service.listen(port);
   const origin = `http://127.0.0.1:${port}`;
-  console.log(`日序已启动：${origin}`);
-  const status = z
-    .object({ needsSetup: z.boolean() })
-    .parse(
-      await fetch(`${origin}/api/setup/status`).then((response) =>
-        response.json(),
-      ),
+  console.log(`日序已启动：${process.env.DAILY_PUBLIC_URL ?? origin}`);
+  if (service.needsSetup() && process.env.DAILY_PUBLIC_URL)
+    console.log(
+      "首次创建团队：先在维护窗口取消 DAILY_PUBLIC_URL，以本机模式建立首位成员后再启用公开地址。",
     );
-  if (status.needsSetup)
+  else if (service.needsSetup())
     console.log(`首次创建团队（仅本机使用）：${origin}/setup#key=${setupKey}`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : "启动失败。");

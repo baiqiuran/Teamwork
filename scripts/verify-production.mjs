@@ -7,7 +7,7 @@ import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomBytes, createHash } from "node:crypto";
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = resolve(tmpdir());
@@ -197,8 +197,70 @@ try {
     true,
   );
   assert.match(JSON.stringify(publicResult), /运行依赖提交验证/);
+  const verifier = randomBytes(32).toString("base64url");
+  const authorization = {
+    client_id: "daily-flow-codex",
+    redirect_uri: "http://127.0.0.1:19999/callback",
+    resource: `${origin}/mcp`,
+    response_type: "code",
+    code_challenge_method: "S256",
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    scope: "progress:read drafts:write",
+    state: "production-fixture",
+  };
+  const approval = await request(
+    "/ai/authorize",
+    {
+      request: authorization,
+      scopes: ["progress:read", "drafts:write"],
+      approve: true,
+    },
+    201,
+  );
+  const exchange = await fetch(`${origin}/oauth/token`, {
+    method: "POST",
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: authorization.client_id,
+      redirect_uri: authorization.redirect_uri,
+      resource: authorization.resource,
+      code: new URL(approval.redirect).searchParams.get("code"),
+      code_verifier: verifier,
+    }),
+  });
+  assert.equal(exchange.status, 200);
+  const token = await exchange.json();
+  const response = await fetch(`${origin}/mcp`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token.access_token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: "create_draft",
+        arguments: {
+          operationId: randomUUID(),
+          title: "纯运行依赖 MCP",
+          entries: [{ id: randomUUID(), body: "真实协议写入" }],
+        },
+      },
+    }),
+  });
+  assert.equal(response.status, 200);
+  const mcp = await response.json();
+  assert.ok(!mcp.result.isError, JSON.stringify(mcp));
+  assert.equal(
+    (await request(`/diaries/${mcp.result.structuredContent.diary.id}`)).draft
+      .entries[0].body,
+    "真实协议写入",
+  );
   console.log(
-    "Clean install, complete test suite and production-only compiled runtime passed; tsx, TypeScript and Nest CLI are absent.",
+    "Clean install, complete test suite and production-only compiled HTTP/OAuth/MCP runtime passed; tsx, TypeScript and Nest CLI are absent.",
   );
 } finally {
   if (child && child.exitCode === null && child.signalCode === null) {

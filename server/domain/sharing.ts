@@ -16,7 +16,7 @@ export class PublicShare {
   constructor(readonly state: ShareState) {}
   assertAvailable() {
     if (this.state.closedAt !== null)
-      throw new DomainError("gone", "此公开链接无效或已关闭。");
+      throw new DomainError("share-closed", "此公开链接无效或已关闭。");
   }
   close(memberId: string, now: number) {
     if (this.state.createdBy !== memberId)
@@ -52,5 +52,5 @@ export function assertShareTarget(
   if (type !== "diary" && !target)
     throw new DomainError("invalid", "请选择分享对象。");
   if (target?.archived || parent?.archived)
-    throw new DomainError("conflict", "归档对象不能生成公开链接。");
+    throw new DomainError("archived", "归档对象不能生成公开链接。");
 }

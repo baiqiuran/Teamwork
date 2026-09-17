@@ -1,4 +1,10 @@
 import type { Attachment } from "../domain/attachment.ts";
+import type { AiReceipt, AiOperation } from "../domain/ai-operation.ts";
+import type {
+  AiGrant,
+  AuthorizationCode,
+  AccessCredential,
+} from "../domain/ai-authorization.ts";
 import type { DateRange, DiaryState, TaskStatus } from "../domain/diary.ts";
 import type {
   Account,
@@ -16,11 +22,32 @@ export interface Runtime {
   transaction<T>(work: () => T): T;
 }
 export interface Security {
+  challenge(value: string): string;
   secret(): string;
   digest(value: string): string;
   hashPassword(password: string): Promise<string>;
   verifyPassword(password: string, hash: string): Promise<boolean>;
   dummyPasswordHash: string;
+}
+export interface AiAuthorizationRepository {
+  registeredRedirects(): string[];
+  grants(memberId: string): AiGrant[];
+  refresh(hash: string): { hash: string; grantId: string } | undefined;
+  saveRefresh(credential: { hash: string; grantId: string }): void;
+  removeRefresh(hash: string): void;
+  grant(id: string): AiGrant | undefined;
+  saveGrant(grant: AiGrant): void;
+  code(hash: string): AuthorizationCode | undefined;
+  saveCode(code: AuthorizationCode): void;
+  removeCode(hash: string): void;
+  access(hash: string): AccessCredential | undefined;
+  saveAccess(access: AccessCredential): void;
+}
+export interface AiOperationRepository {
+  receipt(memberId: string, operationId: string): AiReceipt | undefined;
+  saveReceipt(receipt: AiReceipt): void;
+  addOperation(operation: AiOperation): void;
+  operations(memberId: string): AiOperation[];
 }
 export interface MembershipRepository {
   team(): Team | undefined;
@@ -70,7 +97,9 @@ export interface DiaryRepository {
 export interface TaskEvent {
   id: string;
   taskId: string;
-  diaryId: string;
+  diaryId: string | null;
+  kind: "diary" | "direct";
+  channel: "web" | "mcp";
   memberId: string;
   before: TaskStatus;
   after: TaskStatus;

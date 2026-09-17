@@ -86,15 +86,16 @@ export class Diary {
   assertWritable(now: number) {
     if (!this.editable(now))
       throw new DomainError(
-        "conflict",
+        "history-locked",
         "历史日报已锁定，不能修改、重新提交或删除。",
       );
   }
   assertVersion(version: unknown) {
     if (version !== this.state.version)
       throw new DomainError(
-        "conflict",
+        "version-conflict",
         "这份日报已在其他窗口更新，请重新打开后再编辑。",
+        { diaryId: this.state.id, latestVersion: this.state.version },
       );
   }
   revise(content: Content, version: unknown, now: number) {

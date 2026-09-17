@@ -4,7 +4,10 @@ import { join } from "node:path";
 import type { TestContext } from "node:test";
 import { createApp } from "./application.ts";
 
-export async function fixture(t: TestContext) {
+export async function fixture(
+  t: TestContext,
+  options: Partial<Parameters<typeof createApp>[0]> = {},
+) {
   const directory = await mkdtemp(join(tmpdir(), "daily-journal-"));
   let time = Date.parse("2026-09-16T15:59:00Z");
   const databasePath = join(directory, "test.sqlite");
@@ -13,11 +16,15 @@ export async function fixture(t: TestContext) {
   let origin = "";
   async function start() {
     service = await createApp({
+      ...options,
       databasePath,
       setupKey: "test-key",
       now: () => time,
     });
-    server = await service.listen(0, "127.0.0.1");
+    server = await service.listen(
+      origin ? Number(new URL(origin).port) : 0,
+      "127.0.0.1",
+    );
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("No address");
     origin = `http://127.0.0.1:${address.port}`;
@@ -43,6 +50,7 @@ export async function fixture(t: TestContext) {
           Origin: origin,
           Cookie: cookie,
           "Content-Type": "application/json",
+          Connection: "close",
         },
         body: body === undefined ? undefined : JSON.stringify(body),
       });
@@ -78,6 +86,9 @@ export async function fixture(t: TestContext) {
     })
   ).data;
   return {
+    get origin() {
+      return origin;
+    },
     author,
     colleague,
     guest,

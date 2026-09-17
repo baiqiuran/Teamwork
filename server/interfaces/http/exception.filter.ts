@@ -26,6 +26,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
         "not-found": 404,
         conflict: 409,
         gone: 410,
+        "operation-id-conflict": 409,
+        "version-conflict": 409,
+        "history-locked": 409,
+        archived: 409,
+        "share-closed": 410,
       }[error.code];
       response
         .status(status)
@@ -33,6 +38,13 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return;
     }
     if (error instanceof HttpError) {
+      if (
+        error.status === 429 &&
+        error.details &&
+        typeof error.details === "object" &&
+        "retryAfter" in error.details
+      )
+        response.set("Retry-After", String(error.details.retryAfter));
       response
         .status(error.status)
         .json({ error: error.message, details: error.details });
@@ -40,6 +52,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
     }
     if (error instanceof SyntaxError) {
       response.status(400).json({ error: "请求格式不正确。" });
+      return;
+    }
+    if (
+      error &&
+      typeof error === "object" &&
+      "type" in error &&
+      error.type === "entity.too.large"
+    ) {
+      response.status(413).json({ error: "请求内容超过大小限制。" });
       return;
     }
     if (error instanceof HttpException && error.getStatus() === 404) {

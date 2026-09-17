@@ -44,7 +44,7 @@ export class AccessController {
     @Res({ passthrough: true }) response: Response,
   ) {
     const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(
-      request.socket.remoteAddress ?? "",
+      request.ip ?? request.socket.remoteAddress ?? "",
     );
     return sessionResponse(response, await this.membership.setup(input, local));
   }

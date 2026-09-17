@@ -24,6 +24,7 @@ export function sessionResponse(
 ) {
   response.cookie("daily_session", result.token, {
     ...cookieOptions,
+    secure: response.req.secure,
     maxAge: WEEK,
   });
   return { member: result.member, team: result.team };

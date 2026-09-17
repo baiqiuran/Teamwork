@@ -73,7 +73,7 @@ flowchart LR
 
 ## 兼容与验证
 
-继续使用 SQLite，保留原表、列、数据目录、HTTP 路径、Cookie 名称和 `await createApp({ databasePath, setupKey, now })` 测试入口（支持可选静态页面目录，返回异步 listen 与 close）。不需要业务数据迁移。启动时仍执行已有的幂等建表及追加列逻辑，兼容旧版本数据库。公开页及团队日报的桌面瀑布流交互不变。
+继续使用 SQLite，保留原表、列、数据目录、HTTP 路径、Cookie 名称和 `await createApp({ databasePath, setupKey, now })` 测试入口（支持可选静态页面目录，返回异步 listen 与 close）。MCP 升级包含有序迁移和任务事件表重建，启动时执行并在失败时回滚。旧数据保留；旧二进制回退必须恢复匹配的旧备份，不能直接写升级后的库。公开页及团队日报的桌面瀑布流交互不变。
 
 ```sh
 npm run check:architecture
@@ -85,10 +85,20 @@ npm test
 
 业务验证保持既定边界：通过真实 HTTP、真实 SQLite 和隔离时钟验证完整行为，再用浏览器流程检查编辑、分享及布局。扩展功能时，业务规则放领域，跨仓储编排放应用，SQL 和文件操作放适配器，HTTP 只处理协议。
 
-Nest 的 Controller、Guard、Pipe 和异常 Filter 位于 HTTP 层，模块及工厂 Provider 位于装配层；领域和应用类保持框架独立。`MembershipModule` 提供身份与邀请入口及全局会话 Guard；`WorkModule`、`JournalModule`、`SharingModule`、`AttachmentsModule` 分别提供项目任务、日报、分享和附件入口。只在需要匿名访问的初始化、登录、邀请预览/加入与公开读取上显式标注匿名。所有 41 个业务接口通过 Controller 接入，没有旧 Express 业务路由。
+Nest 的 Controller、Guard、Pipe 和异常 Filter 位于 HTTP 层，模块及工厂 Provider 位于装配层；领域和应用类保持框架独立。`MembershipModule` 提供身份与邀请入口及全局会话 Guard；`WorkModule`、`JournalModule`、`SharingModule`、`AttachmentsModule` 分别提供项目任务、日报、分享和附件入口。只在初始化、登录、邀请预览/加入、公开读取及 OAuth/MCP 协议入口上显式标注 Cookie Guard 匿名。MCP 入口另行强制 Bearer 认证；网页授权和连接管理仍需 Cookie。业务接口均通过 Controller 接入，没有旧 Express 业务路由。
 
-`InfrastructureModule` 在单个应用中提供一组仓储、时钟、事务、安全和文件端口；`ReadingModule` 导出共享读取模型。分享模块导出附件授权所需的 Sharing 用例，其余业务用例留在所属模块。模块导入是有向无环关系，不使用全局资源模块。
+`InfrastructureModule` 在单个应用中提供一组仓储、时钟、事务、安全和文件端口；`ReadingModule` 导出共享读取模型。分享模块导出附件授权所需的 Sharing 用例，MCP 的 AiModule 通过显式模块导入复用 Work、Journal、Sharing 和 Reading，不建立第二套业务规则。模块导入是有向无环关系，不使用全局资源模块。
 
 `createApp` 先创建共享资源，再初始化 Nest；数据库初始化、容器初始化及正常关闭各路径都有对应清理。`close` 先关闭 HTTP，再关闭数据库，可重复调用。监听失败由调用者关闭；进程入口已在失败分支执行关闭。所有用例与仓储均由工厂 Provider 构造，不通过容器定位器在 HTTP 层查找服务。
 
 完整验证见 [迁移记录](nestjs-migration.md)。
+
+## MCP 授权与一致性
+
+`AiAuthorization` 负责成员授权、PKCE、短效访问凭证、刷新轮换和撤销；令牌摘要及客户端登记由 SQLite 端口保存。`AiReading` 对共享查询模型分页，`AiJournal`、`AiWork`、`AiSharing` 负责 MCP 所需的补丁及调用编排。协议 SDK 仅存在于 HTTP 适配层，工具参数校验错误与业务错误统一返回稳定码。
+
+`AiOperations` 在一个同步事务中复核授权、检查成员+operationId 回执、执行共享用例并保存成功审计及回执。内部共享用例加入同一个工作单元，不再执行第二次 BEGIN；任何内部异常将外层标记为只能回滚，即使异常被捕获也不能提交部分结果。事务拒绝异步 Promise。失败审计在业务回滚后保存，不记录正文或凭证。
+
+撤销和业务写入采用同一个数据库事务顺序：撤销先提交则后续鉴权失败，业务先提交则结果保留；撤销后不再允许重放成功回执。同成员以另一有效连接重试仍须满足原操作全部能力。
+
+任务事件区分 diary/direct 和 web/mcp。独立变更由共享 Work 用例实现，历史日报快照保持不变。网页仍按现有规则操作，不因 MCP 客户端离线失去功能。同步 SQLite 由单个进程拥有，当前不支持水平多副本写同库。运行与恢复细节见 [MCP 手册](mcp.md)。

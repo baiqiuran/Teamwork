@@ -6,6 +6,8 @@ import { Message } from "../shared/components/Message";
 import { describeError } from "../shared/errors";
 import { AccessForm } from "../features/membership/AccessForm";
 import { Invitations } from "../features/membership/Invitations";
+import { AiAuthorization } from "../features/membership/AiAuthorization";
+import { AiConnections } from "../features/membership/AiConnections";
 import { Diaries } from "../features/diaries/Diaries";
 import { TeamDiaries } from "../features/diaries/TeamDiaries";
 import { Projects } from "../features/work/Projects";
@@ -18,7 +20,13 @@ function Workspace({
   onLogout: () => void;
 }) {
   const [tab, setTab] = useState<
-    "diaries" | "team" | "projects" | "sharing" | "invitations" | "account"
+    | "diaries"
+    | "team"
+    | "projects"
+    | "sharing"
+    | "invitations"
+    | "account"
+    | "ai"
   >(
     () =>
       (
@@ -28,6 +36,7 @@ function Workspace({
           "/projects": "projects",
           "/sharing": "sharing",
           "/account": "account",
+          "/ai": "ai",
         }) as const
       )[window.location.pathname as "/members"] || "diaries",
   );
@@ -65,6 +74,7 @@ function Workspace({
               ["sharing", "公开分享"],
               ["invitations", "成员邀请"],
               ["account", "我的账号"],
+              ["ai", "AI 连接"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -108,6 +118,7 @@ function Workspace({
                   sharing: "公开分享",
                   invitations: "成员邀请",
                   account: "我的账号",
+                  ai: "AI 连接",
                 }[tab]
               }
             </strong>
@@ -120,7 +131,9 @@ function Workspace({
           <div hidden={tab !== "diaries"}>
             <Diaries />
           </div>
-          {tab === "sharing" ? (
+          {tab === "ai" ? (
+            <AiConnections />
+          ) : tab === "sharing" ? (
             <Sharing />
           ) : tab === "projects" ? (
             <Projects memberId={identity.member.id} />
@@ -188,7 +201,8 @@ export function App() {
       .finally(() => setLoading(false));
   }, []);
   function enter(identity: Identity) {
-    window.history.replaceState({}, "", "/members");
+    if (entry.path !== "/ai/authorize")
+      window.history.replaceState({}, "", "/members");
     setIdentity(identity);
     setNeedsSetup(false);
   }
@@ -210,7 +224,12 @@ export function App() {
         )}
       </main>
     );
-  if (identity) return <Workspace identity={identity} onLogout={logout} />;
+  if (identity)
+    return entry.path === "/ai/authorize" ? (
+      <AiAuthorization />
+    ) : (
+      <Workspace identity={identity} onLogout={logout} />
+    );
   const mode = entry.path === "/join" ? "join" : needsSetup ? "setup" : "login";
   return (
     <AccessForm

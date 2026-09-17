@@ -1,0 +1,127 @@
+import { test, expect } from "@playwright/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { randomUUID, createHash } from "node:crypto";
+import { createApp } from "../application.ts";
+import { mcpClient } from "../mcp-support.ts";
+test("授权默认项、取消、真实操作记录与对象定位、撤销后网页仍能查看", async ({
+  page,
+}) => {
+  const directory = await mkdtemp(join(tmpdir(), "daily-mcp-ui-")),
+    app = await createApp({
+      databasePath: join(directory, "test.sqlite"),
+      setupKey: "isolated-key",
+      staticDirectory: join(process.cwd(), "dist"),
+    });
+  let client: Awaited<ReturnType<typeof mcpClient>> | undefined;
+  try {
+    const server = await app.listen(0),
+      address = server.address();
+    if (!address || typeof address === "string") throw new Error("No address");
+    const origin = `http://127.0.0.1:${address.port}`;
+    const setup = await page.request.post(`${origin}/api/setup`, {
+      headers: { Origin: origin },
+      data: {
+        name: "验收成员",
+        email: "ui@example.test",
+        password: "BrowserFixture2026!",
+        teamName: "隔离团队",
+        setupKey: "isolated-key",
+      },
+    });
+    expect(setup.status()).toBe(201);
+    const verifier = "t".repeat(43),
+      request = {
+        client_id: "daily-flow-codex",
+        resource: `${origin}/mcp`,
+        redirect_uri: "http://127.0.0.1:19876/callback",
+        response_type: "code",
+        code_challenge_method: "S256",
+        code_challenge: createHash("sha256")
+          .update(verifier)
+          .digest("base64url"),
+        state: "browser-state",
+        scope:
+          "progress:read drafts:write diaries:submit tasks:write shares:manage",
+      };
+    await page.route("http://127.0.0.1:19876/callback**", (route) =>
+      route.fulfill({ body: "取消完成" }),
+    );
+    await page.goto(
+      `${origin}/oauth/authorize?${new URLSearchParams(request)}`,
+    );
+    await expect(page.getByLabel("查询团队工作进展")).toBeChecked();
+    await expect(page.getByLabel("自动提交我的日报")).not.toBeChecked();
+    await page.getByRole("button", { name: "取消授权" }).click();
+    await expect(page).toHaveURL(/error=access_denied/);
+    expect(
+      await (await page.request.get(`${origin}/api/ai/connections`)).json(),
+    ).toHaveLength(0);
+    const approval = await page.request.post(`${origin}/api/ai/authorize`, {
+      headers: { Origin: origin },
+      data: {
+        request,
+        scopes: ["progress:read", "drafts:write"],
+        approve: true,
+      },
+    });
+    const code = new URL((await approval.json()).redirect).searchParams.get(
+      "code",
+    )!;
+    const token = await (
+      await page.request.post(`${origin}/oauth/token`, {
+        form: {
+          grant_type: "authorization_code",
+          client_id: request.client_id,
+          resource: request.resource,
+          redirect_uri: request.redirect_uri,
+          code,
+          code_verifier: verifier,
+        },
+      })
+    ).json();
+    client = await mcpClient(origin, token.access_token);
+    const input = {
+      operationId: randomUUID(),
+      title: "AI 审计日报",
+      entries: [{ id: randomUUID(), body: "私人正文不进入操作记录" }],
+    };
+    await client.callTool({ name: "create_draft", arguments: input });
+    await client.callTool({ name: "create_draft", arguments: input });
+    await client.callTool({
+      name: "create_draft",
+      arguments: { ...input, title: "冲突" },
+    });
+    await page.goto(`${origin}/ai`);
+    const history = page.getByRole("region", { name: "AI 操作记录" });
+    await expect(
+      history.getByText("新建草稿 · 成功", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      history.getByText("新建草稿 · 重放回执", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      history.getByText("新建草稿 · 失败", { exact: true }),
+    ).toBeVisible();
+    await expect(history).not.toContainText("私人正文不进入操作记录");
+    await history.getByRole("link", { name: "查看对象" }).first().click();
+    await expect(page.getByLabel("日报标题", { exact: true })).toHaveValue(
+      "AI 审计日报",
+    );
+    await page.goto(`${origin}/ai`);
+    await page.getByRole("button", { name: "撤销连接", exact: true }).click();
+    await expect(page.getByText("已撤销", { exact: true })).toBeVisible();
+    await page.getByLabel("执行结果").selectOption("failure");
+    await expect(
+      history.getByText("新建草稿 · 失败", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      history.getByText("新建草稿 · 成功", { exact: true }),
+    ).toHaveCount(0);
+  } finally {
+    await client?.close();
+    await app.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+});

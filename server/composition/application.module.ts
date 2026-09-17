@@ -14,6 +14,16 @@ import { SharingController } from "../interfaces/http/sharing.controller.ts";
 import { AttachmentsController } from "../interfaces/http/attachments.controller.ts";
 import { SessionGuard } from "../interfaces/http/session.guard.ts";
 import type { Resources } from "./resources.ts";
+import { AiAuthorization } from "../application/ai-authorization.ts";
+import { AiReading } from "../application/ai-reading.ts";
+import { AiJournal } from "../application/ai-journal.ts";
+import { AiOperations } from "../application/ai-operations.ts";
+import { AiWork } from "../application/ai-work.ts";
+import { AiSharing } from "../application/ai-sharing.ts";
+import { AiHistory } from "../application/ai-history.ts";
+import { McpLimits } from "../interfaces/http/mcp-limits.ts";
+import { AiController } from "../interfaces/http/ai.controller.ts";
+import { SiteAddress } from "../interfaces/http/site-address.ts";
 
 @Module({})
 class InfrastructureModule {}
@@ -31,6 +41,8 @@ class SharingModule {}
 class AttachmentsModule {}
 @Module({})
 class ApplicationModule {}
+@Module({})
+class AiModule {}
 
 const MEMBERS = Symbol("MembershipRepository"),
   DIARIES = Symbol("DiaryRepository"),
@@ -40,12 +52,16 @@ const MEMBERS = Symbol("MembershipRepository"),
   RUNTIME = Symbol("Runtime"),
   SECURITY = Symbol("Security"),
   FILES = Symbol("FileStorage"),
-  SETUP_KEY = Symbol("SetupKey");
+  SETUP_KEY = Symbol("SetupKey"),
+  AI = Symbol("AiAuthorizationRepository"),
+  AI_OPERATIONS = Symbol("AiOperationRepository");
 
 export function applicationModule(resources: Resources): DynamicModule {
   const infrastructure: DynamicModule = {
     module: InfrastructureModule,
     providers: [
+      { provide: AI, useValue: resources.ai },
+      { provide: AI_OPERATIONS, useValue: resources.aiOperations },
       { provide: MEMBERS, useValue: resources.members },
       { provide: DIARIES, useValue: resources.diaries },
       { provide: WORK, useValue: resources.work },
@@ -57,6 +73,8 @@ export function applicationModule(resources: Resources): DynamicModule {
       { provide: SETUP_KEY, useValue: resources.setupKey },
     ],
     exports: [
+      AI,
+      AI_OPERATIONS,
       MEMBERS,
       DIARIES,
       WORK,
@@ -108,6 +126,7 @@ export function applicationModule(resources: Resources): DynamicModule {
   };
   const work: DynamicModule = {
     module: WorkModule,
+    exports: [Work],
     controllers: [WorkController],
     imports: [infrastructure, reading],
     providers: [
@@ -125,6 +144,7 @@ export function applicationModule(resources: Resources): DynamicModule {
   };
   const journal: DynamicModule = {
     module: JournalModule,
+    exports: [Journal],
     controllers: [JournalController],
     imports: [infrastructure, reading],
     providers: [
@@ -179,8 +199,91 @@ export function applicationModule(resources: Resources): DynamicModule {
       },
     ],
   };
+  const ai: DynamicModule = {
+    module: AiModule,
+    imports: [infrastructure, reading, work, journal, sharing],
+    controllers: [AiController],
+    providers: [
+      { provide: SiteAddress, useValue: new SiteAddress(resources.publicUrl) },
+      {
+        provide: McpLimits,
+        useValue: new McpLimits(
+          resources.mcpMemberLimit,
+          resources.mcpGrantLimit,
+        ),
+      },
+      {
+        provide: AiSharing,
+        inject: [Sharing, AiOperations, AiAuthorization, AiReading],
+        useFactory: (
+          sharing: Sharing,
+          operations: AiOperations,
+          auth: AiAuthorization,
+          read: AiReading,
+        ) => new AiSharing(sharing, operations, auth, read),
+      },
+      {
+        provide: AiWork,
+        inject: [Work, AiOperations],
+        useFactory: (work: Work, operations: AiOperations) =>
+          new AiWork(work, operations),
+      },
+      {
+        provide: AiOperations,
+        inject: [AiAuthorization, AI_OPERATIONS, RUNTIME, SECURITY],
+        useFactory: (
+          auth: AiAuthorization,
+          repo: Resources["aiOperations"],
+          runtime: Resources["runtime"],
+          security: Resources["security"],
+        ) => new AiOperations(auth, repo, runtime, security),
+      },
+      {
+        provide: AiHistory,
+        inject: [AI_OPERATIONS, AiReading, Journal, Work, Sharing],
+        useFactory: (
+          repo: Resources["aiOperations"],
+          read: AiReading,
+          journal: Journal,
+          work: Work,
+          sharing: Sharing,
+        ) => new AiHistory(repo, read, journal, work, sharing),
+      },
+      {
+        provide: AiJournal,
+        inject: [Journal, Work, AiOperations, AiAuthorization, AiReading],
+        useFactory: (
+          journal: Journal,
+          work: Work,
+          operations: AiOperations,
+          auth: AiAuthorization,
+          read: AiReading,
+        ) => new AiJournal(journal, work, operations, auth, read),
+      },
+      {
+        provide: AiReading,
+        inject: [Reading, Work, RUNTIME, SECURITY],
+        useFactory: (
+          read: Reading,
+          work: Work,
+          runtime: Resources["runtime"],
+          security: Resources["security"],
+        ) => new AiReading(read, work, runtime, security),
+      },
+      {
+        provide: AiAuthorization,
+        inject: [AI, MEMBERS, RUNTIME, SECURITY],
+        useFactory: (
+          repo: Resources["ai"],
+          members: Resources["members"],
+          runtime: Resources["runtime"],
+          security: Resources["security"],
+        ) => new AiAuthorization(repo, members, runtime, security),
+      },
+    ],
+  };
   return {
     module: ApplicationModule,
-    imports: [membership, work, journal, sharing, attachments],
+    imports: [membership, work, journal, sharing, attachments, ai],
   };
 }
