@@ -307,6 +307,7 @@ data/
 
 ## 进一步阅读
 
+- [MCP 实施验收记录](docs/mcp-verification.md)：M01–M30 证据、实际 Codex、升级恢复与公网边界。
 - [MCP 接入、权限与部署](docs/mcp.md)：Codex 连接、长期授权、撤销、工具边界与升级恢复。
 - [业务术语](CONTEXT.md)：团队、日报、工作条目、任务及公开链接的统一含义。
 - [架构与事务说明](docs/architecture.md)：领域边界、依赖方向、发布流程与一致性。

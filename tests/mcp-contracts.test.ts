@@ -134,6 +134,9 @@ test("任务状态与分享关闭筛选绑定分页，校验失败审计和对�
     changes: [{ op: "add", entry: { id: randomUUID(), body: "超限" } }],
   });
   assert.equal(invalid.error.code, "invalid");
+  const unchanged = (await f.author(`/diaries/${diary.id}`)).data;
+  assert.equal(unchanged.version, 1);
+  assert.equal(unchanged.draft.entries.length, 50);
   const conflict = await call("update_task_status", {
     operationId: randomUUID(),
     id: task.id,
