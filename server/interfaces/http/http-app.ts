@@ -59,12 +59,20 @@ export function configureHttp(
     express.urlencoded({ extended: false, limit: "16kb" }),
   );
   // Preserve the JSON contract before Nest wraps parser errors in HttpException.
-  const parseError: ErrorRequestHandler = (error, _request, _response, next) =>
+  const parseError: ErrorRequestHandler = (error, request, _response, next) => {
+    if (
+      /^\/(mcp|oauth)(\/|$)/i.test(request.path) &&
+      error?.type === "entity.too.large"
+    ) {
+      next(new HttpError(413, "请求内容超过大小限制。"));
+      return;
+    }
     next(
       error instanceof SyntaxError
         ? new HttpError(400, "请求格式不正确。")
         : error,
     );
+  };
   app.use(parseError);
   const authLimiter = rateLimit({
     windowMs: 10 * 60 * 1000,

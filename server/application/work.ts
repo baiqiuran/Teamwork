@@ -120,7 +120,12 @@ export class Work {
           at: this.runtime.now(),
         });
       }
-      return { task: this.taskView(task), changed };
+      return {
+        task: this.taskView(task),
+        changed,
+        beforeStatus: current.status,
+        afterStatus: task.status,
+      };
     });
   }
   reviseTask(id: string, memberId: string, input: Definition) {

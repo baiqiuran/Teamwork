@@ -6,6 +6,7 @@ import type {
 } from "@modelcontextprotocol/server";
 import type { z } from "zod";
 import { toolResult } from "./mcp-result.ts";
+import { outputSchemas } from "./mcp-output.ts";
 
 /** Keep advertised schemas strict while translating validation failures to the
  * same redacted business error/audit contract as failures inside a use case. */
@@ -35,15 +36,21 @@ export class McpTools {
         validate: (raw: unknown) => ({ value: schema.safeParse(raw) }),
       },
     };
-    this.server.registerTool(name, { ...definition, inputSchema }, (parsed) => {
-      if (!parsed.success) {
-        if (definition.annotations?.readOnlyHint === false)
-          this.invalidWrite(name);
-        return toolResult(() => {
-          throw parsed.error;
-        });
-      }
-      return callback(parsed.data);
-    });
+    const outputSchema = outputSchemas[name];
+    if (!outputSchema) throw new Error(`Missing MCP output schema: ${name}`);
+    this.server.registerTool(
+      name,
+      { ...definition, inputSchema, outputSchema },
+      (parsed) => {
+        if (!parsed.success) {
+          if (definition.annotations?.readOnlyHint === false)
+            this.invalidWrite(name);
+          return toolResult(() => {
+            throw parsed.error;
+          });
+        }
+        return callback(parsed.data);
+      },
+    );
   }
 }

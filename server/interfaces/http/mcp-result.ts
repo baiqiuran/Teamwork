@@ -1,5 +1,4 @@
-import { z } from "zod";
-import { DomainError } from "../../domain/errors.ts";
+import { DomainError, isValidationError } from "../../domain/errors.ts";
 import { AuthorizationError } from "../../domain/ai-authorization.ts";
 export function toolResult(work: () => object) {
   try {
@@ -12,16 +11,15 @@ export function toolResult(work: () => object) {
     if (
       error instanceof DomainError ||
       error instanceof AuthorizationError ||
-      error instanceof z.ZodError
+      isValidationError(error)
     ) {
       const details = error instanceof DomainError ? error.details : undefined;
       const result = {
         error: {
-          code: error instanceof z.ZodError ? "invalid" : error.code,
-          message:
-            error instanceof z.ZodError
-              ? "请检查输入格式与长度限制。"
-              : error.message,
+          code: isValidationError(error) ? "invalid" : error.code,
+          message: isValidationError(error)
+            ? "请检查输入格式与长度限制。"
+            : error.message,
           details,
         },
       };

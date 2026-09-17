@@ -47,7 +47,7 @@ export class AiSharing {
       },
     );
   }
-  list(access: AiAccess, input: PageInput) {
+  list(access: AiAccess, input: PageInput & { closed?: boolean }) {
     return this.auth.authorized(
       access.token,
       access.resource,
@@ -56,13 +56,17 @@ export class AiSharing {
         this.reading.page(
           this.sharing
             .mine(member.id)
+            .filter(
+              (share) =>
+                input.closed === undefined || share.closed === input.closed,
+            )
             .sort((a, b) => a.id.localeCompare(b.id))
             .map((share) => ({
               ...share,
               url: new URL(share.path, access.resource).href,
             })),
           input,
-          { tool: "my-shares", memberId: member.id },
+          { tool: "my-shares", memberId: member.id, closed: input.closed },
         ),
     );
   }

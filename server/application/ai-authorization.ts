@@ -203,6 +203,13 @@ export class AiAuthorization {
       time: new Date(now).toISOString(),
       date: new Date(now + 8 * 3600000).toISOString().slice(0, 10),
       timeZone: "Asia/Shanghai",
+      limits: {
+        titleCharacters: 100,
+        entryCharacters: 10000,
+        entriesPerDiary: 50,
+        attachmentsPerEntry: 10,
+        historyRule: "已提交日报仅首次提交当天可改；日期按服务器北京时间。",
+      },
     };
   }
 }

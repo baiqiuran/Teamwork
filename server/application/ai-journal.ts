@@ -3,8 +3,12 @@ import {
   type UpdateDraftInput,
   type SubmitDiaryInput,
 } from "../domain/ai-operation.ts";
-import { assertEntryAssociation } from "../domain/work.ts";
-import type { Content } from "../domain/diary.ts";
+import {
+  assertEntryAssociation,
+  assertProjectAssociation,
+  assertTaskAssociation,
+} from "../domain/work.ts";
+import { Diary, type Content } from "../domain/diary.ts";
 import { DomainError } from "../domain/errors.ts";
 import type { PageInput } from "../domain/ai-query.ts";
 import type { Journal } from "./journal.ts";
@@ -41,12 +45,10 @@ export class AiJournal {
         throw new DomainError("invalid", "状态意图必须关联现有任务。");
       if (!entry.projectId) continue;
       const project = this.work.getProject(entry.projectId);
-      if (project.archived) throw new DomainError("archived", "项目已归档。");
+      assertProjectAssociation(project);
       if (entry.taskId) {
         const task = this.work.getTask(entry.taskId);
-        if (task.projectId !== entry.projectId)
-          throw new DomainError("invalid", "任务必须属于条目的项目。");
-        if (task.archived) throw new DomainError("archived", "任务已归档。");
+        assertTaskAssociation(entry, task);
       }
     }
   }
@@ -73,6 +75,12 @@ export class AiJournal {
       input,
       ["diaries:submit"],
       (memberId) => {
+        const before = this.journal.get(input.id, memberId).draft;
+        const priorTasks = new Map(
+          before.entries
+            .filter((e) => e.taskId)
+            .map((e) => [e.taskId!, this.work.getTask(e.taskId!)]),
+        );
         const diary = this.journal.submit(
           input.id,
           memberId,
@@ -82,8 +90,54 @@ export class AiJournal {
           },
           "mcp",
         );
+        const createdIds = new Set(
+          before.entries.filter((e) => e.newTask).map((e) => e.id),
+        );
+        const taskEffects = [
+          ...new Set(
+            diary.published!.entries.flatMap((e) =>
+              e.taskId ? [e.taskId] : [],
+            ),
+          ),
+        ].flatMap((id) => {
+          const task = this.work.getTask(id),
+            prior = priorTasks.get(id);
+          const created = diary.published!.entries.some(
+            (e) => e.taskId === id && createdIds.has(e.id),
+          );
+          return created || prior?.status !== task.status
+            ? [
+                {
+                  taskId: id,
+                  projectId: task.projectId,
+                  name: task.name,
+                  created,
+                  beforeStatus: prior?.status ?? null,
+                  afterStatus: task.status,
+                  version: task.version,
+                },
+              ]
+            : [];
+        });
         return {
-          result: { diary: this.summary(diary), webPath: "/diaries" },
+          result: {
+            diary: this.summary(diary),
+            webPath: "/diaries",
+            taskEffects,
+            publicImpact: {
+              published: true,
+              diaryDate: diary.diaryDate,
+              projectIds: [
+                ...new Set(
+                  diary.published!.entries.flatMap((e) =>
+                    e.projectId ? [e.projectId] : [],
+                  ),
+                ),
+              ],
+              message:
+                "团队和项目归集已更新；覆盖该日期与对象的既有公开进展随提交更新，开放的任务模块读取当前任务状态。",
+            },
+          },
           objectId: diary.id,
         };
       },
@@ -105,6 +159,30 @@ export class AiJournal {
         const existing = this.journal.get(input.id, memberId),
           content = structuredClone(existing.draft),
           touched = new Set<string>();
+        try {
+          new Diary(existing).assertVersion(input.expectedVersion);
+        } catch (error) {
+          if (error instanceof DomainError)
+            throw new DomainError(error.code, error.message, {
+              diaryId: existing.id,
+              latestVersion: existing.version,
+              current: {
+                title: existing.draft.title,
+                entryCount: existing.draft.entries.length,
+                editable: existing.editable,
+              },
+              requested: {
+                expectedVersion: input.expectedVersion,
+                title: input.title,
+                changes: input.changes.map((change) => ({
+                  op: change.op,
+                  id: change.op === "add" ? change.entry.id : change.id,
+                })),
+              },
+              detailTool: "get_my_draft",
+            });
+          throw error;
+        }
         if (input.title !== undefined) content.title = input.title;
         for (const change of input.changes) {
           const id = change.op === "add" ? change.entry.id : change.id;
@@ -122,7 +200,9 @@ export class AiJournal {
             throw new DomainError("not-found", "未找到指定工作条目。");
           if (change.op === "remove") {
             if (content.entries[index].attachments?.length)
-              throw new DomainError("invalid", "含附件条目只能在网页删除。");
+              throw new DomainError("invalid", "含附件条目只能在网页删除。", {
+                webPath: `/diaries?diary=${existing.id}`,
+              });
             content.entries.splice(index, 1);
             continue;
           }

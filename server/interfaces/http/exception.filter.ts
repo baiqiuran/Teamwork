@@ -54,15 +54,6 @@ export class HttpExceptionFilter implements ExceptionFilter {
       response.status(400).json({ error: "请求格式不正确。" });
       return;
     }
-    if (
-      error &&
-      typeof error === "object" &&
-      "type" in error &&
-      error.type === "entity.too.large"
-    ) {
-      response.status(413).json({ error: "请求内容超过大小限制。" });
-      return;
-    }
     if (error instanceof HttpException && error.getStatus() === 404) {
       response.status(404).json({ error: "未找到该接口。" });
       return;

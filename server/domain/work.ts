@@ -102,15 +102,26 @@ export function assertEntryAssociation(entry: WorkEntry) {
   if (entry.taskId && entry.newTask)
     throw new DomainError("invalid", "已有任务和新任务只能选择一个。");
 }
-export function associateProject(entry: WorkEntry, project: ProjectState) {
+export function assertProjectAssociation(
+  project: Pick<ProjectState, "archived">,
+) {
   if (project.archived)
     throw new DomainError("archived", "项目已归档，请调整工作条目关联。");
+}
+export function associateProject(entry: WorkEntry, project: ProjectState) {
+  assertProjectAssociation(project);
   entry.projectName = project.name;
 }
-export function associateTask(entry: WorkEntry, task: TaskState) {
+export function assertTaskAssociation(
+  entry: Pick<WorkEntry, "projectId">,
+  task: Pick<TaskState, "projectId" | "archived">,
+) {
   if (task.projectId !== entry.projectId)
     throw new DomainError("invalid", "任务必须属于当前条目的项目。");
   if (task.archived) throw new DomainError("archived", "任务已归档。");
+}
+export function associateTask(entry: WorkEntry, task: TaskState) {
+  assertTaskAssociation(entry, task);
   entry.taskName = task.name;
   entry.taskStatus = task.status;
 }

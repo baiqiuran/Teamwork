@@ -1,5 +1,5 @@
 import { canonical, type AiOperation } from "../domain/ai-operation.ts";
-import { DomainError } from "../domain/errors.ts";
+import { DomainError, isValidationError } from "../domain/errors.ts";
 import {
   AuthorizationError,
   type Capability,
@@ -34,7 +34,7 @@ export class AiOperations {
   run(
     access: AiAccess,
     tool: string,
-    input: { operationId: string },
+    input: { operationId: string; id?: string },
     scopes: Capability[],
     action: (memberId: string) => {
       result: Record<string, unknown>;
@@ -115,10 +115,19 @@ export class AiOperations {
     } catch (error) {
       event(
         "failure",
-        null,
+        input.id &&
+          ((error instanceof DomainError &&
+            ["version-conflict", "history-locked", "archived"].includes(
+              error.code,
+            )) ||
+            isValidationError(error))
+          ? input.id
+          : null,
         error instanceof DomainError || error instanceof AuthorizationError
           ? error.code
-          : "unavailable",
+          : isValidationError(error)
+            ? "invalid"
+            : "unavailable",
       );
       throw error;
     }

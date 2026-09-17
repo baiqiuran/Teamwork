@@ -20,3 +20,6 @@ export class DomainError extends Error {
     super(message);
   }
 }
+import { z } from "zod";
+export const isValidationError = (error: unknown): error is z.ZodError =>
+  error instanceof z.ZodError;

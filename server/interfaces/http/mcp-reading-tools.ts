@@ -94,7 +94,10 @@ export function registerReadingTools(
     {
       description:
         "按明确项目/任务筛选进展摘要，仅匹配条目归集；详情工具可按 entryIds 识别相关条目。",
-      inputSchema: progressInput,
+      inputSchema: progressInput.refine(
+        (input) => !!input.projectId || !!input.taskId,
+        "请明确项目或任务。",
+      ),
       annotations,
     },
     (input) => execute(() => reading.diaries(input, false)),

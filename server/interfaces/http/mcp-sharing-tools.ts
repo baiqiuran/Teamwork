@@ -3,7 +3,7 @@ import {
   createShareInput,
   closeShareInput,
 } from "../../domain/ai-operation.ts";
-import { pageInput } from "../../domain/ai-query.ts";
+import { shareListInput } from "../../domain/ai-query.ts";
 import type { AiSharing } from "../../application/ai-sharing.ts";
 import type { Capability } from "../../domain/ai-authorization.ts";
 import type { AiAccess } from "../../application/ai-operations.ts";
@@ -46,7 +46,7 @@ export function registerSharingTools(
     "list_my_shares",
     {
       description: "分页读取本人链接及当前是否关闭。",
-      inputSchema: pageInput.strict(),
+      inputSchema: shareListInput,
       annotations: { readOnlyHint: true },
     },
     (input) => toolResult(() => sharing.list(access, input)),

@@ -1,4 +1,9 @@
-import { beijingDate, dateRange, type Content } from "../domain/diary.ts";
+import {
+  beijingDate,
+  dateRange,
+  type Content,
+  type TaskStatus,
+} from "../domain/diary.ts";
 import { DomainError } from "../domain/errors.ts";
 import type {
   PageInput,
@@ -80,12 +85,15 @@ export class AiReading {
   project(id: string) {
     return this.work.getProject(id);
   }
-  tasks(input: SearchInput & { projectId?: string }) {
+  tasks(input: SearchInput & { projectId?: string; status?: TaskStatus }) {
     const items = input.projectId
       ? this.work.tasks(input.projectId)
       : this.work.projects().flatMap((project) => this.work.tasks(project.id));
     return this.page(
-      this.search(items, input).map((item) => ({
+      this.search(
+        items.filter((item) => !input.status || item.status === input.status),
+        input,
+      ).map((item) => ({
         ...item,
         description: [...item.description].slice(0, 160).join(""),
         truncated: [...item.description].length > 160,
@@ -97,6 +105,7 @@ export class AiReading {
         tool: "tasks",
         query: input.query,
         projectId: input.projectId,
+        status: input.status,
         archived: input.archived,
       },
     );
