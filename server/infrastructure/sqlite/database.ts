@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import type { Runtime } from "../../application/ports.ts";
+import type { Runtime } from "../../shared/application/ports.ts";
 import { migrateAi, assertAiVersion } from "./ai-migrations.ts";
 
 export function openDatabase(path: string) {

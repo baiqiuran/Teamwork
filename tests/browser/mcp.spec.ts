@@ -112,6 +112,28 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
     await page.goto(`${origin}/ai`);
     await page.getByRole("button", { name: "撤销连接", exact: true }).click();
     await expect(page.getByText("已撤销", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "重新授权", exact: true }).click();
+    const reconnect = page.getByRole("region", { name: "重新授权 Codex" });
+    await expect(reconnect).toBeVisible();
+    await expect(reconnect.getByLabel("授权命令")).toHaveValue(
+      "codex mcp login daily_flow --scopes progress:read,drafts:write",
+    );
+    await expect(
+      reconnect.getByRole("button", { name: "复制授权命令" }),
+    ).toBeVisible();
+    await reconnect.getByLabel("Codex 连接名称").fill("team_daily");
+    await expect(reconnect.getByLabel("授权命令")).toHaveValue(
+      "codex mcp login team_daily --scopes progress:read,drafts:write",
+    );
+    const revoked = await (
+      await page.request.get(`${origin}/api/ai/connections`)
+    ).json();
+    expect(revoked).toHaveLength(1);
+    expect(revoked[0].revokedAt).not.toBeNull();
+    await page.reload();
+    await expect(
+      page.getByRole("button", { name: "重新授权", exact: true }),
+    ).toBeVisible();
     await page.getByLabel("执行结果").selectOption("failure");
     await expect(
       history.getByText("新建草稿 · 失败", { exact: true }),

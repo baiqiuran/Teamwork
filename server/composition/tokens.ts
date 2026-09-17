@@ -1,0 +1,11 @@
+export const MEMBERS = Symbol("MembershipRepository"),
+  DIARIES = Symbol("DiaryRepository"),
+  WORK = Symbol("WorkRepository"),
+  SHARES = Symbol("SharingRepository"),
+  ATTACHMENTS = Symbol("AttachmentRepository"),
+  RUNTIME = Symbol("Runtime"),
+  SECURITY = Symbol("Security"),
+  FILES = Symbol("FileStorage"),
+  SETUP_KEY = Symbol("SetupKey"),
+  AI = Symbol("AiAuthorizationRepository"),
+  AI_OPERATIONS = Symbol("AiOperationRepository");
