@@ -88,7 +88,7 @@ location / {
 
 域名或公网 IP、证书文件及进程托管配置由真实服务器环境补齐。不要将 4310 暴露公网。代理覆盖来源头，不能沿用客户端伪造的 `X-Forwarded-For`。应用校验 Host 和存在的 Origin；网页写操作仍必须同源并带 Cookie，MCP 使用 Bearer。HTTPS 代理访问的会话 Cookie 带 Secure。发现、OAuth 和 MCP 路由不会回退为 SPA HTML。
 
-2026-09-18 已在单台 Ubuntu ECS 上完成公网 IP HTTPS、真实团队网页登录、OAuth 发现及匿名 MCP 鉴权验收，见[部署手册](deployment.md)。域名 DNS 切换和跨电脑 Codex 实际授权连接仍需单独验收。
+2026-09-18 已在单台 Ubuntu ECS 上完成公网 IP HTTPS、真实团队网页登录、OAuth 发现、匿名 MCP 鉴权及跨电脑 Codex 成员授权验收，见[部署手册](deployment.md)。域名 DNS 切换仍需单独验收。
 
 ## 升级与恢复
 

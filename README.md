@@ -4,7 +4,7 @@
 
 项目采用 **TypeScript 全栈 + DDD 模块化单体**。React 页面与 NestJS（Express 适配器）接口同源运行，SQLite 保存业务数据，附件保存在本地私有目录。团队日报、项目页工作进展和公开页的进展日报采用桌面多列瀑布流卡片。
 
-当前提供单团队网页及成员授权的 MCP 服务，已验证 Codex 接入。公开链接支持免登录读取；已具备可信 HTTPS 代理配置，真实公网部署尚未验收。
+当前提供单团队网页及成员授权的 MCP 服务，已验证 Codex 接入。公开链接支持免登录读取。2026-09-18 已在单台 Ubuntu ECS 上完成公网 IP HTTPS 部署与真实网页登录验收，操作路径见[部署手册](docs/deployment.md)。
 
 [快速开始](#快速开始) · [配置](#配置) · [Codex 接入](#codex-接入) · [技术架构](#技术架构) · [开发与验证](#开发与验证) · [数据与备份](#数据与备份) · [常见问题](#常见问题)
 
@@ -100,7 +100,7 @@ npm start
 | `PORT`                                             | `4310`                          | HTTP 端口，必须是 1–65535 的整数                             |
 | `DAILY_DATABASE_PATH`                              | `data/daily-flow.sqlite`        | 数据库路径；相对路径以启动时的工作目录为基准，父目录自动创建 |
 | `DAILY_PUBLIC_URL`                                 | 空，本机模式                    | 可信 HTTPS 源地址，启用同机反向代理模式                      |
-| `DAILY_CODEX_REDIRECT_URIS`                        | `["http://127.0.0.1/callback"]` | Codex 精确回调登记 JSON 数组                                 |
+| `DAILY_CODEX_REDIRECT_URIS`                        | `["http://127.0.0.1/callback"]` | 额外的精确回调；公网模式会自动补登当前 Codex 回调            |
 | `DAILY_MCP_MEMBER_LIMIT` / `DAILY_MCP_GRANT_LIMIT` | `240` / `120`                   | 每分钟每成员 / 每连接请求上限                                |
 | `DAILY_MCP_MAX_BODY_BYTES`                         | `16777216`                      | MCP 请求上限，允许 4–16 MiB                                  |
 | `DAILY_SETUP_KEY`                                  | 每次启动随机生成                | 首次建立团队的引导密钥；团队建立后不再用于登录               |
@@ -131,7 +131,7 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 
 ### 本机连接步骤
 
-以下步骤适用于 Codex 与日序运行在同一台电脑；已验证 Codex CLI/app-server **0.145.0**。跨电脑使用需先完成 HTTPS 部署，再将示例中的服务地址替换为实际域名。日序服务必须保持运行。
+以下步骤适用于 Codex 与日序运行在同一台电脑；已验证 Codex CLI/app-server **0.145.0**。跨电脑使用需先完成 HTTPS 部署，再将示例中的服务地址替换为实际 HTTPS 域名或受信任的公网 IP 地址。日序服务必须保持运行。
 
 1. 启动日序并使用自己的成员账号登录网页。
 2. 编辑实际使用的 Codex 配置文件，默认是 `~/.codex/config.toml`（Windows 为 `%USERPROFILE%\.codex\config.toml`；设置了 `CODEX_HOME` 时使用该目录）。保留原有配置，新增以下段落；已有 `daily_flow` 时修改对应段落，避免重复定义。
@@ -152,15 +152,17 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
    codex mcp login daily_flow --scopes progress:read,drafts:write,diaries:submit,tasks:write,shares:manage
    ```
 
-4. **首次接入须登记实际回调。** 当前 Codex 会在 `/callback` 后附加连接标识，配置中的基础地址并不代表所有回调路径均被允许。从本次授权请求的 `redirect_uri` 取得完整回调，按下面示例替换路径中的占位文字。只登记回调地址，不保存整条包含 state 和 PKCE 参数的授权 URL。
+4. **本机模式首次接入须登记实际回调。** 当前 Codex 会在 `/callback` 后附加由 MCP 服务 URL 派生的标识，并非连接名；配置中的基础地址并不代表所有回调路径均被允许。从本次授权请求的 `redirect_uri` 取得完整回调，按下面示例替换路径中的占位文字。只登记回调地址，不保存整条包含 state 和 PKCE 参数的授权 URL。
 
    ```powershell
    # 先停止日序；替换为本次 Codex 实际生成的精确路径。
-   $env:DAILY_CODEX_REDIRECT_URIS = '["http://127.0.0.1/callback/替换为实际连接标识"]'
+   $env:DAILY_CODEX_REDIRECT_URIS = '["http://127.0.0.1/callback/替换为实际回调尾段"]'
    npm start
    ```
 
-   无端口登记允许这个本机主机与精确路径使用动态端口；不支持路径通配符。多个已登记回调应合并到同一个 JSON 数组，保留仍在使用的路径。在另一个终端重新执行第 3 步的登录命令。服务地址变化后需要重新核对回调，不能复制其他环境的连接标识。
+   无端口登记允许这个本机主机与精确路径使用动态端口；不支持路径通配符。多个已登记回调应合并到同一个 JSON 数组，保留仍在使用的路径。在另一个终端重新执行第 3 步的登录命令。服务地址变化后需要重新核对回调，不能复制其他环境的回调尾段。
+
+   配置 `DAILY_PUBLIC_URL` 的公网模式会自动补登与该地址 `/mcp` 对应的 Codex 回调；其他客户端或自定义回调仍需按实际 `redirect_uri` 额外登记。
 
 5. 在日序授权页选择能力并点击“允许所选能力”。返回 Codex 后发起一次只读查询，例如“查询今天团队的工作进展”。若当前 Codex 对话尚未加载新工具，可重启 Codex 后再试；仅保存配置或网页显示已授权，还不能替代实际工具调用验证。
 
@@ -373,9 +375,9 @@ data/
 
 ## 部署边界
 
-当前代码在本机运行：单个 Node.js 进程提供前端和 API，SQLite 与附件依赖本地持久磁盘。源码推送 GitHub 后，应用仍需启动服务才能使用。
+应用由单个 Node.js 进程提供前端和 API，SQLite 与附件依赖本地持久磁盘。现有 ECS 部署使用 systemd、Nginx 和公网 IP HTTPS；重建、更新及恢复步骤见[阿里云 ECS 部署手册](docs/deployment.md)。源码推送 GitHub 后，仍需在目标服务器构建并启动服务才能使用。
 
-公网部署前需要落实以下环境配置（完整步骤见 [MCP 手册](docs/mcp.md#运行配置与-https)）：
+在新环境重建公网部署时，需要落实以下配置（操作步骤见[部署手册](docs/deployment.md)）：
 
 - 域名、HTTPS、反向代理及进程托管。
 - 同机可信代理配合 `DAILY_PUBLIC_URL`；代理覆盖 Host、X-Forwarded-Proto 和 X-Forwarded-For，网页继续同源校验，HTTPS Cookie 自动带 Secure。
@@ -393,7 +395,7 @@ data/
 | 修改页面后没有变化               | `npm run dev` 只监听后端；重新构建前端并刷新                                                          |
 | 端口被占用 / `EADDRINUSE`        | 停止占用端口的已知服务，或设置其他 `PORT`；浏览器测试固定使用 4311                                    |
 | 页面提示只能本机访问或来源不匹配 | 从同一 `127.0.0.1` / `localhost` 地址和端口打开页面；远程模式核对 DAILY_PUBLIC_URL 与代理 Host/Origin |
-| 同事打不开分享链接               | `127.0.0.1` 指向打开链接者自己的电脑；跨电脑访问需配置真实 HTTPS 域名和反向代理                       |
+| 同事打不开分享链接               | `127.0.0.1` 指向打开链接者自己的电脑；跨电脑访问需使用已部署的 HTTPS 公网地址与反向代理               |
 | 重启后进入创建团队页面           | 检查工作目录及 `DAILY_DATABASE_PATH`，确认指向原数据库，不要直接另建团队                              |
 | 历史日报无法修改                 | 这是首次提交日期的锁定规则；服务器以北京时间判断当天                                                  |
 | 分享附件下载失败                 | 检查链接是否关闭、对象是否归档、是否开放进展模块，以及附件是否仍在可见的已提交内容中                  |
@@ -405,6 +407,7 @@ data/
 
 ## 进一步阅读
 
+- [阿里云 ECS 部署手册](docs/deployment.md)：公网 IP HTTPS、首次初始化、备份恢复及更新。
 - [MCP 实施验收记录](docs/mcp-verification.md)：M01–M30 证据、实际 Codex、升级恢复与公网边界。
 - [MCP 接入、权限与部署](docs/mcp.md)：Codex 连接、长期授权、撤销、工具边界与升级恢复。
 - [业务术语](CONTEXT.md)：团队、日报、工作条目、任务及公开链接的统一含义。
