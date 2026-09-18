@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { openDatabase } from "../infrastructure/sqlite/database.ts";
 import { attachmentRepository } from "../modules/attachments/infrastructure/sqlite/attachment-repository.ts";
@@ -57,25 +57,8 @@ export interface Resources {
 
 /** One owner per application, including when container initialization fails. */
 export function createResources(options: AppOptions): Resources {
-  const configuredRedirects = options.codexRedirectUris ?? [
-    "http://127.0.0.1/callback",
-  ];
-  if (!configuredRedirects.length)
-    throw new Error("至少登记一个 Codex 回调地址。");
-  // Codex binds its callback path to the complete MCP URL with the first nine SHA-256 bytes.
-  const codexCallback = options.publicUrl
-    ? `http://127.0.0.1/callback/${createHash("sha256")
-        .update(new URL("/mcp", options.publicUrl).href)
-        .digest()
-        .subarray(0, 9)
-        .toString("base64url")}`
-    : undefined;
-  const redirects = [
-    ...new Set([
-      ...configuredRedirects,
-      ...(codexCallback ? [codexCallback] : []),
-    ]),
-  ];
+  const redirects = options.codexRedirectUris ?? ["http://127.0.0.1/callback"];
+  if (!redirects.length) throw new Error("至少登记一个 Codex 回调地址。");
   for (const value of redirects) {
     const url = new URL(value);
     if (
