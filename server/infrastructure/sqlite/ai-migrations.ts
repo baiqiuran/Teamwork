@@ -14,7 +14,7 @@ export function assertAiVersion(db: DatabaseSync) {
           "SELECT COALESCE(MAX(version),0) AS version FROM schema_migrations",
         )
         .get()!.version,
-    ) > 6
+    ) > 7
   )
     throw new Error("数据库版本高于当前程序，请使用匹配版本或恢复备份。");
 }
@@ -29,9 +29,9 @@ export function migrateAi(db: DatabaseSync) {
       )
       .get()!.version,
   );
-  if (current > 6)
+  if (current > 7)
     throw new Error("数据库版本高于当前程序，请使用匹配版本或恢复备份。");
-  if (current === 6) return;
+  if (current === 7) return;
   db.exec("BEGIN IMMEDIATE");
   try {
     if (current < 1)
@@ -71,6 +71,13 @@ export function migrateAi(db: DatabaseSync) {
       db.exec(
         "CREATE TABLE ai_clients (id TEXT PRIMARY KEY,name TEXT NOT NULL,redirect_uris TEXT NOT NULL); INSERT INTO schema_migrations (version) VALUES (6);",
       );
+    if (current < 7)
+      db.exec(`
+        ALTER TABLE ai_grants ADD COLUMN credential_type TEXT NOT NULL DEFAULT 'oauth' CHECK(credential_type IN ('oauth','api-key'));
+        ALTER TABLE ai_grants ADD COLUMN name TEXT;
+        CREATE TABLE ai_api_keys (hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL UNIQUE REFERENCES ai_grants(id));
+        INSERT INTO schema_migrations (version) VALUES (7);
+      `);
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");

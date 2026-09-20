@@ -86,6 +86,7 @@ export async function fixture(
     })
   ).data;
   return {
+    databasePath,
     get origin() {
       return origin;
     },
