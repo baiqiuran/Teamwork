@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "dataDir": "/var/lib/daily-flow",
+  "database": "data.sqlite",
+  "stateDir": "/var/lib/daily-flow-control",
+  "backupDir": "/var/backups/daily-flow-managed",
+  "current": "/opt/daily-flow/current",
+  "releases": "/opt/daily-flow/releases",
+  "envFile": "/etc/daily-flow/daily-flow.env",
+  "artifact": "/opt/daily-flow/artifacts/REPLACE_WITH_VERIFIED_RELEASE/application.tar.gz",
+  "unit": "daily-flow.service",
+  "maintenance": "/run/daily-flow/maintenance",
+  "dataLock": "/run/lock/daily-flow-data.lock",
+  "probeUrl": "http://127.0.0.1:4310/api/setup/status",
+  "ingressUrl": "https://8.148.245.224",
+  "serviceUser": "daily-flow",
+  "reserveBytes": 268435456
+}
