@@ -114,6 +114,20 @@ const original=cp.execFileSync; cp.execFileSync=function(command,args,...rest) {
     !raced.report.issues.includes("UNKNOWN_OPERATION_REQUIRES_RECONCILIATION"),
   );
   await rm(f.root + "/control/operation.lock");
+  await inspect("before-backup");
+  const intervening = await f.control(
+    "backup",
+    "--id",
+    "between-observations",
+    "--kind",
+    "manual",
+  );
+  assert.equal(intervening.code, 0, intervening.output + intervening.error);
+  assert.equal(
+    (await inspect("before-backup", undefined, "external-failure")).report
+      .phase,
+    "busy",
+  );
   const priorPath = f.root + "/control/uploads/prior.json";
   const prior = JSON.parse(await readFile(priorPath, "utf8"));
   await writeFile(

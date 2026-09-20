@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { mkdir } from "node:fs/promises";
+import { mkdir, readdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { configuration, command, exists, capacity } from "./host.mjs";
 import { json, durable } from "./io.mjs";
 import { status as backupStatus } from "./offsite.mjs";
@@ -27,12 +28,28 @@ let config = await configuration(path);
 const directory = resolve(config.stateDir, "inspections");
 await mkdir(directory, { recursive: true, mode: 0o700 });
 const output = resolve(directory, `${id}.json`);
+async function operationGeneration() {
+  const entries = [];
+  for (const name of (
+    await readdir(resolve(config.stateDir, "operations"))
+  ).sort()) {
+    if (!name.endsWith(".json")) continue;
+    const value = await json(resolve(config.stateDir, "operations", name));
+    if (value.command !== "inspect")
+      entries.push([name, value.phase, value.createdAt, value.finishedAt]);
+  }
+  const boot = resolve(config.stateDir, "boot.json");
+  if (await exists(boot)) entries.push(["boot", await json(boot)]);
+  return createHash("sha256").update(JSON.stringify(entries)).digest("hex");
+}
 async function main() {
   if (action.startsWith("external-")) {
     return withControlLock(config, `external-${id}`, async () => {
       config = await configuration(path);
       const report = await json(output);
       assert.ok(!report.busy, "BUSY_OBSERVATION_NOT_APPLICABLE");
+      if (report.operationGeneration !== (await operationGeneration()))
+        return { id, phase: "busy", reason: "OPERATION_CHANGED" };
       const runtime = await json(resolve(config.stateDir, "runtime.json"));
       if (report.actualCommit !== runtime.commit)
         return { id, phase: "busy", reason: "VERSION_CHANGED" };
@@ -113,6 +130,8 @@ async function main() {
       const report = await json(output);
       const runtime = await json(resolve(config.stateDir, "runtime.json"));
       assert.equal(report.phase, "healthy");
+      if (report.operationGeneration !== (await operationGeneration()))
+        return { id, phase: "busy", reason: "OPERATION_CHANGED" };
       if (report.actualCommit !== runtime.commit)
         return { id, phase: "busy", reason: "VERSION_CHANGED" };
       const age = Date.now() - Date.parse(report.checkedAt);
@@ -133,6 +152,7 @@ async function main() {
   }
   if (await exists(output)) return json(output);
   const issues = [];
+  const generation = await operationGeneration();
   let publicService, busy;
   const lockPath = resolve(config.stateDir, "operation.lock");
   const observedCommit = (await json(resolve(config.stateDir, "runtime.json")))
@@ -316,10 +336,13 @@ async function main() {
   busy = (await currentOperation()) ?? busy;
   if (latestRuntime.commit !== observedCommit)
     busy ??= { phase: "changed-during-inspection", alive: true };
+  if (generation !== (await operationGeneration()))
+    busy ??= { phase: "changed-during-inspection", alive: true };
   const report = {
     id,
     phase: issues.length ? "failed" : busy ? "busy" : "healthy",
     checkedAt: new Date().toISOString(),
+    operationGeneration: generation,
     actualCommit: latestRuntime.commit,
     slot: latestRuntime.slot,
     publicService,
