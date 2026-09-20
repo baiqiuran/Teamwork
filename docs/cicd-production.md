@@ -1,6 +1,8 @@
 # 日序 CI/CD：生产接入与运维手册
 
-这是从现有单实例接入自动发布的操作手册。**单活接管、本地备份和真实副本恢复已通过；PR 自动发布及失败邮件仍待验收。** 控制程序的安装与第一次切换属于基础设施维护，后续 PR 发布只更新普通应用。
+这是从现有单实例接入自动发布的操作手册。**单活接管、PR 自动发布、本地备份与真实副本恢复、外网巡检及手动失败邮件已通过。** 控制程序的安装与第一次切换属于基础设施维护，后续 PR 发布只更新普通应用。
+
+2026-09-20 首次自动发布后的生产版本为 `70b874312aafdc30cae52defb906bb3465348b7d`，运行于 green，blue 和旧服务停止。`DEPLOY_ENABLED`、`INSPECTION_ENABLED` 与主机自动发布已开启；自然 schedule 证据仍需单独核对。以下准备前快照用于说明接管过程，不能作为当前服务状态。
 
 ## 已核对的生产现场
 
@@ -22,9 +24,9 @@
 
 这些是首次检查时的快照，实施切换前必须再核对。
 
-同日后续已完成准备：控制程序 42171fa 安装到 `/opt/daily-flow/control/ops`，配置采用 `backupMode: local`、实际数据库名 `daily-flow.sqlite`；独立 `daily-deploy` 强制 SSH 命令、受限 sudo 与 GitHub production 两项 Secrets 已配置。主机指纹已核验，任意 shell 读取命令被拒绝。运行状态尚未登记，`baseline` 暂不能作为已接入验收。
+准备阶段：控制程序 42171fa 安装到 `/opt/daily-flow/control/ops`，配置采用 `backupMode: local`、实际数据库名 `daily-flow.sqlite`；独立 `daily-deploy` 强制 SSH 命令、受限 sudo 与 GitHub production 两项 Secrets 已配置。主机指纹已核验，任意 shell 读取命令被拒绝。随后已登记运行状态，当前可用受限 `baseline` 查询实际版本、槽位和备份状态。
 
-旧运行材料封存为 `/opt/daily-flow/artifacts/legacy-8d08b2b/application.tar.gz`，摘要 `18d09eaf2ada65ffded6e7ec97bc339b4b66d6e811307b34d976ba70cbed67b6`，明确标为 legacy 材料而非 CI 产物。新控制器使用 `/opt/daily-flow/managed-current`；blue 链接、环境、健康凭证和数据锁 tmpfiles 已准备，两个槽位均未启动。原配置的受限副本在 `/root/daily-flow-before-managed`。
+旧运行材料封存为 `/opt/daily-flow/artifacts/legacy-8d08b2b/application.tar.gz`，摘要 `18d09eaf2ada65ffded6e7ec97bc339b4b66d6e811307b34d976ba70cbed67b6`，明确标为 legacy 材料而非 CI 产物。控制器使用 `/opt/daily-flow/managed-current`，后续接管及发布均通过该受控路径切换；原配置的受限副本在 `/root/daily-flow-before-managed`。
 
 以上为接管前的准备记录。接管完成后的实际状态见下节；不要按准备记录重复安装或重新初始化团队。
 
@@ -58,7 +60,7 @@ production Environment 只接受 main。main 要求 PR、`Verified Linux artifac
 
 ## 3. 首次接入：需要完成的维护步骤
 
-以下是首次切换的可复用检查单。本机接管已完成（结果见实测记录），继续执行剩余 PR 发布与通知验收；新环境没有匹配恢复材料时不能直接照抄完成状态。
+以下是首次切换的可复用检查单。本机接管及首次 PR 发布已完成（结果见实测记录）；新环境没有匹配恢复材料时不能直接照抄完成状态。
 
 1. 留存当前 Nginx、systemd、备份 timer 和秘密环境文件的受限运维副本；备份秘密文件只放 root 目录，不能上传 Actions。核对真实数据库大小和控制器磁盘预算。
 2. 针对实际 `8d08b2b…` 到候选版本，逐提交审查持久化变更，生成明确迁移说明，运行 `verify-candidate.mjs` 的旧库升级与配套恢复。当前 CI 的固定历史基线验证不能替代真实线上基线验证。历史分支合并涉及文件移动，缺失说明时应停止并人工审查，不能把整个跨度一律标为自动安全。
@@ -71,15 +73,15 @@ production Environment 只接受 main。main 要求 PR、`Verified Linux artifac
 9. 配置 boot reconcile 和新每日备份/清理 timer，进行受控重启验收，确认单活及启动所有者。续期 timer 保持原配置。
 10. 初始恢复点、实际升级证明、双槽及只读检查通过后再开启主机自动发布。随后启用 GitHub 变量，完成一次真正的 PR 合并驱动发布，记录下表；故障演练只在隔离环境进行。
 
-| 首次真实验收证据 | 待填写 |
+| 首次真实验收证据 | 实测结果 |
 | --- | --- |
-| PR / Actions run | |
-| 实际前后 SHA、候选 SHA256 | |
-| blue/green 前后槽位、维护毫秒数 | |
-| 本地快照 ID、数据时间、回读校验 | |
-| 原成员登录与内容核验（成员确认） | |
-| 定时巡检 run、负责人实际失败邮件 | |
-| 隔离环境本地副本恢复报告、RPO/RTO | |
+| PR / Actions run | PR #2；main 检查 35501147947；自动发布 35501559584，全通过 |
+| 实际前后 SHA、候选 SHA256 | `8d08b2b` → `70b8743`；`4aefde985a73033321d8daab6c28d049233f5a01a56cf1a1bca80df5b2639877` |
+| blue/green 前后槽位、维护毫秒数 | blue → green；7207 ms |
+| 本地快照 ID、数据时间、回读校验 | `ci-35501147947-8d08b2b959c7067e-70b874312aafdc30`；2026-09-20T09:11:06.079Z；verified |
+| 原成员登录（成员确认） | 用户回复“登录上去了”；未让自动检查使用成员凭证 |
+| 外网巡检、失败邮件 | 手动正常巡检 35501658596 成功；通知测试 35499946329 用户确认收件；自然 schedule 待核对 |
+| 隔离环境本地副本恢复报告、RPO/RTO | `production-local-recovery-report.json`；全部业务/附件/协议通过，withinRpo/withinRto 为 true；完整耗时范围见实测说明 |
 
 ## 4. 日常操作
 
@@ -113,7 +115,7 @@ node /opt/daily-flow/control/ops/control.mjs --config /etc/daily-flow/deploy.jso
 
 通知配置与受控收件测试见 [小时巡检](../ops/README.md#小时巡检和通知任务-10)。手动作业的失败邮件与定时作业的收件对象可能不同，两者分别确认。每周检查实际 schedule 运行与最后成功时间，不能仅以配置文件存在判断巡检运行。
 
-目前缺少 PR 合并驱动发布、实际定时巡检和失败邮件收件证据，因此任务 11 保持未完成。线上已按 blue 单活方式运行，并沿用原账号与内容。
+PR 合并驱动发布、正常外网巡检和手动失败邮件收件已验证。自然定时运行及其通知接收人仍需单独核对，因此不能把手动运行记录当作定时验收。线上已按 green 单活方式运行，沿用原数据库与附件。
 
 ## 本轮验证证据
 
@@ -138,4 +140,12 @@ PR #1 已合并为 `e0fb371131efab3b240465ea557775fa67bb8715`，main 构建及 L
 
 首次自动部署 run 35500441194 在选择候选时因 `PRODUCTION_NOT_ON_MAIN` 停止，尚未上传产物、进入维护或改动数据库。真实旧基线 8d08b2b 属于已合入 main 的分支祖先，选择器误将它要求为 first-parent 提交。修复保留候选来自 main 第一父链的要求，同时以完整祖先关系确认当前基线与候选；未合入基线和早于该基线合并的候选仍拒绝。
 
-手动失败邮件测试 run 35499946329 通过用户实际收件确认，SSH 与生产诊断步骤均 skipped。小时巡检开关暂时关闭，待新版 readiness 上线后重开；自然 schedule 尚未验收。主机自动发布与 DEPLOY_ENABLED 保持启用，下一份合格 main 将重新验证并接续首次发布。
+手动失败邮件测试 run 35499946329 通过用户实际收件确认，SSH 与生产诊断步骤均 skipped。修复期间暂时关闭小时巡检，以免旧版本缺少 readiness 造成误报；下述新版上线后已重新启用。
+
+## 首次 PR 自动发布与外网巡检
+
+PR #2 经 run 35500627320 全部必需检查后，于 2026-09-20T09:01:13Z 合并为 `70b874312aafdc30cae52defb906bb3465348b7d`。main 检查 [35501147947](https://github.com/baiqiuran/Teamwork/actions/runs/35501147947) 通过，原样产物 SHA256 为 `4aefde985a73033321d8daab6c28d049233f5a01a56cf1a1bca80df5b2639877`。
+
+[自动发布 35501559584](https://github.com/baiqiuran/Teamwork/actions/runs/35501559584) 验证真实生产基线升级与配套恢复后完成发布，操作 ID `ci-35501147947-8d08b2b959c7067e-70b874312aafdc30`。生产从旧版 blue 切到新版 green，维护 7207 ms；发布前一致快照同操作 ID，数据时间 09:11:06.079Z，完整校验通过。后续受限 baseline 复核相同版本与槽位，busy=false、frozen=false。
+
+重新开启 `INSPECTION_ENABLED=true` 后，[正常巡检 35501658596](https://github.com/baiqiuran/Teamwork/actions/runs/35501658596) 成功。09:12:37.164Z 主机诊断 healthy、issues=[]；外网 HTTPS readiness/version 与网页、MCP、OAuth 全部通过，备份新鲜、三项 timer 活动、恢复演练有效，09:12:45.785Z 登记巡检完成。以上不包含自然 schedule 或定时失败邮件收件证据。
