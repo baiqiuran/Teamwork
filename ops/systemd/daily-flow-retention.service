@@ -4,6 +4,6 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/node /opt/daily-flow/control/ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json retention-apply
+ExecStart=/usr/local/bin/node /opt/daily-flow/control/ops/backup-cli.mjs --config /etc/daily-flow/deploy.json retention-apply
 UMask=0077
 TimeoutStartSec=infinity

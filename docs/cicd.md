@@ -84,7 +84,7 @@ node scripts/verify-candidate.mjs --from OLD_FULL_SHA --current ACTUAL_FULL_SHA 
 
 ## 发布与巡检验收（2026-09-20）
 
-01–10 的应用与控制能力已在隔离环境实现。生产接入仍待 OSS/RAM 和真实验收，详见 [生产接入与运维手册](cicd-production.md)。
+01–10 的应用与控制能力已在隔离环境实现。生产接入仍待本地备份与真实切换验收，详见 [生产接入与运维手册](cicd-production.md)。
 
 - 从全新 Linux 环境运行 `release-artifact.mjs` 与 `verify-host-control.mjs` 完整入口；候选 `73496fd0c0f2d7f1c0c28e394c8c2952ff3ef121` 的架构/类型/构建、43 项 API、11 项 Chromium 页面、8 项产物/候选/排序检查及纯生产依赖运行验证通过。
 - 候选包 SHA256：`5c888074eca24872371c026f2fd057257ecf83e7390ce8690c6ae2e5881941f3`。固定 `4fddcd6…` 与原始历史基线的升级、数据核验及匹配恢复均通过。
@@ -92,4 +92,10 @@ node scripts/verify-candidate.mjs --from OLD_FULL_SHA --current ACTUAL_FULL_SHA 
 - 后续控制器修正 `033ed86`、`242cd8d` 针对公网连续失败、协议告警和跨维护采样进行了真实 Linux 巡检定向回归，全部通过。应用运行包不包含高权限控制器；其安装另行受控。
 - Standards 审查修复重复请求过早完成、锁竞争误报和跨备份观察竞态；Spec 审查修复版本误报、事故回执缺失及外部巡检计数。成功的 readiness 观察只清零连续失败，不自动解除事故冻结。
 
-GitHub 的 production Environment 已建立，仅 main 可用；main 要求 PR 与两个检查、管理员也受约束、无需额外审核人。`DEPLOY_ENABLED`、`INSPECTION_ENABLED` 均保持 false。真实 OSS、部署密钥、首次合并驱动发布、定时邮件收件与云端恢复尚未完成，不以本地测试代替这些证据。
+GitHub 的 production Environment 已建立，仅 main 可用；main 要求 PR 与两个检查、管理员也受约束、无需额外审核人。`DEPLOY_ENABLED`、`INSPECTION_ENABLED` 均保持 false。真实本地备份、部署密钥、首次合并驱动发布、定时邮件收件与本地副本恢复尚未完成，不以本地测试代替这些证据。
+
+## 2026-09-20 备份范围调整
+
+用户取消云备份，默认部署改为 backupMode: local。本地校验、新鲜度、保留、隔离导入恢复与巡检走同一控制边界；不需要 OSS/RAM 或上传 timer。前面的 25 项数据是变更前历史验证记录，本地模式新增验收结果另行记录。
+
+本地模式验证：真实 Linux 全主机回归 27/27 通过；审查后新增的非最新受保护快照损坏、备份损坏时登记演练失败等定向场景 2/2 通过，类型检查通过。首次 GitHub 主机验收 24/25，唯一失败为测试 checkout 所有权差异，已修复并通过受限 SSH 定向验证；新的 GitHub 运行结果以 PR 检查为准。

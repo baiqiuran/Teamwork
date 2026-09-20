@@ -5,6 +5,7 @@ import { json, sha256, durable } from "./io.mjs";
 import { jobs, destination } from "./offsite.mjs";
 import { exists } from "./host.mjs";
 import { processIdentity } from "./process-identity.mjs";
+import { localOnly, localStatus } from "./local-backups.mjs";
 const validId = (id) => /^[a-zA-Z0-9_-]{1,80}$/.test(id);
 
 export async function withControlLock(config, id, work) {
@@ -95,8 +96,9 @@ function deletions(records, days, releases, protectedIds, now) {
 }
 export async function planRetention(config, store) {
   const local = [];
-  const queue = await jobs(config),
-    target = destination(config);
+  const localMode = localOnly(config);
+  const queue = localMode ? [] : await jobs(config),
+    target = localMode ? null : destination(config);
   const protectedIds = new Set(
     queue
       .filter(
@@ -125,7 +127,8 @@ export async function planRetention(config, store) {
       "LOCAL_MANIFEST_MISMATCH",
     );
     local.push(manifest);
-    if (!queue.some((j) => j.id === entry.name)) protectedIds.add(entry.name);
+    if (!localMode && !queue.some((j) => j.id === entry.name))
+      protectedIds.add(entry.name);
   }
   for (const name of await readdir(resolve(config.stateDir, "operations"))) {
     if (!name.endsWith(".json")) continue;
@@ -134,7 +137,17 @@ export async function planRetention(config, store) {
       for (const id of [operation.snapshot, operation.snapshotId])
         if (id) protectedIds.add(id);
   }
-  const remote = await remoteIndex(config, store);
+  if (localMode && (await exists(resolve(config.stateDir, "drills")))) {
+    for (const name of await readdir(resolve(config.stateDir, "drills"))) {
+      if (!name.endsWith(".json")) continue;
+      const drill = await json(resolve(config.stateDir, "drills", name));
+      if (drill.phase !== "verified" && validId(drill.id))
+        protectedIds.add(drill.id);
+    }
+  }
+  const remote = localMode
+    ? { snapshots: [], pins: [], keys: [] }
+    : await remoteIndex(config, store);
   for (const id of remote.pins) protectedIds.add(id);
   const localDelete = deletions(local, 7, 1, protectedIds, Date.now());
   const remoteDelete = deletions(
@@ -166,6 +179,37 @@ export async function planRetention(config, store) {
 }
 export async function applyRetention(config, store) {
   return withControlLock(config, "retention", async () => {
+    if (localOnly(config)) {
+      await localStatus(config); // Validate the remaining recovery point before removing anything.
+      const plan = await planRetention(config);
+      for (const { id } of plan.retainedMaterials) {
+        const manifest = await json(
+          resolve(config.backupDir, id, "manifest.json"),
+        );
+        assert.deepEqual(manifest.materials.map((f) => f.name).sort(), [
+          "application.tar.gz",
+          "config.env",
+          "data.tar.gz",
+          "node",
+        ]);
+        for (const file of manifest.materials)
+          assert.equal(
+            await sha256(resolve(config.backupDir, id, file.name)),
+            file.sha256,
+            "RETAINED_RECOVERY_POINT_INVALID",
+          );
+      }
+      for (const id of plan.localDelete) {
+        assert.ok(validId(id));
+        await rm(resolve(config.backupDir, id), { recursive: true });
+      }
+      await durable(resolve(config.stateDir, "retention.json"), {
+        ...plan,
+        appliedAt: new Date().toISOString(),
+        mode: "local",
+      });
+      return plan;
+    }
     await store.check();
     const token = await store.lock();
     try {

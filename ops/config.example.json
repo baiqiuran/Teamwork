@@ -1,6 +1,7 @@
 {
   "schema": 1,
   "automationEnabled": false,
+  "backupMode": "local",
   "incoming": "/opt/daily-flow/incoming",
   "repository": "/var/lib/daily-flow-git/repository.git",
   "dataDir": "/var/lib/daily-flow",
@@ -36,12 +37,5 @@
   "certificateFile": "/etc/letsencrypt/live/8.148.245.224/fullchain.pem",
   "renewalTimer": "snap.certbot.renew.timer",
   "serviceUser": "daily-flow",
-  "reserveBytes": 268435456,
-  "oss": {
-    "region": "cn-shanghai",
-    "hostRegion": "cn-guangzhou",
-    "bucket": "replace-with-private-backup-bucket",
-    "prefix": "snapshots/",
-    "roleName": "DailyFlowBackupRole"
-  }
+  "reserveBytes": 268435456
 }

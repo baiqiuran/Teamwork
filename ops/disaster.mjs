@@ -7,6 +7,7 @@ import {
   chmod,
   readdir,
   readFile,
+  cp,
 } from "node:fs/promises";
 import { resolve } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -16,6 +17,7 @@ import { capacity, exists } from "./host.mjs";
 import { validate } from "./snapshots.mjs";
 import { withControlLock } from "./retention.mjs";
 import { verifyPublicBaseline } from "./recovery.mjs";
+import { localOnly } from "./local-backups.mjs";
 
 function isolated(config, id) {
   assert.match(id, /^[a-zA-Z0-9_-]{1,80}$/);
@@ -30,6 +32,62 @@ function isolated(config, id) {
     ),
     "RECOVERY_REQUIRES_LOOPBACK_INGRESS",
   );
+}
+export async function importLocalSnapshot(config, source, id) {
+  isolated(config, id);
+  assert.ok(localOnly(config), "LOCAL_BACKUP_MODE_REQUIRED");
+  return withControlLock(config, `import-${id}`, async () => {
+    const startedAt = new Date().toISOString();
+    const target = resolve(config.backupDir, id);
+    assert.notEqual(resolve(source), target, "USE_A_SEPARATE_BACKUP_COPY");
+    assert.ok(!(await exists(target)), "RECOVERY_POINT_ALREADY_EXISTS");
+    const checkedSource = await validate(config, resolve(source));
+    await rm(checkedSource, { recursive: true, force: true });
+    const manifest = await json(resolve(source, "manifest.json"));
+    assert.equal(manifest.id, id);
+    await capacity(
+      config,
+      manifest.materials.reduce((sum, f) => sum + f.bytes, 0) * 2,
+    );
+    const stage = await mkdtemp(resolve(config.backupDir, ".local-import-"));
+    try {
+      for (const name of [
+        "manifest.json",
+        "manifest.sha256",
+        ...manifest.materials.map((f) => f.name),
+      ]) {
+        await cp(resolve(source, name), resolve(stage, name), {
+          force: false,
+          errorOnExist: true,
+          dereference: true,
+        });
+        await chmod(resolve(stage, name), 0o600);
+        await syncPath(resolve(stage, name));
+      }
+      const checked = await validate(config, stage);
+      await rm(checked, { recursive: true, force: true });
+      await rename(stage, target);
+      await syncPath(config.backupDir);
+      const record = {
+        id,
+        mode: "local",
+        phase: "fetched",
+        startedAt,
+        fetchedAt: new Date().toISOString(),
+        commit: manifest.commit,
+        snapshotAt: manifest.snapshotAt,
+        manifestDigest: await sha256(resolve(target, "manifest.json")),
+      };
+      await mkdir(resolve(config.stateDir, "drills"), {
+        recursive: true,
+        mode: 0o700,
+      });
+      await durable(resolve(config.stateDir, "drills", `${id}.json`), record);
+      return record;
+    } finally {
+      await rm(stage, { recursive: true, force: true });
+    }
+  });
 }
 export async function pullSnapshot(config, store, id) {
   isolated(config, id);
@@ -245,8 +303,10 @@ export async function verifyDrill(config, store, id) {
       record.withinRpo = record.recoveryPointMilliseconds <= 86400000;
       await durable(path, record);
       await durable(resolve(config.stateDir, "latest-drill.json"), record);
-      await store.check();
-      await store.remove(`${config.oss.prefix}${id}/${record.pin}`);
+      if (!localOnly(config)) {
+        await store.check();
+        await store.remove(`${config.oss.prefix}${id}/${record.pin}`);
+      }
       return record;
     } catch (error) {
       record = {

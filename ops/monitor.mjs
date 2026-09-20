@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import { configuration, command, exists, capacity } from "./host.mjs";
 import { json, durable } from "./io.mjs";
 import { status as backupStatus } from "./offsite.mjs";
+import { localOnly } from "./local-backups.mjs";
 import { alive } from "./process-identity.mjs";
 import { withControlLock } from "./retention.mjs";
 import { freeze } from "./recovery.mjs";
@@ -226,10 +227,17 @@ async function main() {
   }
   config = await configuration(path);
   const runtime = await json(resolve(config.stateDir, "runtime.json"));
-  const backup = config.oss
-    ? await backupStatus(config)
-    : { backup: "not-configured", fresh: false, pending: 0, failures: [] };
-  if (!backup.fresh) issues.push("OFFSITE_BACKUP_STALE");
+  let backup;
+  try {
+    backup = await backupStatus(config);
+  } catch {
+    backup = { backup: "invalid", fresh: false, pending: 0, failures: [] };
+    issues.push("BACKUP_INVALID");
+  }
+  if (!backup.fresh)
+    issues.push(
+      localOnly(config) ? "LOCAL_BACKUP_STALE" : "OFFSITE_BACKUP_STALE",
+    );
   if (backup.failures.length) issues.push("OFFSITE_UPLOAD_FAILED");
   try {
     await capacity(config, 0);
@@ -260,7 +268,7 @@ async function main() {
   for (const unit of new Set([
     ...(config.monitorTimers ?? [
       "daily-flow-backup.timer",
-      "daily-flow-upload.timer",
+      ...(localOnly(config) ? [] : ["daily-flow-upload.timer"]),
       "daily-flow-retention.timer",
     ]),
     config.renewalTimer,

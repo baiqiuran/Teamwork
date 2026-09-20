@@ -127,7 +127,13 @@ syncBuiltinESMExports();`,
   await writeFile(`${f.root}/resume`, "resume");
   const second = await delayed;
   assert.equal(second.code, 0, second.output + second.error);
-  assert.deepEqual(JSON.parse(second.output), JSON.parse(first.output));
+  const firstReceipt = JSON.parse(first.output),
+    secondReceipt = JSON.parse(second.output);
+  const { backup: firstBackup, ...firstOperation } = firstReceipt;
+  const { backup: secondBackup, ...secondOperation } = secondReceipt;
+  assert.deepEqual(secondOperation, firstOperation);
+  assert.equal(secondBackup.latestSnapshotId, firstBackup.latestSnapshotId);
+  assert.equal(secondBackup.backup, "verified");
 });
 
 test("maintenance blocks every entrance and concurrent data operations cannot steal control", async (t) => {

@@ -38,7 +38,7 @@ async function main() {
       snapshotCommit: result.commit,
       slot: result.slot,
       recovery: result.recovery,
-      backup: result.offsite,
+      backup: result.backup?.mode === "local" ? result.backup : result.offsite,
       maintenanceMilliseconds: result.maintenanceMilliseconds,
       failed: result.phase === "failed",
     };
@@ -53,9 +53,7 @@ async function main() {
       JSON.stringify({
         commit: runtime.commit,
         slot: runtime.slot,
-        backup: config.oss
-          ? await backupStatus(config)
-          : { backup: "not-configured" },
+        backup: await backupStatus(config),
         busy: !!lock,
         operationId: lock?.id,
         frozen: await exists(resolve(config.stateDir, "incident.json")),

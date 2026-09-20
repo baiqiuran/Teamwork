@@ -2,22 +2,19 @@
 import assert from "node:assert/strict";
 import { resolve } from "node:path";
 import { configuration } from "./host.mjs";
-import { json, durable } from "./io.mjs";
+import { json, durable, sha256 } from "./io.mjs";
+import { localOnly, localStatus } from "./local-backups.mjs";
 const [flag, path, reportFlag, reportPath] = process.argv.slice(2);
 assert.equal(flag, "--config");
 assert.equal(reportFlag, "--report");
 const config = await configuration(path, false),
   report = await json(reportPath);
 assert.match(report.id, /^[a-zA-Z0-9_-]{1,80}$/);
-const job = await json(
-  resolve(config.stateDir, "uploads", `${report.id}.json`),
-);
-assert.equal(job.phase, "verified");
 if (report.phase === "failed") {
   const failedAt = Date.parse(report.failedAt);
   assert.ok(
     Number.isFinite(failedAt) &&
-      failedAt >= Date.parse(job.snapshotAt) &&
+      failedAt >= (report.startedAt ? Date.parse(report.startedAt) : 0) &&
       failedAt <= Date.now(),
   );
   await durable(resolve(config.stateDir, "latest-drill.json"), {
@@ -30,6 +27,18 @@ if (report.phase === "failed") {
   console.log(JSON.stringify({ id: report.id, phase: "failure-recorded" }));
   process.exit(0);
 }
+let job;
+if (localOnly(config)) {
+  await localStatus(config);
+  const manifestPath = resolve(config.backupDir, report.id, "manifest.json");
+  job = {
+    ...(await json(manifestPath)),
+    phase: "verified",
+    manifestDigest: await sha256(manifestPath),
+  };
+} else
+  job = await json(resolve(config.stateDir, "uploads", `${report.id}.json`));
+assert.equal(job.phase, "verified");
 assert.equal(report.phase, "verified");
 assert.equal(report.manifestDigest, job.manifestDigest);
 assert.equal(report.commit, job.commit);

@@ -32,6 +32,12 @@ export async function configuration(path, readRuntime = true) {
   assert.equal(process.platform, "linux", "Deployment control requires Linux");
   const config = await json(path);
   assert.equal(config.schema, 1);
+  assert.ok(
+    config.backupMode === undefined ||
+      ["local", "oss"].includes(config.backupMode),
+    "INVALID_BACKUP_MODE",
+  );
+  if (config.backupMode === "oss") assert.ok(config.oss, "OSS_NOT_CONFIGURED");
   if (
     readRuntime &&
     typeof config.stateDir === "string" &&

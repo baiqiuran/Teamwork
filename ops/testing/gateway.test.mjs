@@ -17,11 +17,17 @@ test("restricted SSH uploads a fixed candidate, rechecks status and refuses stal
   // Use a fixture-owned remote with an explicit main; never trust all directories.
   const remote = f.root + "/remote.git";
   run(
-    "git", "clone", "--bare", "--no-local",
+    "git",
+    "clone",
+    "--bare",
+    "--no-local",
     "--upload-pack=git -c safe.directory=/repository/.git upload-pack",
-    "/repository", remote,
+    "/repository",
+    remote,
   );
-  const candidate = JSON.parse(await readFile("/candidate-artifact/receipt.json", "utf8")).commit;
+  const candidate = JSON.parse(
+    await readFile("/candidate-artifact/receipt.json", "utf8"),
+  ).commit;
   run("git", "--git-dir", remote, "update-ref", "refs/heads/main", candidate);
   run("git", "clone", "--bare", remote, f.config.repository);
   await writeFile(

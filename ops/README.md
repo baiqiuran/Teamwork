@@ -1,6 +1,6 @@
 # 发布控制（实施中）
 
-这是与业务数据库分开的主机运维入口，提供一致备份、双槽单活发布、失败恢复、OSS 补传与保留、受限 SSH 和巡检。通过真实 Linux systemd/Nginx 验收；真实 OSS、GitHub 配置及生产接入仍待任务 11，本目录尚未安装到正式服务器。
+这是与业务数据库分开的主机运维入口，提供一致备份、双槽单活发布、失败恢复、本地备份保留与隔离恢复、受限 SSH 和巡检。通过真实 Linux systemd/Nginx 验收；GitHub 配置及生产接入仍待任务 11，本目录尚未安装到正式服务器。
 
 ## 操作入口
 
@@ -85,59 +85,47 @@ docker exec -w /repository daily-flow-systemd-validation node --test ops/testing
 
 特权仅用于隔离容器里的 systemd/cgroup 验收。测试应用以 `nobody` 运行，使用合成团队、日报和附件，检查完整恢复、真实入口维护、并发互斥、坏附件、损坏归档和磁盘容量门槛。调试数据保留在容器中，停止并移除该测试容器可一并清理。
 
-## OSS 上传与新鲜度（任务 07）
+## 本地备份与新鲜度（任务 07）
 
-控制工具有独立依赖锁：在 `ops/` 执行 `npm ci --omit=dev`。这些依赖由运维安装，不随应用包替换。配置 `oss` 的 bucket、不同于 ECS 的中国内地 region、单层 prefix 与实例 roleName。桶须私有，开启公共访问阻止和默认 AES256 加密；上传额外指定私有 ACL 与 AES256，下载核验加密响应及逐文件 SHA256。采用 HTTPS、V4 签名、仅 ECS RAM 角色和 IMDSv2，不读取 CI AccessKey。
+2026-09-20 用户取消云备份。部署配置使用 `backupMode: local`，删除 `oss` 配置，不安装或启动 `daily-flow-upload.timer`，无需 OSS/RAM 或 AccessKey。旧云配置的兼容代码仍保留，当前部署流程不调用它。
 
-角色最小权限模板见 `oss-policy.example.json`；替换桶名并保持配置前缀一致，只关联目标 ECS。正式桶/角色/网络访问尚未实测，任务 11 才能登记真实证明。凭证接法依据 [阿里云 OSS 官方 SDK 文档](https://help.aliyun.com/zh/oss/developer-reference/nodejs-sdk/)，SDK 与凭证库版本分别锁定 6.23.0 / 2.4.7。
-
-每次本地快照验证后，数据工作进程会先持久化 `uploads/<id>.json` 再允许启动。上传单独由 timer 执行，不延长当前维护窗口：
+每日北京时间 04:00 备份，发布前另做一致快照。完整快照包含数据库、WAL/SHM、附件、匹配应用包、Node 和受限配置。维护、停止写入、校验、恢复服务沿用共同操作锁。发布在候选准备前和进入维护前检查最近本地快照；没有有效副本、摘要损坏或数据时间超过 24 小时，拒绝新发布，现有服务继续运行。复制旧文件不会刷新数据时间。
 
 ```sh
-node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json upload
-node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json status
+node ops/backup-cli.mjs --config /etc/daily-flow/deploy.json status
+node ops/dispatch.mjs --config /etc/daily-flow/deploy.json backup --id daily-UNIQUE --kind daily
 ```
 
-`pending → uploading → verified/failed`；失败按 1、2、4…分钟重试，上限一小时，进程中断的 uploading 会继续处理相同快照。远端 complete.json 最后写入；所有材料与清单读回校验后才标记 verified。应用发布成功与备份失败分别记录，上传失败不会恢复旧数据库。首次启用自动发布前先执行一次每日备份和上传，取得有效异地副本；release 入口在准备前和维护前均检查该副本，缺失或数据时间超过 24 小时拒绝新发布。既有网页、备份和补传继续运行。
+## 保留与本地副本恢复（任务 08）
 
-隔离测试通过 Node 模块 hook 替换 OSS I/O，覆盖离线、摘要错误、补传重启和新鲜度；没有在生产配置中加入跳过门槛开关。真实资源验证入口是上面的 backup/upload/status 组合，先使用独立测试桶和合成数据，勿把业务备份放入 GitHub runner。
-
-上传扫描会对账已完整落盘的快照，补建因进程中断缺失的任务；原子首次发布队列记录避免并发对账覆盖已验证结果。发布完成与状态查询关联本次快照的实时 pending/failed/verified，失败退避从该次失败时刻起计算。
-
-## 保留与异地恢复（任务 08）
-
-`retention-plan` 只生成计划，`retention-apply` 使用与发布/备份/恢复相同的操作锁执行。每日备份本机七天、OSS 三十天；发布前备份本机最近一次、OSS 最近十次。待上传、上传失败、无队列证明、恢复中的快照，以及本地/异地最后一个有效恢复点不删除。每份快照自带应用包、Node、配置，无跨快照共享材料；清理整份目录并保留仍被引用材料清单，不清理活动 releases 或事故现场。空间不足停止操作，不能删保护点换空间。
+本机保留七天每日备份及最近一次发布前备份，最后有效恢复点与正在恢复的材料受保护。快照自带匹配代码、Node、配置。清理与发布共用操作锁，清理前重新检查将保留的最新材料；损坏则停止，不能为了腾空间删除保护点。手工备份不自动按日/发布次数删除。
 
 ```sh
-node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json retention-plan
-node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json retention-apply
+node ops/backup-cli.mjs --config /etc/daily-flow/deploy.json retention-plan
+node ops/backup-cli.mjs --config /etc/daily-flow/deploy.json retention-apply
 ```
 
-异地拉取与清理还使用 OSS `snapshots/coordination/lock.json` 排他锁。恢复者先写 `restore-pin-*.json`，验证完成才删除；远端清理见到 pin 会保留。锁不会按时间自动过期，防止慢恢复时误清理。进程崩溃遗留锁必须由运维确认原工作进程停止、相关恢复点已保护后，再手动清除；不要把删锁当作常规重试。
+每月在运维控制的隔离 Linux 环境演练，真实备份不得进入 GitHub runner。步骤：
 
-每月在运维控制的隔离 Linux 主机执行以下演练（禁止在生产运行；真实材料不能进入 GitHub runner）：
-
-1. 从独立运维存档安装相同 Node 二进制、控制程序及锁定依赖；安装 systemd/Nginx、服务用户和数据锁。准备同路径的空数据、备份、版本目录；绑定独立配置与**仅回环监听**的代理。`recoveryMode` 设置为 `isolated`。源配置中的数据库绝对路径及槽位/端口必须保持对应，跨域名/端口正式切换另作基础设施维护。
-2. 给恢复主机关联受限恢复角色。配置相同私有桶及前缀，关闭应用、备份和清理定时器，勿把恢复机接入正式流量。
-3. 用明确的快照 ID 拉取。完成标记、清单和全部材料逐一核验，缺失则保留失败证据并停止。下载包含秘密配置，目标目录 0700、文件 0600。
+1. 在生产控制锁无活动时，暂停清理 timer，将选定的完整快照目录复制到受限运维目录，复制前后核对全部摘要，再恢复清理 timer。备份目录及副本 0700、材料 0600，不能把秘密配置放公共仓库。
+2. 在独立环境安装同版本 Node、控制程序与 systemd/Nginx。准备对应的空数据/备份/版本路径和运行用户；入口仅回环监听。设置 `backupMode: local`、`recoveryMode: isolated`，不接正式流量。数据库路径、端口和槽位与快照中的运行配置保持对应。
+3. 将完整副本放在 `/root/recovery-materials/SNAPSHOT_ID`，执行导入、配套恢复和业务核验：
 
 ```sh
-node ops/offsite-cli.mjs --config /etc/daily-flow/recovery.json pull SNAPSHOT_ID
+node ops/backup-cli.mjs --config /etc/daily-flow/recovery.json import SNAPSHOT_ID --source /root/recovery-materials/SNAPSHOT_ID
 node ops/control.mjs --config /etc/daily-flow/recovery.json restore --id restore-UNIQUE --snapshot SNAPSHOT_ID
-node ops/offsite-cli.mjs --config /etc/daily-flow/recovery.json drill-verify SNAPSHOT_ID
+node ops/backup-cli.mjs --config /etc/daily-flow/recovery.json drill-verify SNAPSHOT_ID
 ```
 
-4. `drill-verify` 比较团队、成员、日报、项目、任务、分享、附件、会话、授权和回执的恢复内容，校验附件字节及网页/MCP/OAuth协议；报告只包含校验结果、数量和耗时，不输出业务正文或凭证。RPO目标24小时、RTO目标4小时，实际值与是否达标分别记录在 `stateDir/drills/<id>.json`。失败/缺失材料会留存阶段及失败记录。
-5. 人工核对隔离主机与报告后，把报告文件通过运维通道带回生产控制主机，用 `node ops/record-drill.mjs --config /etc/daily-flow/deploy.json --report /root/isolated-drill.json` 登记。入口核对源快照摘要与时间，供后续巡检识别月度演练过期。报告导入需要可信运维身份；文件本身不构成远程主机的密码学证明。
-6. 实际整机故障恢复按同样过程先在隔离入口验证，再由运维核对公开地址、OAuth资源、证书和代理后开放。恢复的是快照生成时的数据，不能把旧快照恢复进仍接受写入的生产实例。
+4. 核验团队、成员、日报、项目、任务、分享、附件、会话、授权及回执，比较附件字节和网页/MCP/OAuth 协议。报告位于 `stateDir/drills/SNAPSHOT_ID.json`。将报告带回生产受信任运维目录，再登记：
 
-当前证据为真实 Linux/systemd/Nginx 加合成对象存储的完整恢复；真实 OSS 桶及独立云主机恢复留待任务11，未据此声明已达到生产 RPO/RTO。
+```sh
+node ops/record-drill.mjs --config /etc/daily-flow/deploy.json --report /root/recovery-evidence.json
+```
 
-恢复配置可用 `recoveryPublicUrl` 指定快照原来的 HTTPS 源地址：网络连接仍只去 `ingressUrl` 的回环地址，探测 Host/OAuth origin 保持原值。该字段只允许在 `recoveryMode: isolated` 且入口回环时使用。代理须保留传入 Host；不要为了演练改写授权资源地址。公网配置快照已加入隔离回归。
+恢复报告绑定本地快照摘要与代码版本；只含校验结果、数量及耗时。保留成功与失败记录供巡检检查。若公网 origin 是 HTTPS，隔离配置设置 `recoveryPublicUrl` 为原地址，代理保留 Host，仍只监听回环。
 
-清理执行前会重新验证将保留的本地和异地最新恢复点的四份完整材料摘要，任何缺失/不符都停止全部清理，保留更旧恢复点。下载已落盘但 fetched 回执丢失时，重新拉取会核对已有目录的摘要与完整性后补齐回执；不同内容拒绝覆盖。
-
-OSS 桶须从未启用版本控制，SDK 会检查并拒绝 Enabled/Suspended。原因是 [PutObject 官方说明](https://help.aliyun.com/en/oss/developer-reference/putobject) 明确：版本控制开启或暂停时 `x-oss-forbid-overwrite` 无效，不能据此建立排他锁。角色增加只读 `GetBucketVersioning` 权限；此版本也不通过删除标记伪装成历史版本已按期清理。
+备份保全前提下，以 24 小时恢复点、4 小时恢复耗时作为演练目标。**同机备份不覆盖服务器或磁盘全部丢失**，不再承诺整机灾难恢复。导入失败不会覆盖既有快照；发生落盘后回执中断时先保留目录并人工核验，不删除旧恢复点盲目重试。
 
 ## GitHub 串接与受限 SSH（任务 09）
 
@@ -151,7 +139,7 @@ command="sudo -n /usr/local/sbin/daily-flow-ssh-entry \"$SSH_ORIGINAL_COMMAND\""
 
 `gateway.mjs` 只接收 baseline、status ID、upload ID SHA256、release ID BASELINE。上传经标准输入，只接受四份固定名称文件，限制压缩/展开空间、核对摘要并保存 root 所有的固定材料；不能指定路径、执行 shell、读取秘密配置或替换高权限控制程序。配置中的 root 管理 bare repository 固定 origin 为本仓库，发布前 fetch main 并核对候选祖先关系。系统控制程序升级另走运维审查，普通应用发布不覆盖它。
 
-流水线先按 main 的提交关系选最新成功的 `Application checks` push 作业，完整工作流成功才算合格（包含 `Verified Linux artifact` 和 `Linux release and recovery`）。重复请求先查询稳定操作 ID；已上传、已受理及已完成可接续，不重新迁移。实际生产基线改变则重新选取并验证；当前发布完成后再选择最新合格 main。GitHub concurrency 使用不取消运行中的作业；pending 替换顺序不当作版本顺序，服务器独立 systemd 作业也不受观察端取消影响。报告区分实际上线、开放前恢复、开放后需人工处理及异地备份待补传。
+流水线先按 main 的提交关系选最新成功的 `Application checks` push 作业，完整工作流成功才算合格（包含 `Verified Linux artifact` 和 `Linux release and recovery`）。重复请求先查询稳定操作 ID；已上传、已受理及已完成可接续，不重新迁移。实际生产基线改变则重新选取并验证；当前发布完成后再选择最新合格 main。GitHub concurrency 使用不取消运行中的作业；pending 替换顺序不当作版本顺序，服务器独立 systemd 作业也不受观察端取消影响。报告区分实际上线、开放前恢复、开放后需人工处理及本地恢复点状态。
 
 分支规则：main 禁止直接推送/强推/删除，Require pull request，必需上述两个检查、要求分支最新；允许本人合并，不强制第二审核人。GitHub 应用/管理员绕过需关闭或单独受控。PR/普通构建无生产 Secrets，`workflow_run` 只处理本仓库 main push；部署脚本取默认分支，不执行 PR 分支部署代码。规则与邮件实际生效待任务11核验。
 
@@ -161,20 +149,20 @@ CI 在无生产资料的临时 Linux 环境构建同一固定产物，再启动�
 
 ## 小时巡检和通知（任务 10）
 
-`Production inspection` 每小时 UTC 的第 17 分钟运行，独立于发布队列，不取消已受理发布。生产 Environment 增加 `DEPLOY_URL`（完整 HTTPS origin，无结尾斜线）；仓库变量 `INSPECTION_ENABLED=true` 才启用。部署账号增加的固定命令仅为 `inspect ID`、`inspection-complete ID`、`external-failure ID`、`external-ready ID`、`external-protocol-failure ID`。主机诊断包含当前版本/槽位、维护和事故、备份数据时间、失败补传、可用磁盘、证书到期时间、续期/备份/补传/清理 timer，以及最近恢复演练。业务正文和令牌不进入报告。
+`Production inspection` 每小时 UTC 的第 17 分钟运行，独立于发布队列，不取消已受理发布。生产 Environment 增加 `DEPLOY_URL`（完整 HTTPS origin，无结尾斜线）；仓库变量 `INSPECTION_ENABLED=true` 才启用。部署账号增加的固定命令仅为 `inspect ID`、`inspection-complete ID`、`external-failure ID`、`external-ready ID`、`external-protocol-failure ID`。主机诊断包含当前版本/槽位、维护和事故、本地备份数据时间、完整性、可用磁盘、证书到期时间、续期/备份/清理 timer，以及最近恢复演练。业务正文和令牌不进入报告。
 
 ```sh
 node ops/monitor.mjs --config /etc/daily-flow/deploy.json inspect manual-UNIQUE
-systemctl list-timers daily-flow-backup.timer daily-flow-upload.timer daily-flow-retention.timer snap.certbot.renew.timer
+systemctl list-timers daily-flow-backup.timer daily-flow-retention.timer snap.certbot.renew.timer
 ```
 
-配置 `certificateFile` 指向实际公开证书，`renewalTimer` 指向已有续期 timer，示例的 snap 名称需以服务器实时输出为准。证书少于 6 小时、timer 停止或最近任务失败会报警；不改动证书策略。新证书仍由 GitHub 外部 HTTPS 请求核验信任、主机名及有效期。`monitorTimers` 仅供受信任主机配置指定等效 timer，默认检查三项日序 timer，不能用空配置绕过生产交接核对。
+配置 `certificateFile` 指向实际公开证书，`renewalTimer` 指向已有续期 timer，示例的 snap 名称需以服务器实时输出为准。证书少于 6 小时、timer 停止或最近任务失败会报警；不改动证书策略。新证书仍由 GitHub 外部 HTTPS 请求核验信任、主机名及有效期。`monitorTimers` 仅供受信任主机配置指定等效 timer，本地模式默认检查备份与清理两项日序 timer，不能用空配置绕过生产交接核对。
 
 主机使用既有 `control inspect` 和共同操作锁验证协议/数据。活动操作短暂维护时等待最多约 10 分钟，不与发布争抢数据；锁对应进程失效、未完成状态不明、预算超时均报告人工核对。服务失败时隔 31 秒复查两次，沿用至少三次且跨 60 秒的门槛；明确数据异常立即维护。根因修复后仍需 `resolve-incident` 明确解除事故冻结，不能用“重新跑巡检”或删除锁代替。
 
-报告要区分：`publicService.healthy=true` 且 `backup.pending>0` 表示应用正常、正在补传；`OFFSITE_UPLOAD_FAILED` 表示上传异常；`OFFSITE_BACKUP_STALE` 使发布门槛暂时不满足，网页仍服务，补传成功后门槛自动恢复。二者不会自动恢复旧数据，也不会自己清除既有事故冻结。磁盘不足先扩容或按保留规则清理非保护材料，不能删除未上传备份。
+报告区分应用健康与备份状态。`LOCAL_BACKUP_STALE` 表示本地快照缺失/超龄，`BACKUP_INVALID` 表示材料无法验证；它们阻止新发布但不覆盖现有业务数据。补做有效本地备份后新鲜度门槛恢复；事故冻结仍须明确解除。
 
-主机诊断和外部 HTTPS/readiness/login/MCP/OAuth 全部成功后才记录 `last-inspection-success.json`；匿名 MCP 返回 401、空 OAuth 请求返回 400 是预期结果。失败报告保存在 `latest-inspection.json`，成功时间不会被失败覆盖。最近的异地备份时间和恢复演练时间分别显示；演练超过 31 天、失败或超出恢复目标会报告。隔离演练失败报告也可经 `record-drill.mjs` 导入，保留此前 `last-drill-success.json`。
+主机诊断和外部 HTTPS/readiness/login/MCP/OAuth 全部成功后才记录 `last-inspection-success.json`；匿名 MCP 返回 401、空 OAuth 请求返回 400 是预期结果。失败报告保存在 `latest-inspection.json`，成功时间不会被失败覆盖。最近的本地备份时间和恢复演练时间分别显示；演练超过 31 天、失败或超出恢复目标会报告。隔离演练失败报告也可经 `record-drill.mjs` 导入，保留此前 `last-drill-success.json`。
 
 原生失败邮件的启用与验证：
 

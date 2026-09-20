@@ -219,7 +219,7 @@ if (action === "status") {
           break execution;
         }
         if (action === "release") {
-          operation.offsite = await requireFresh(config);
+          operation.backup = await requireFresh(config);
           operation.target = await prepare(config, operation);
           await durable(statePath, operation);
         }
@@ -230,8 +230,7 @@ if (action === "status") {
           );
           await rm(checked, { recursive: true, force: true });
         }
-        if (action === "release")
-          operation.offsite = await requireFresh(config);
+        if (action === "release") operation.backup = await requireFresh(config);
         enteredMaintenance = true;
         await maintenance(config, true);
         operation = {

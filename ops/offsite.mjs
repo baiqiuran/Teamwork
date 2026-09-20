@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
 import { durable, json, sha256, syncPath } from "./io.mjs";
 import { exists } from "./host.mjs";
+import { localOnly, localStatus } from "./local-backups.mjs";
 
 export function destination(config) {
   const value = config.oss;
@@ -32,6 +33,7 @@ export async function jobs(config) {
   );
 }
 export async function enqueue(config, id) {
+  if (localOnly(config)) return;
   assert.match(id, /^[a-zA-Z0-9_-]{1,80}$/);
   const directory = resolve(config.backupDir, id);
   const digest = await sha256(resolve(directory, "manifest.json"));
@@ -102,6 +104,20 @@ export async function reconcileQueue(config) {
   }
 }
 export async function report(config, operation) {
+  if (localOnly(config)) {
+    let backup;
+    try {
+      backup = await localStatus(config);
+    } catch {
+      backup = {
+        mode: "local",
+        backup: "invalid",
+        fresh: false,
+        failure: "LOCAL_BACKUP_INVALID",
+      };
+    }
+    return { ...operation, backup, offsite: { backup: "disabled" } };
+  }
   if (!operation.snapshotId) return operation;
   const path = resolve(
     config.stateDir,
@@ -125,6 +141,7 @@ export async function report(config, operation) {
   };
 }
 export async function status(config, now = Date.now()) {
+  if (localOnly(config)) return localStatus(config, now);
   const target = destination(config);
   const queue = await jobs(config);
   const valid = queue.filter(
@@ -143,7 +160,8 @@ export async function status(config, now = Date.now()) {
     latestSnapshotId: latest?.id,
     ageMilliseconds: latest ? now - Date.parse(latest.snapshotAt) : null,
     fresh: !!latest && now - Date.parse(latest.snapshotAt) <= 86400000,
-    pending: queue.filter((j) => !["verified", "retired"].includes(j.phase)).length,
+    pending: queue.filter((j) => !["verified", "retired"].includes(j.phase))
+      .length,
     failures: queue
       .filter((j) => j.phase === "failed")
       .map((j) => ({
@@ -155,7 +173,12 @@ export async function status(config, now = Date.now()) {
 }
 export async function requireFresh(config) {
   const result = await status(config);
-  assert.ok(result.fresh, "OFFSITE_BACKUP_EXPIRED_OR_MISSING");
+  assert.ok(
+    result.fresh,
+    localOnly(config)
+      ? "LOCAL_BACKUP_EXPIRED_OR_MISSING"
+      : "OFFSITE_BACKUP_EXPIRED_OR_MISSING",
+  );
   return result;
 }
 export async function upload(config, store) {
