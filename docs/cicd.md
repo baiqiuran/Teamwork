@@ -1,6 +1,6 @@
 # CI/CD 实施与验证
 
-当前落地到固定提交构建入口（任务 01）。生产自动发布尚未启用；双槽切换、升级门槛、备份和恢复等后续任务通过后才能上线。
+已提供固定提交构建入口（任务 01）和指定源版本的升级验证入口（任务 02）。生产自动发布尚未启用；双槽切换、备份和恢复等后续任务通过后才能上线。
 
 ## 固定提交产物
 
@@ -43,3 +43,36 @@ node --test scripts/release-artifact.test.mjs
 - Linux 包 SHA-256：`5f95947bf54667636813590579718c8025550f606ba595b8740b11a6f55ccd3f`。
 - Standards 审查与 Spec 审查的问题已修复：校验脚本使用归档版本、拒绝 tree/tag 对象冒充提交；Linux npm 路径经实跑修正。
 - 这是本地隔离 Linux 验收，GitHub 托管作业尚未实际执行，生产部署未启用。
+
+## 候选升级门槛
+
+在具备完整 Git 历史、当前开发依赖和目标运行平台的隔离环境运行：
+
+```sh
+node scripts/verify-candidate.mjs --from OLD_FULL_SHA --current ACTUAL_FULL_SHA --artifact /path/to/verified-artifact --plan /path/to/migration-plan.json --output /path/to/new-upgrade-evidence.json
+```
+
+`--current` 是调用方刚读取的实际线上版本，必须与 `--from` 相同；排队期间版本改变后必须重新验证。服务器端再次读取实际版本属于发布控制步骤，不能仅信任调用者保存的旧值。目标取自产物凭据，并验证摘要、平台、Node 版本、清单与祖先关系；缺失历史直接失败。
+
+迁移说明示例（没有持久化代码变更时 `changes` 为空，但仍需说明）：
+
+```json
+{
+  "from": "完整旧提交 SHA",
+  "to": "完整候选提交 SHA",
+  "automatic": true,
+  "description": "本次版本及迁移范围说明",
+  "changes": [
+    {
+      "commit": "范围内修改持久化代码的完整提交 SHA",
+      "path": "server/infrastructure/sqlite/ai-migrations.ts",
+      "kind": "additive",
+      "description": "新增字段及其默认值、兼容性依据"
+    }
+  ]
+}
+```
+
+检查整个提交跨度中的持久化适配与初始化变更，说明必须逐提交、逐文件对应。改写既有数据、删表/删列/重命名等 SQL 保守地转人工维护；仅标注“additive”不能绕过检查。允许范围内仍要实际启动旧版本建立合成团队数据，运行候选迁移，比较原表、字段与既有行，并经业务接口验证会话、成员授权、日报、任务、公开链接和附件，再恢复匹配的旧代码及备份。原始 pre-MCP 历史基线的升级与恢复也继续执行。
+
+源版本应是已有 `build:server` 的编译版部署；更早的历史版本由保留的专用历史基线验证覆盖。生成的独立证据绑定源/目标 SHA、原产物摘要、迁移说明、验证脚本摘要和完整范围差异摘要；不改写原始产物凭据，也不把升级通过等同于所有上线条件通过。
