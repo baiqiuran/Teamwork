@@ -85,6 +85,7 @@ test("reviewed infrastructure moves require exact prior and replacement blobs", 
     "wrong-blob",
     "deleted",
     "tampered-plan",
+    "unreviewed-move",
   ]) {
     const result = await migrationAttempt(
       "server/infrastructure/sqlite/repository.ts",
@@ -143,6 +144,42 @@ async function migrationAttempt(path, sql, kind, move) {
       }
     } else await writeFile(resolve(root, path), sql + "\n");
     git("add", ".");
+    let notesPath, previousBlob;
+    if (move) {
+      previousBlob = git("rev-parse", `${from}:${path}`);
+      const replacementBlob =
+        move === "deleted" ? "0".repeat(40) : git("hash-object", replacement);
+      const notes = {
+        [replacementBlob]: {
+          kind: "runtime",
+          automatic: true,
+          description: "Reviewed destination",
+        },
+        ...(move === "missing"
+          ? {}
+          : {
+              [`moved:${previousBlob}`]: {
+                kind,
+                automatic: true,
+                description: "Reviewed move",
+                replacement,
+                replacementBlob:
+                  move === "wrong-blob" ? "1".repeat(40) : replacementBlob,
+              },
+            }),
+      };
+      notesPath = resolve(root, "docs/migrations/automatic.json");
+      await mkdir(resolve(notesPath, ".."), { recursive: true });
+      await writeFile(
+        notesPath,
+        JSON.stringify(move === "unreviewed-move" ? {} : notes),
+      );
+      if (move === "unreviewed-move") {
+        notesPath = resolve(root, "external-notes.json");
+        await writeFile(notesPath, JSON.stringify(notes));
+      }
+    }
+    git("add", ".");
     git("commit", "-m", "candidate");
     const to = git("rev-parse", "HEAD");
     const artifact = resolve(root, "artifact");
@@ -173,32 +210,6 @@ async function migrationAttempt(path, sql, kind, move) {
     const plan = resolve(root, "plan.json"),
       output = resolve(root, "evidence.json");
     if (move) {
-      const previousBlob = git("rev-parse", `${from}:${path}`);
-      const replacementBlob =
-        move === "deleted"
-          ? "0".repeat(40)
-          : git("rev-parse", `${to}:${replacement}`);
-      const notes = {
-        [replacementBlob]: {
-          kind: "runtime",
-          automatic: true,
-          description: "Reviewed destination",
-        },
-        ...(move === "missing"
-          ? {}
-          : {
-              [`moved:${previousBlob}`]: {
-                kind,
-                automatic: true,
-                description: "Reviewed move",
-                replacement,
-                replacementBlob:
-                  move === "wrong-blob" ? "1".repeat(40) : replacementBlob,
-              },
-            }),
-      };
-      const notesPath = resolve(root, "notes.json");
-      await writeFile(notesPath, JSON.stringify(notes));
       const planned = spawnSync(
         process.execPath,
         [
@@ -214,7 +225,7 @@ async function migrationAttempt(path, sql, kind, move) {
         ],
         { cwd: root, encoding: "utf8" },
       );
-      if (move !== "valid" && move !== "tampered-plan") {
+      if (!["valid", "tampered-plan", "unreviewed-move"].includes(move)) {
         assert.notEqual(planned.status, 0);
         return planned;
       }

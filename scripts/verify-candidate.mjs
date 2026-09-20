@@ -131,7 +131,28 @@ for (const commit of commits) {
       migration ? "additive" : "runtime",
       `MIGRATION_KIND_MISMATCH: ${commit}:${path}`,
     );
-    if (!fileBlob(git, commit, path)) verifyMove(git, commit, path, note);
+    if (!fileBlob(git, commit, path)) {
+      verifyMove(git, commit, path, note);
+      // A hand-written plan is not a substitute for the reviewed mapping in
+      // the candidate commit. Bind moves to that version's allowlist as well.
+      const reviewed = JSON.parse(
+        git("show", `${to}:docs/migrations/automatic.json`),
+      );
+      const move = reviewed[`moved:${note.previousBlob}`];
+      assert.ok(
+        move?.automatic === true &&
+          move.kind === note.kind &&
+          move.description === note.description &&
+          move.replacement === note.replacement &&
+          move.replacementBlob === note.replacementBlob,
+        `MIGRATION_MOVE_INVALID: unreviewed mapping ${commit}:${path}`,
+      );
+      assert.ok(
+        reviewed[note.replacementBlob]?.automatic === true &&
+          reviewed[note.replacementBlob]?.description?.trim(),
+        `MIGRATION_NOTES_MISSING: move destination ${commit}:${note.replacement}`,
+      );
+    }
     const diff = git(
       "show",
       "--format=",
