@@ -14,6 +14,12 @@ import {
 } from "./host.mjs";
 import { validate } from "./snapshots.mjs";
 import { prepare, activate, externalProbe } from "./release.mjs";
+import {
+  freeze,
+  recoverBeforeOpen,
+  observe,
+  resolveIncident,
+} from "./recovery.mjs";
 
 const args = process.argv.slice(2);
 assert.equal(args.shift(), "--config");
@@ -21,16 +27,30 @@ const configPath = args.shift();
 let config = await configuration(configPath);
 const action = args.shift();
 assert.ok(
-  ["backup", "restore", "release", "status"].includes(action),
+  [
+    "backup",
+    "restore",
+    "release",
+    "status",
+    "inspect",
+    "resolve-incident",
+  ].includes(action),
   "Unknown operation",
 );
 const input = {};
 while (args.length) {
   const key = args.shift();
   assert.ok(
-    ["--id", "--kind", "--snapshot", "--candidate", "--baseline"].includes(
-      key,
-    ) &&
+    [
+      "--id",
+      "--kind",
+      "--snapshot",
+      "--candidate",
+      "--baseline",
+      "--incident",
+      "--expected-commit",
+      "--note",
+    ].includes(key) &&
       args.length &&
       !input[key],
     "Invalid operation option",
@@ -63,6 +83,9 @@ if (action === "status") {
         snapshot: input["--snapshot"],
         candidate: input["--candidate"],
         baseline: input["--baseline"],
+        incident: input["--incident"],
+        expectedCommit: input["--expected-commit"],
+        note: input["--note"],
       }),
     )
     .digest("hex");
@@ -83,6 +106,9 @@ if (action === "status") {
       snapshot: input["--snapshot"],
       candidate: input["--candidate"],
       baseline: input["--baseline"],
+      incident: input["--incident"],
+      expectedCommit: input["--expected-commit"],
+      note: input["--note"],
       fingerprint,
       phase: "preparing",
       createdAt: new Date().toISOString(),
@@ -112,13 +138,36 @@ if (action === "status") {
           if (previous.phase === "failed") process.exitCode = 1;
           break execution;
         }
-        assert.ok(
-          !(await exists(config.maintenance)) &&
-            !(await exists(resolve(config.stateDir, "incident.json"))),
-          "MAINTENANCE_OR_INCIDENT_ACTIVE",
-        );
+        if (!["inspect", "resolve-incident"].includes(action))
+          assert.ok(
+            !(await exists(config.maintenance)) &&
+              !(await exists(resolve(config.stateDir, "incident.json"))),
+            "MAINTENANCE_OR_INCIDENT_ACTIVE",
+          );
         ownsRecord = true;
         await durable(statePath, operation);
+        if (action === "inspect" || action === "resolve-incident") {
+          if (action === "inspect") {
+            const current = await json(
+              resolve(config.stateDir, "runtime.json"),
+            );
+            operation.inspection = await observe(
+              config,
+              operation,
+              current.commit,
+            );
+            if (!operation.inspection.healthy)
+              throw new Error("INSPECTION_FAILED");
+          } else operation = await resolveIncident(config, operation);
+          operation = {
+            ...operation,
+            phase: "completed",
+            finishedAt: new Date().toISOString(),
+          };
+          await durable(statePath, operation);
+          console.log(JSON.stringify(operation));
+          break execution;
+        }
         if (action === "release") {
           operation.target = await prepare(config, operation);
           await durable(statePath, operation);
@@ -156,6 +205,8 @@ if (action === "status") {
         );
         operation = await json(statePath);
         if (action === "release") {
+          operation = { ...operation, phase: "activating" };
+          await durable(statePath, operation);
           await activate(config, operation);
           operation = {
             ...operation,
@@ -190,7 +241,44 @@ if (action === "status") {
         console.log(JSON.stringify(operation));
       } catch (error) {
         let recovery = "not-needed";
-        if (enteredMaintenance) {
+        if (action === "release" && enteredMaintenance) {
+          if (operation.mayHaveOpenedAt) {
+            recovery = "preserved-new-data";
+            await freeze(
+              config,
+              operation,
+              "POST_OPEN_VERIFICATION_FAILED",
+              false,
+            );
+            config = await configuration(configPath);
+            operation.inspection = await observe(
+              config,
+              operation,
+              operation.target.commit,
+            );
+          } else {
+            try {
+              operation = await recoverBeforeOpen(
+                configPath,
+                config,
+                operation,
+              );
+              recovery = operation.recovery;
+            } catch (restoreError) {
+              operation = { ...operation, ...(await json(statePath)) };
+              recovery = "manual-intervention";
+              operation.recoveryFailure = restoreError.stderr
+                ? String(restoreError.stderr)
+                : restoreError.message;
+              await freeze(config, operation, "BASELINE_RECOVERY_FAILED", true);
+            }
+          }
+        } else if (action === "resolve-incident" && ownsRecord) {
+          operation = { ...operation, ...(await json(statePath)) };
+          recovery = "manual-intervention";
+          if (operation.mayHaveOpenedAt)
+            await freeze(config, operation, "MANUAL_RESOLUTION_FAILED", true);
+        } else if (enteredMaintenance) {
           if (action === "backup") {
             try {
               await start(config);

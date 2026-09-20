@@ -144,6 +144,16 @@ export function assertStopped(unit) {
 export async function start(config, deadline = Date.now() + 120000) {
   command("/bin/systemctl", "start", config.unit);
   while (Date.now() < deadline) {
+    if (
+      command(
+        "/bin/systemctl",
+        "show",
+        config.unit,
+        "--property=ActiveState",
+        "--value",
+      ).trim() === "failed"
+    )
+      throw new Error("STARTUP_FAILED: application service exited");
     try {
       const response = await fetch(config.probeUrl, {
         signal: AbortSignal.timeout(2000),

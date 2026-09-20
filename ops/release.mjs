@@ -10,6 +10,7 @@ export function slotConfig(config, slot) {
   const settings = config.slots[slot];
   return {
     ...config,
+    activeSlot: slot,
     unit: settings.unit,
     probeUrl: `http://127.0.0.1:${settings.port}/api/setup/status`,
   };

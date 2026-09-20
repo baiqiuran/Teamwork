@@ -1,6 +1,6 @@
 # 发布控制（实施中）
 
-这是与业务数据库分开的主机运维入口。目前提供一致备份、查询、配套恢复及同机双槽发布，使用真实 Linux systemd/Nginx 验收。阶段恢复、断线接管、OSS 和生产接入由后续任务接入；本目录尚未安装到正式服务器。
+这是与业务数据库分开的主机运维入口。目前提供一致备份、查询、配套恢复、同机双槽发布及按开放边界处理失败，使用真实 Linux systemd/Nginx 验收。断线接管、OSS 和生产接入由后续任务接入；本目录尚未安装到正式服务器。
 
 ## 操作入口
 
@@ -26,7 +26,20 @@ node ops/control.mjs --config /etc/daily-flow/deploy.json restore --id recover-c
 node ops/control.mjs --config /etc/daily-flow/deploy.json release --id release-UNIQUE --candidate /opt/daily-flow/incoming/VERIFIED --baseline FULL_DEPLOYED_SHA
 ```
 
-新版本解压后在全新临时数据库中预检；该进程退出并清理后才进入维护。确认旧服务和非活动槽退出，持有相同数据锁生成一致快照，再启动另一槽。Nginx upstream 只包含活动槽的一个地址，切换过程中始终保持维护。开放之前持久写入 `mayHaveOpenedAt`；记录缺失或故障不能被误当作尚未接收写入。当前任务 04 的发布失败保持维护并记录事件，自动回退由任务 05 补齐。
+新版本解压后，以普通运行用户在全新临时数据库中预检；该进程退出并清理后才进入维护。确认旧服务和非活动槽退出，持有相同数据锁生成一致快照，再启动另一槽。Nginx upstream 只包含活动槽的一个地址，切换过程中始终保持维护，重载后等待旧 worker 退出。开放之前持久写入 `mayHaveOpenedAt`；记录缺失或故障不能被误当作尚未接收写入。
+
+## 失败与事故处理
+
+开放前的启动、数据升级、代理切换或验收失败会先停止两个槽，再恢复发布前配套快照、旧代码及配置，验证后才重新开放。恢复结果为 `baseline-restored`，发布本身仍返回失败；如配套恢复失败，则保持维护、写入事故冻结，保留替换前的数据现场，不循环重试覆盖。
+
+一旦存在可能开放的持久标记，自动路径不再恢复旧数据。开放后核验失败记录 `preserved-new-data` 并冻结后续发布；读取异常由检查入口持续统计，至少三次且跨至少60秒才进入维护，明确的数据健康错误立即维护。这里的60秒是连续失败的时间边界，不是后台定时器；后续持续巡检由任务10接入。
+
+```sh
+node ops/control.mjs --config /etc/daily-flow/deploy.json inspect --id inspection-UNIQUE
+node ops/control.mjs --config /etc/daily-flow/deploy.json resolve-incident --id resolution-UNIQUE --incident EXISTING_INCIDENT_ID --expected-commit ACTUAL_SHA --note '已修复并核验当前数据与版本'
+```
+
+人工处理先修复当前代码或运行环境并保留现有数据，再明确指定事故及实际版本解除冻结。该入口重新核验本机数据、活动实例、公开版本和协议，不恢复旧快照；健康恢复或备份新鲜度恢复不会自动清除事故冻结。首次接入前的旧基线没有readiness时，配套恢复通过已验证归档、实际进程工作目录和旧协议契约核验身份；后续版本使用正式readiness。
 
 `/health/ready` 仅公开就绪结果和提交 SHA；`/internal/health` 提供 SQLite 检查及迁移版本，须本机连接和随机健康检查凭证。Nginx 禁止该路径并移除专用头，凭证仅保存在 root 可读文件和槽位环境文件。维护标志目录必须可由 Nginx 遍历（建议独立 0755 目录），不能放进 0700 的控制状态目录。两个槽不能独立 enable；启动须使用同一 `flock`，普通应用用户仅拥有业务数据和锁文件。
 
