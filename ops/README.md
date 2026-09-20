@@ -101,3 +101,5 @@ node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json status
 `pending → uploading → verified/failed`；失败按 1、2、4…分钟重试，上限一小时，进程中断的 uploading 会继续处理相同快照。远端 complete.json 最后写入；所有材料与清单读回校验后才标记 verified。应用发布成功与备份失败分别记录，上传失败不会恢复旧数据库。首次启用自动发布前先执行一次每日备份和上传，取得有效异地副本；release 入口在准备前和维护前均检查该副本，缺失或数据时间超过 24 小时拒绝新发布。既有网页、备份和补传继续运行。
 
 隔离测试通过 Node 模块 hook 替换 OSS I/O，覆盖离线、摘要错误、补传重启和新鲜度；没有在生产配置中加入跳过门槛开关。真实资源验证入口是上面的 backup/upload/status 组合，先使用独立测试桶和合成数据，勿把业务备份放入 GitHub runner。
+
+上传扫描会对账已完整落盘的快照，补建因进程中断缺失的任务；原子首次发布队列记录避免并发对账覆盖已验证结果。发布完成与状态查询关联本次快照的实时 pending/failed/verified，失败退避从该次失败时刻起计算。

@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { intent } from "./intent.mjs";
-import { requireFresh } from "./offsite.mjs";
+import { requireFresh, report } from "./offsite.mjs";
 import { processIdentity } from "./process-identity.mjs";
 import { json, durable } from "./io.mjs";
 import {
@@ -67,7 +67,7 @@ if (input["--snapshot"])
 const statePath = resolve(config.stateDir, "operations", `${id}.json`);
 if (action === "status") {
   if (await exists(statePath))
-    console.log(JSON.stringify(await json(statePath)));
+    console.log(JSON.stringify(await report(config, await json(statePath))));
   else if (
     await exists(resolve(config.stateDir, "requests", `${id}.result.json`))
   )
@@ -115,7 +115,7 @@ if (action === "status") {
   if (await exists(statePath)) {
     const previous = await json(statePath);
     assert.equal(previous.fingerprint, fingerprint, "OPERATION_ID_CONFLICT");
-    console.log(JSON.stringify(previous));
+    console.log(JSON.stringify(await report(config, previous)));
     if (previous.phase === "failed") process.exitCode = 1;
   } else {
     const lockPath = resolve(config.stateDir, "operation.lock");
@@ -184,7 +184,7 @@ if (action === "status") {
             fingerprint,
             "OPERATION_ID_CONFLICT",
           );
-          console.log(JSON.stringify(previous));
+          console.log(JSON.stringify(await report(config, previous)));
           if (previous.phase === "failed") process.exitCode = 1;
           break execution;
         }
@@ -276,6 +276,7 @@ if (action === "status") {
           operation.actualCommit = observed.version;
         }
         enteredMaintenance = false;
+        operation = await report(config, operation);
         operation = {
           ...operation,
           phase: "completed",

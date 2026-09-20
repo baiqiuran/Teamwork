@@ -68,9 +68,12 @@ test("release requires fresh verified remote snapshot; upload failure preserves 
   await writeFile(`${remote}/fault`, "offline");
   result = await release("offline-release");
   assert.equal(result.code, 0, result.output + result.error);
+  assert.equal(JSON.parse(result.output).offsite.snapshot.phase, "pending");
   const jobPath = `${f.root}/control/uploads/offline-release.json`;
   const queued = JSON.parse(await readFile(jobPath, "utf8"));
   assert.equal(queued.phase, "pending");
+  // Simulate power loss after final snapshot rename but before queue publication.
+  await rm(jobPath);
   const original = await sha256(
     `${f.config.backupDir}/offline-release/data.tar.gz`,
   );
@@ -81,6 +84,21 @@ test("release requires fresh verified remote snapshot; upload failure preserves 
   assert.equal(failed.failure, "OSS_OFFLINE");
   assert.ok(Date.parse(failed.nextAttemptAt) > Date.now());
   assert.equal((await fetch(f.origin + "/health/ready")).status, 200);
+  await writeFile(
+    jobPath,
+    JSON.stringify({
+      ...failed,
+      attempts: 0,
+      nextAttemptAt: new Date(0).toISOString(),
+    }),
+  );
+  await writeFile(`${remote}/fault`, "slow-offline");
+  await offsite(f, "upload");
+  failed = JSON.parse(await readFile(jobPath, "utf8"));
+  assert.ok(
+    Date.parse(failed.nextAttemptAt) - Date.now() > 350000,
+    "Backoff must start after the slow attempt fails",
+  );
   await writeFile(
     jobPath,
     JSON.stringify({ ...failed, nextAttemptAt: new Date(0).toISOString() }),
@@ -120,6 +138,8 @@ test("release requires fresh verified remote snapshot; upload failure preserves 
     original,
   );
   assert.equal(verified.snapshotAt, queued.snapshotAt);
+  const queried = await f.control("status", "--id", "offline-release");
+  assert.equal(JSON.parse(queried.output).offsite.snapshot.phase, "verified");
   await rm(priorPath);
   await writeFile(
     jobPath,

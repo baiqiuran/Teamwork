@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { intent } from "./intent.mjs";
+import { report } from "./offsite.mjs";
 import { configuration, command, exists } from "./host.mjs";
 import { json, durable } from "./io.mjs";
 
@@ -95,7 +96,7 @@ if (!process.env.DAILY_DISPATCH_LOCKED) {
   if (await exists(state)) {
     const record = await json(state);
     assert.equal(record.fingerprint, fingerprint, "OPERATION_ID_CONFLICT");
-    console.log(JSON.stringify(record));
+    console.log(JSON.stringify(await report(config, record)));
     if (record.phase === "failed") process.exitCode = 1;
   } else if (
     await exists(resolve(config.stateDir, "requests", `${id}.result.json`))

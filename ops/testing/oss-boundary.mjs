@@ -20,6 +20,11 @@ export async function createStore(config) {
   }
   return {
     async check() {
+      if ((await fault()) === "slow-offline") {
+        const now = Date.now();
+        Date.now = () => now + 300000;
+        throw new Error("OSS_OFFLINE");
+      }
       if ((await fault()) === "offline") throw new Error("OSS_OFFLINE");
     },
     async put(key, file) {

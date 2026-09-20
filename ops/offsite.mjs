@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
-import { mkdir, readdir, readFile } from "node:fs/promises";
+import { mkdir, readdir, readFile, link, rm } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createHash } from "node:crypto";
-import { durable, json, sha256 } from "./io.mjs";
+import { createHash, randomUUID } from "node:crypto";
+import { durable, json, sha256, syncPath } from "./io.mjs";
 import { exists } from "./host.mjs";
 
 export function destination(config) {
@@ -65,7 +65,8 @@ export async function enqueue(config, id) {
     );
     return;
   }
-  await durable(path, {
+  const temporary = `${path}.${randomUUID()}.pending`;
+  await durable(temporary, {
     id,
     phase: "pending",
     attempts: 0,
@@ -75,6 +76,53 @@ export async function enqueue(config, id) {
     manifestDigest: digest,
     files,
   });
+  try {
+    await link(temporary, path);
+    await syncPath(resolve(config.stateDir, "uploads"));
+  } catch (error) {
+    if (error.code !== "EEXIST") throw error;
+    assert.equal(
+      (await json(path)).manifestDigest,
+      digest,
+      "UPLOAD_ID_CONFLICT",
+    );
+  } finally {
+    await rm(temporary, { force: true });
+  }
+}
+export async function reconcileQueue(config) {
+  for (const entry of await readdir(config.backupDir, {
+    withFileTypes: true,
+  })) {
+    if (!entry.isDirectory() || !/^[a-zA-Z0-9_-]{1,80}$/.test(entry.name))
+      continue;
+    if (await exists(resolve(config.stateDir, "uploads", `${entry.name}.json`)))
+      continue;
+    await enqueue(config, entry.name);
+  }
+}
+export async function report(config, operation) {
+  if (!operation.snapshotId) return operation;
+  const path = resolve(
+    config.stateDir,
+    "uploads",
+    `${operation.snapshotId}.json`,
+  );
+  const job = (await exists(path))
+    ? await json(path)
+    : { phase: "pending-reconciliation" };
+  return {
+    ...operation,
+    offsite: {
+      ...(config.oss ? await status(config) : { backup: "not-configured" }),
+      snapshot: {
+        id: operation.snapshotId,
+        phase: job.phase,
+        failure: job.failure,
+        nextAttemptAt: job.nextAttemptAt,
+      },
+    },
+  };
 }
 export async function status(config, now = Date.now()) {
   const target = destination(config);
@@ -110,11 +158,15 @@ export async function requireFresh(config) {
   assert.ok(result.fresh, "OFFSITE_BACKUP_EXPIRED_OR_MISSING");
   return result;
 }
-export async function upload(config, store, now = Date.now()) {
+export async function upload(config, store) {
   const target = destination(config);
+  await reconcileQueue(config);
   const results = [];
   for (let job of await jobs(config)) {
-    if (job.phase === "verified" || Date.parse(job.nextAttemptAt ?? "") > now)
+    if (
+      job.phase === "verified" ||
+      Date.parse(job.nextAttemptAt ?? "") > Date.now()
+    )
       continue;
     const path = resolve(config.stateDir, "uploads", `${job.id}.json`);
     job = {
@@ -156,7 +208,7 @@ export async function upload(config, store, now = Date.now()) {
       job = {
         ...job,
         phase: "verified",
-        verifiedAt: new Date(now).toISOString(),
+        verifiedAt: new Date().toISOString(),
         failure: undefined,
         nextAttemptAt: undefined,
       };
@@ -177,7 +229,8 @@ export async function upload(config, store, now = Date.now()) {
           ? code
           : "OSS_UPLOAD_FAILED",
         nextAttemptAt: new Date(
-          now + Math.min(3600000, 60000 * 2 ** Math.min(job.attempts - 1, 6)),
+          Date.now() +
+            Math.min(3600000, 60000 * 2 ** Math.min(job.attempts - 1, 6)),
         ).toISOString(),
       };
     }
