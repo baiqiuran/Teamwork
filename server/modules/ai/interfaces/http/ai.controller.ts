@@ -30,6 +30,7 @@ import { McpLimits } from "./mcp-limits.ts";
 import {
   AuthorizationError,
   capabilities,
+  createApiKeyInput,
 } from "../../domain/ai-authorization.ts";
 import type { Member } from "../../../membership/domain/membership.ts";
 import {
@@ -196,6 +197,29 @@ export class AiController {
   @Get("api/ai/connections")
   connections(@CurrentMember() member: Member) {
     return this.auth.connections(member.id);
+  }
+  @Post("api/ai/keys")
+  createKey(
+    @CurrentMember() member: Member,
+    @Body(new ZodPipe(createApiKeyInput))
+    input: z.infer<typeof createApiKeyInput>,
+    @Req() request: Request,
+    @Res() response: Response,
+  ) {
+    response.set("Cache-Control", "no-store");
+    try {
+      response
+        .status(201)
+        .json(
+          this.auth.createKey(
+            member.id,
+            input,
+            `${this.site.forRequest(request)}/mcp`,
+          ),
+        );
+    } catch (error) {
+      oauthFailure(response, error);
+    }
   }
   @Get("api/ai/operations")
   history(

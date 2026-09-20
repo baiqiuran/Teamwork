@@ -52,12 +52,15 @@ export function aiAuthorizationRepository(
             createdAt: Number(row.created_at),
             lastUsedAt: Number(row.last_used_at),
             revokedAt: row.revoked_at === null ? null : Number(row.revoked_at),
+            credentialType:
+              row.credential_type === "api-key" ? "api-key" : "oauth",
+            name: row.name === null ? null : String(row.name),
           }
         : undefined;
     },
     saveGrant(g) {
       db.prepare(
-        "INSERT INTO ai_grants (id,member_id,client_id,resource,scopes,created_at,revoked_at,last_used_at) VALUES (?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revoked_at=excluded.revoked_at,last_used_at=excluded.last_used_at",
+        "INSERT INTO ai_grants (id,member_id,client_id,resource,scopes,created_at,revoked_at,last_used_at,credential_type,name) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revoked_at=excluded.revoked_at,last_used_at=excluded.last_used_at",
       ).run(
         g.id,
         g.memberId,
@@ -67,6 +70,8 @@ export function aiAuthorizationRepository(
         g.createdAt,
         g.revokedAt,
         g.lastUsedAt,
+        g.credentialType,
+        g.name,
       );
     },
     code(hash) {
@@ -99,6 +104,18 @@ export function aiAuthorizationRepository(
       db.prepare(
         "INSERT INTO ai_access (hash,grant_id,expires_at) VALUES (?,?,?)",
       ).run(c.hash, c.grantId, c.expiresAt);
+    },
+    apiKey(hash) {
+      const row = db
+        .prepare("SELECT grant_id FROM ai_api_keys WHERE hash=?")
+        .get(hash);
+      return row ? { hash, grantId: String(row.grant_id) } : undefined;
+    },
+    saveApiKey(key) {
+      db.prepare("INSERT INTO ai_api_keys (hash,grant_id) VALUES (?,?)").run(
+        key.hash,
+        key.grantId,
+      );
     },
   };
   return repository;
