@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { read as fetch } from "../http.mjs";
 import { test } from "node:test";
 import {
   readFile,
@@ -16,6 +17,23 @@ import { offsite } from "./offsite-client.mjs";
 test("isolated recovery uses only remote materials and proves business, attachments and authorization persistence", async (t) => {
   const f = await slotsFixture(t),
     path = `${f.root}/deploy.json`;
+  f.config.recoveryMode = "isolated";
+  f.config.recoveryPublicUrl = "https://recovery.example.test";
+  await writeFile(
+    f.config.envFile,
+    (await readFile(f.config.envFile, "utf8")) +
+      `DAILY_PUBLIC_URL=${f.config.recoveryPublicUrl}\n`,
+  );
+  await writeFile(path, JSON.stringify(f.config));
+  run("systemctl", "restart", f.config.unit);
+  for (let n = 0; n < 100; n++) {
+    try {
+      await f.request("/api/setup/status");
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 50));
+    }
+  }
   const project = await f.request("/api/projects", {
     name: "恢复项目",
     description: "",
@@ -35,7 +53,7 @@ test("isolated recovery uses only remote materials and proves business, attachme
   const request = {
     client_id: "daily-flow-codex",
     redirect_uri: "http://127.0.0.1:19876/callback",
-    resource: f.origin + "/mcp",
+    resource: f.config.recoveryPublicUrl + "/mcp",
     response_type: "code",
     code_challenge_method: "S256",
     code_challenge: createHash("sha256").update(verifier).digest("base64url"),
@@ -49,6 +67,7 @@ test("isolated recovery uses only remote materials and proves business, attachme
   });
   const token = await fetch(f.origin + "/oauth/token", {
     method: "POST",
+    headers: { Host: new URL(f.config.recoveryPublicUrl).host },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       client_id: request.client_id,
@@ -97,6 +116,16 @@ test("isolated recovery uses only remote materials and proves business, attachme
   await rename(remoteConfig + ".saved", remoteConfig);
   result = await offsite(path, "pull", "remote-only");
   assert.equal(result.code, 0, result.output + result.error);
+  const drillPath = `${f.root}/control/drills/remote-only.json`;
+  await writeFile(
+    drillPath,
+    JSON.stringify({
+      ...JSON.parse(await readFile(drillPath, "utf8")),
+      phase: "fetching",
+    }),
+  );
+  result = await offsite(path, "pull", "remote-only");
+  assert.equal(result.code, 0, result.output + result.error);
   result = await f.control(
     "restore",
     "--id",
@@ -130,6 +159,7 @@ test("isolated recovery uses only remote materials and proves business, attachme
   const response = await fetch(f.origin + "/mcp", {
     method: "POST",
     headers: {
+      Host: new URL(f.config.recoveryPublicUrl).host,
       Authorization: `Bearer ${token.access_token}`,
       "Content-Type": "application/json",
       Accept: "application/json, text/event-stream",

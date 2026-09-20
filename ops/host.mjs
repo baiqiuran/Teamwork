@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { read as fetch } from "./http.mjs";
 import { execFileSync } from "node:child_process";
 import { mkdir, rm, access, statfs } from "node:fs/promises";
 import { resolve, isAbsolute, sep } from "node:path";
@@ -20,6 +21,13 @@ export const exists = async (path) => {
     throw error;
   }
 };
+export function probeHeaders(config) {
+  const origin = new URL(config.recoveryPublicUrl ?? config.ingressUrl);
+  return {
+    Host: origin.host,
+    "X-Forwarded-Proto": origin.protocol.slice(0, -1),
+  };
+}
 export async function configuration(path, readRuntime = true) {
   assert.equal(process.platform, "linux", "Deployment control requires Linux");
   const config = await json(path);
@@ -73,6 +81,19 @@ export async function configuration(path, readRuntime = true) {
   );
   assert.equal(new URL(config.probeUrl).hostname, "127.0.0.1");
   assert.ok(["http:", "https:"].includes(new URL(config.ingressUrl).protocol));
+  if (config.recoveryPublicUrl) {
+    assert.equal(config.recoveryMode, "isolated");
+    assert.ok(
+      ["127.0.0.1", "localhost", "[::1]"].includes(
+        new URL(config.ingressUrl).hostname,
+      ),
+    );
+    assert.equal(
+      new URL(config.recoveryPublicUrl).origin,
+      config.recoveryPublicUrl,
+    );
+    assert.equal(new URL(config.recoveryPublicUrl).protocol, "https:");
+  }
   for (const directory of [config.stateDir, config.backupDir])
     await mkdir(directory, { recursive: true, mode: 0o700 });
   await mkdir(resolve(config.stateDir, "operations"), {
@@ -105,6 +126,7 @@ export async function maintenance(config, enabled) {
   if (enabled) await durable(config.maintenance, "maintenance\n", 0o644);
   else await rm(config.maintenance, { force: true });
   const response = await fetch(new URL("/login", config.ingressUrl), {
+    headers: probeHeaders(config),
     signal: AbortSignal.timeout(5000),
   });
   assert.equal(
@@ -175,10 +197,7 @@ export async function start(config, deadline = Date.now() + 120000) {
     try {
       const response = await fetch(config.probeUrl, {
         signal: AbortSignal.timeout(2000),
-        headers: {
-          Host: new URL(config.ingressUrl).host,
-          "X-Forwarded-Proto": new URL(config.ingressUrl).protocol.slice(0, -1),
-        },
+        headers: probeHeaders(config),
       });
       if (
         response.status === 200 &&

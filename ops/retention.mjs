@@ -149,6 +149,12 @@ export async function planRetention(config, store) {
   return {
     localDelete,
     remoteDelete,
+    lastLocal: [...local].sort(
+      (a, b) => Date.parse(b.snapshotAt) - Date.parse(a.snapshotAt),
+    )[0]?.id,
+    lastRemote: [...remote.snapshots].sort(
+      (a, b) => Date.parse(b.snapshotAt) - Date.parse(a.snapshotAt),
+    )[0]?.id,
     protected: [...protectedIds],
     retainedMaterials: local
       .filter((m) => !localDelete.includes(m.id))
@@ -165,6 +171,30 @@ export async function applyRetention(config, store) {
     try {
       const plan = await planRetention(config, store);
       const remote = await remoteIndex(config, store);
+      // Never trade a known complete old backup for a newer damaged one.
+      for (const [id, isRemote] of [
+        [plan.lastLocal, false],
+        [plan.lastRemote, true],
+      ]) {
+        if (!id) continue;
+        const manifest = isRemote
+          ? remote.snapshots.find((m) => m.id === id)
+          : await json(resolve(config.backupDir, id, "manifest.json"));
+        assert.deepEqual(manifest.materials.map((f) => f.name).sort(), [
+          "application.tar.gz",
+          "config.env",
+          "data.tar.gz",
+          "node",
+        ]);
+        for (const file of manifest.materials)
+          assert.equal(
+            isRemote
+              ? await store.digest(`${config.oss.prefix}${id}/${file.name}`)
+              : await sha256(resolve(config.backupDir, id, file.name)),
+            file.sha256,
+            "LAST_RECOVERY_POINT_INVALID",
+          );
+      }
       for (const id of plan.remoteDelete) {
         assert.ok(validId(id));
         await store.remove(`${config.oss.prefix}${id}/complete.json`);

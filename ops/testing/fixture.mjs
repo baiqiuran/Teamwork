@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { read as fetch } from "../http.mjs";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import {
@@ -88,7 +89,8 @@ export async function fixture() {
     const response = await fetch(origin + path, {
       method: body ? "POST" : "GET",
       headers: {
-        Origin: origin,
+        Origin: config.recoveryPublicUrl ?? origin,
+        Host: new URL(config.recoveryPublicUrl ?? origin).host,
         Cookie: cookie,
         "Content-Type": "application/json",
       },

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { read as fetch } from "./http.mjs";
 import { resolve } from "node:path";
 import { readFile, readlink, mkdir, rm } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
@@ -12,6 +13,7 @@ import {
   start,
   exists,
   assertStopped,
+  probeHeaders,
 } from "./host.mjs";
 import { slotConfig, probe, externalProbe, reloadProxy } from "./release.mjs";
 
@@ -80,10 +82,7 @@ export async function verifyBaseline(config, commit) {
     ]) {
       const response = await fetch(new URL(path, config.probeUrl), {
         signal: AbortSignal.timeout(5000),
-        headers: {
-          Host: new URL(config.ingressUrl).host,
-          "X-Forwarded-Proto": new URL(config.ingressUrl).protocol.slice(0, -1),
-        },
+        headers: probeHeaders(config),
       });
       assert.equal(response.status, expected);
     }
@@ -121,6 +120,7 @@ export async function verifyPublicBaseline(config, commit) {
       (
         await fetch(new URL(path, config.ingressUrl), {
           method,
+          headers: probeHeaders(config),
           signal: AbortSignal.timeout(5000),
         })
       ).status,
@@ -224,6 +224,7 @@ export async function observe(config, operation, expectedCommit) {
         new URL("/internal/health", config.probeUrl),
         {
           headers: {
+            ...probeHeaders(config),
             "X-Daily-Health": (
               await readFile(config.healthTokenFile, "utf8")
             ).trim(),
@@ -265,6 +266,7 @@ export async function observe(config, operation, expectedCommit) {
   let ready = false;
   try {
     const r = await fetch(new URL("/health/ready", config.ingressUrl), {
+      headers: probeHeaders(config),
       signal: AbortSignal.timeout(5000),
     });
     const body = await r.json();

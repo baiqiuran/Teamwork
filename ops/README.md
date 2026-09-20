@@ -132,3 +132,9 @@ node ops/offsite-cli.mjs --config /etc/daily-flow/recovery.json drill-verify SNA
 6. 实际整机故障恢复按同样过程先在隔离入口验证，再由运维核对公开地址、OAuth资源、证书和代理后开放。恢复的是快照生成时的数据，不能把旧快照恢复进仍接受写入的生产实例。
 
 当前证据为真实 Linux/systemd/Nginx 加合成对象存储的完整恢复；真实 OSS 桶及独立云主机恢复留待任务11，未据此声明已达到生产 RPO/RTO。
+
+恢复配置可用 `recoveryPublicUrl` 指定快照原来的 HTTPS 源地址：网络连接仍只去 `ingressUrl` 的回环地址，探测 Host/OAuth origin 保持原值。该字段只允许在 `recoveryMode: isolated` 且入口回环时使用。代理须保留传入 Host；不要为了演练改写授权资源地址。公网配置快照已加入隔离回归。
+
+清理执行前会重新验证将保留的本地和异地最新恢复点的四份完整材料摘要，任何缺失/不符都停止全部清理，保留更旧恢复点。下载已落盘但 fetched 回执丢失时，重新拉取会核对已有目录的摘要与完整性后补齐回执；不同内容拒绝覆盖。
+
+OSS 桶须从未启用版本控制，SDK 会检查并拒绝 Enabled/Suspended。原因是 [PutObject 官方说明](https://help.aliyun.com/en/oss/developer-reference/putobject) 明确：版本控制开启或暂停时 `x-oss-forbid-overwrite` 无效，不能据此建立排他锁。角色增加只读 `GetBucketVersioning` 权限；此版本也不通过删除标记伪装成历史版本已按期清理。

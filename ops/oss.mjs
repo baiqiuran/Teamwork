@@ -41,6 +41,10 @@ export async function createStore(config) {
         "private",
         "OSS_BUCKET_NOT_PRIVATE",
       );
+      assert.ok(
+        !(await client.getBucketVersioning(config.oss.bucket)).versionStatus,
+        "OSS_VERSIONING_UNSUPPORTED",
+      );
     },
     async put(key, file) {
       await client.put(key, file, {

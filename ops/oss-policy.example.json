@@ -3,7 +3,7 @@
   "Statement": [
     {
       "Effect": "Allow",
-      "Action": ["oss:GetBucketAcl"],
+      "Action": ["oss:GetBucketAcl", "oss:GetBucketVersioning"],
       "Resource": ["acs:oss:*:*:REPLACE_BUCKET"]
     },
     {

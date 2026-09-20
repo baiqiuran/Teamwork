@@ -1,9 +1,17 @@
 import assert from "node:assert/strict";
+import { read as fetch } from "./http.mjs";
 import { mkdir, readFile, rename, symlink, cp } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { json, durable, sha256, syncPath } from "./io.mjs";
-import { capacity, command, assertStopped, exists, start } from "./host.mjs";
+import {
+  capacity,
+  command,
+  assertStopped,
+  exists,
+  start,
+  probeHeaders,
+} from "./host.mjs";
 import { archiveSize, extract } from "./snapshots.mjs";
 
 export function slotConfig(config, slot) {
@@ -117,10 +125,7 @@ export async function probe(
   const origin = `http://127.0.0.1:${port}`;
   const token = (await readFile(config.healthTokenFile, "utf8")).trim();
   assert.ok(token.length >= 32, "HEALTH_TOKEN_TOO_SHORT");
-  const headers = {
-    Host: new URL(config.ingressUrl).host,
-    "X-Forwarded-Proto": new URL(config.ingressUrl).protocol.slice(0, -1),
-  };
+  const headers = probeHeaders(config);
   const read = (path, extra = {}) => {
     assert.ok(Date.now() < deadline, "STARTUP_TIMEOUT");
     return fetch(origin + path, {
@@ -164,6 +169,7 @@ export async function externalProbe(config, commit) {
   const read = (path, options = {}) =>
     fetch(new URL(path, config.ingressUrl), {
       ...options,
+      headers: probeHeaders(config),
       signal: AbortSignal.timeout(5000),
     });
   const ready = await read("/health/ready");

@@ -104,11 +104,17 @@ export async function pullSnapshot(config, store, id) {
       const checked = await validate(config, stage);
       await rm(checked, { recursive: true, force: true });
       await rm(resolve(stage, "complete.json"));
-      assert.ok(
-        !(await exists(resolve(config.backupDir, id))),
-        "RECOVERY_POINT_ALREADY_EXISTS",
-      );
-      await rename(stage, resolve(config.backupDir, id));
+      const target = resolve(config.backupDir, id);
+      if (await exists(target)) {
+        assert.equal(
+          await sha256(resolve(target, "manifest.json")),
+          marker.manifestDigest,
+          "RECOVERY_POINT_CONFLICT",
+        );
+        const existing = await validate(config, target);
+        await rm(existing, { recursive: true, force: true });
+        await rm(stage, { recursive: true, force: true });
+      } else await rename(stage, target);
       await syncPath(config.backupDir);
       record = {
         ...record,
