@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, rm, access, statfs } from "node:fs/promises";
 import { resolve, isAbsolute, sep } from "node:path";
-import { json, durable } from "./io.mjs";
+import { json, durable, syncPath } from "./io.mjs";
 import { bootId } from "./process-identity.mjs";
 
 export const command = (name, ...args) =>
@@ -118,7 +118,13 @@ export async function maintenance(config, enabled) {
       "MAINTENANCE_RETRY_HEADER_MISSING",
     );
 }
-export function stop(config) {
+export async function stop(config) {
+  // Revoke before stopping: once the data lock is released, this slot must
+  // not reopen a restored database using a permit from the previous stage.
+  if (config.slots) {
+    await rm(resolve(config.stateDir, "owner.json"), { force: true });
+    await syncPath(config.stateDir);
+  }
   command("/bin/systemctl", "stop", config.unit);
   assertStopped(config.unit);
 }

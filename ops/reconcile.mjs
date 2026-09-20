@@ -102,7 +102,7 @@ if (!process.env.DAILY_RECONCILE_LOCKED) {
       );
     await maintenance(config, true);
     for (const settings of Object.values(config.slots))
-      stop({ ...config, unit: settings.unit });
+      await stop({ ...config, unit: settings.unit });
     if (await exists(resolve(config.stateDir, "incident.json")))
       throw new Error("INCIDENT_REQUIRES_MANUAL_RESOLUTION");
     if (operation) {

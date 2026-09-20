@@ -149,6 +149,19 @@ if (action === "status") {
         );
         await lock.sync();
         config = await configuration(configPath);
+        const acceptedPath = resolve(config.stateDir, "requests", `${id}.json`);
+        const currentIntent = await intent(action, input);
+        assert.equal(
+          currentIntent.fingerprint,
+          fingerprint,
+          "CANDIDATE_CHANGED_WHILE_WAITING",
+        );
+        if (await exists(acceptedPath))
+          assert.equal(
+            (await json(acceptedPath)).fingerprint,
+            currentIntent.fingerprint,
+            "ACCEPTED_REQUEST_CHANGED",
+          );
         for (const name of await readdir(
           resolve(config.stateDir, "operations"),
         )) {
@@ -223,7 +236,7 @@ if (action === "status") {
           maintenanceAt: new Date().toISOString(),
         };
         await durable(statePath, operation);
-        stop(config);
+        await stop(config);
         operation = {
           ...operation,
           phase: "data-operation",

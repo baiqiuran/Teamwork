@@ -371,3 +371,73 @@ test("corrupt control state freezes instead of guessing a data owner", async (t)
     "original attachment bytes",
   );
 });
+
+test("stopped owner cannot restart between snapshot completion and activation", async (t) => {
+  const f = await fixture(t);
+  const hook = `${f.root}/pause-data.mjs`;
+  await writeFile(
+    hook,
+    `import fs from 'node:fs/promises'; import { syncBuiltinESMExports } from 'node:module';
+if(process.argv[1].endsWith('/control.mjs')) { const original=fs.readFile; fs.readFile=async function(path,...args) {
+const result=await original.call(this,path,...args); if(String(path).endsWith('/paused-owner.json') && String(result).includes('"data-ready"')) {
+await fs.writeFile(${JSON.stringify(f.root + "/paused")}, 'ready');
+while(true) { try { await fs.access(${JSON.stringify(f.root + "/resume")}); break; } catch {} await new Promise(r=>setTimeout(r,20)); }
+} return result; }; syncBuiltinESMExports(); }`,
+  );
+  const pending = f.controlWith(
+    ["--import", hook],
+    "release",
+    "--id",
+    "paused-owner",
+    "--candidate",
+    "/candidate-artifact",
+    "--baseline",
+    f.baseline,
+  );
+  for (let n = 0; n < 1500; n++) {
+    try {
+      await access(`${f.root}/paused`);
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+  await access(`${f.root}/paused`);
+  let denied = false;
+  try {
+    run("systemctl", "start", f.config.slots.blue.unit);
+  } catch {
+    denied = true;
+  }
+  // Always release the test barrier, including on a failing regression.
+  run("systemctl", "stop", f.config.slots.blue.unit);
+  await writeFile(`${f.root}/resume`, "resume");
+  const result = await pending;
+  assert.ok(denied, "A stopped slot retained its startup permission");
+  assert.equal(result.code, 0, result.output + result.error);
+});
+
+test("controller rejects material identity differing from the accepted request", async (t) => {
+  const f = await fixture(t);
+  await mkdir(`${f.root}/control/requests`, { recursive: true });
+  await writeFile(
+    `${f.root}/control/requests/changed.json`,
+    JSON.stringify({ fingerprint: "accepted-original-content" }),
+  );
+  const result = await f.control(
+    "release",
+    "--id",
+    "changed",
+    "--candidate",
+    "/candidate-artifact",
+    "--baseline",
+    f.baseline,
+  );
+  assert.notEqual(result.code, 0);
+  assert.match(result.output + result.error, /ACCEPTED_REQUEST_CHANGED/);
+  assert.equal((await fetch(f.origin + "/login")).status, 200);
+  assert.equal(
+    JSON.parse(await readFile(`${f.root}/current/release.json`, "utf8")).commit,
+    f.baseline,
+  );
+});

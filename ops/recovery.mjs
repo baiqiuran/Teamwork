@@ -36,7 +36,7 @@ export async function freeze(config, operation, reason, closeTraffic) {
       for (const slot of Object.values(
         config.slots ?? { active: { unit: config.unit } },
       ))
-        stop({ ...config, unit: slot.unit });
+        await stop({ ...config, unit: slot.unit });
       await durable(path, {
         ...(await json(path)),
         containment: "applications-stopped",
@@ -141,7 +141,7 @@ export async function recoverBeforeOpen(configPath, config, operation) {
   );
   await maintenance(config, true);
   for (const slot of Object.values(config.slots))
-    stop({ ...config, unit: slot.unit });
+    await stop({ ...config, unit: slot.unit });
   const old = slotConfig(config, operation.target.oldSlot);
   if (operation.localBackup === "verified") {
     operation = {
