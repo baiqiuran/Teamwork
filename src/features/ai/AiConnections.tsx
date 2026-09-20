@@ -4,7 +4,6 @@ import { Message } from "../../shared/components/Message";
 import { describeError } from "../../shared/errors";
 import { AiHistory } from "./AiHistory";
 import { AiConnectionGuide } from "./AiConnectionGuide";
-import { AiKeyCreate } from "./AiKeyCreate";
 type Connection = {
   id: string;
   client: string;
@@ -12,8 +11,6 @@ type Connection = {
   createdAt: number;
   lastUsedAt: number;
   revokedAt: number | null;
-  credentialType: "oauth" | "api-key";
-  name: string | null;
 };
 const labels: Record<string, string> = {
   "progress:read": "查询进展",
@@ -47,17 +44,11 @@ export function AiConnections() {
     <>
       <div className="page-intro">
         <p className="eyebrow">AI 连接</p>
-        <h1>管理 AI 的操作权限</h1>
+        <h1>管理 Codex 的操作权限</h1>
         <p>每个连接独立授权。撤销后立即停止访问，网页操作不受影响。</p>
         <div className="ai-connection-actions">
           <button onClick={() => setGuide(guide === "new" ? undefined : "new")}>
             连接 Codex
-          </button>
-          <button
-            className="secondary"
-            onClick={() => setGuide(guide === "key" ? undefined : "key")}
-          >
-            通过 Node 连接
           </button>
           <button
             className="secondary"
@@ -72,7 +63,6 @@ export function AiConnections() {
         </div>
       </div>
       <Message error>{error}</Message>
-      {guide === "key" && <AiKeyCreate onCreated={load} />}
       {guide === "new" && (
         <AiConnectionGuide scopes={["progress:read", "drafts:write"]} />
       )}
@@ -83,12 +73,7 @@ export function AiConnections() {
           key={connection.id}
           style={{ marginBottom: 16 }}
         >
-          <h2>
-            {connection.credentialType === "api-key"
-              ? connection.name
-              : "Codex"}
-          </h2>
-          {connection.credentialType === "api-key" && <p>Node · 授权 Key</p>}
+          <h2>Codex</h2>
           <p>{connection.scopes.map((scope) => labels[scope]).join(" · ")}</p>
           <p>
             创建：{new Date(connection.createdAt).toLocaleString("zh-CN")} ·
@@ -97,21 +82,15 @@ export function AiConnections() {
           {connection.revokedAt !== null ? (
             <>
               <p>已撤销</p>
-              {connection.credentialType === "api-key" ? (
-                <p>需要再次连接时，请生成新的授权 Key。</p>
-              ) : (
-                <button
-                  className="secondary"
-                  aria-expanded={guide === connection.id}
-                  onClick={() =>
-                    setGuide(
-                      guide === connection.id ? undefined : connection.id,
-                    )
-                  }
-                >
-                  重新授权
-                </button>
-              )}
+              <button
+                className="secondary"
+                aria-expanded={guide === connection.id}
+                onClick={() =>
+                  setGuide(guide === connection.id ? undefined : connection.id)
+                }
+              >
+                重新授权
+              </button>
               {guide === connection.id && (
                 <AiConnectionGuide scopes={connection.scopes} reconnect />
               )}

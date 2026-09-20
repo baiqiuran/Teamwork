@@ -3,7 +3,6 @@ import {
   validateAuthorization,
   type Capability,
   type AiGrant,
-  createApiKeyInput,
 } from "../domain/ai-authorization.ts";
 import type { AiAuthorizationRepository } from "./ports.ts";
 import type { MembershipRepository } from "../../membership/application/ports.ts";
@@ -54,8 +53,6 @@ export class AiAuthorization {
         createdAt: this.runtime.now(),
         lastUsedAt: this.runtime.now(),
         revokedAt: null,
-        credentialType: "oauth" as const,
-        name: null,
       };
       this.repo.saveGrant(grant);
       const code = this.security.secret();
@@ -149,35 +146,7 @@ export class AiAuthorization {
       createdAt: grant.createdAt,
       lastUsedAt: grant.lastUsedAt,
       revokedAt: grant.revokedAt,
-      credentialType: grant.credentialType,
-      name: grant.name,
     }));
-  }
-  createKey(memberId: string, input: unknown, resource: string) {
-    const { name, scopes } = createApiKeyInput.parse(input);
-    return this.runtime.transaction(() => {
-      if (!this.members.member(memberId))
-        throw new AuthorizationError("access_denied", "成员不可用。", 403);
-      const grant: AiGrant = {
-        id: this.runtime.id(),
-        memberId,
-        clientId: "daily-flow-node",
-        resource,
-        scopes: [...new Set(scopes)],
-        name,
-        credentialType: "api-key",
-        createdAt: this.runtime.now(),
-        lastUsedAt: this.runtime.now(),
-        revokedAt: null,
-      };
-      const key = `dfk_${this.security.secret()}`;
-      this.repo.saveGrant(grant);
-      this.repo.saveApiKey({
-        hash: this.security.digest(key),
-        grantId: grant.id,
-      });
-      return { key, id: grant.id, name, scopes: grant.scopes };
-    });
   }
   revoke(memberId: string, id: string) {
     return this.runtime.transaction(() => {
@@ -208,19 +177,13 @@ export class AiAuthorization {
     return execute(actor);
   }
   authenticate(token: string, resource: string) {
-    const hash = this.security.digest(token);
-    const key = token.startsWith("dfk_") ? this.repo.apiKey(hash) : undefined;
-    const isKey = key !== undefined;
-    // Legacy random OAuth tokens may coincidentally start with the Key prefix.
-    const credential = key ?? this.repo.access(hash);
+    const credential = this.repo.access(this.security.digest(token));
     const grant = credential && this.repo.grant(credential.grantId);
     const member = grant && this.members.member(grant.memberId);
     if (
       !credential ||
-      ("expiresAt" in credential &&
-        Number(credential.expiresAt) <= this.runtime.now()) ||
+      credential.expiresAt <= this.runtime.now() ||
       !grant ||
-      grant.credentialType !== (isKey ? "api-key" : "oauth") ||
       grant.revokedAt !== null ||
       grant.resource !== resource ||
       !member

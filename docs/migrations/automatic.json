@@ -1,14 +1,4 @@
 {
-  "ab50495b011c89ef31cf7672db8dba118a6ee8e2": {
-    "kind": "additive",
-    "automatic": true,
-    "description": "版本 7 仅为 ai_grants 增加 credential_type（默认 oauth）与可空 name 列，并新增 ai_api_keys 摘要表；保留已有成员授权、OAuth 凭证和业务数据。有序事务迁移失败回滚；回退旧程序须恢复配套旧备份。"
-  },
-  "44aa339b5fdfb32eb7a5b1a119011cff5c93bf8f": {
-    "kind": "runtime",
-    "automatic": true,
-    "description": "授权仓储读写连接凭证类型和名称，新增成员 Key 摘要的保存与查询；旧连接按迁移默认值继续作为 OAuth 连接使用，保留原凭证、撤销、回执与审计语义，不保存明文 Key。"
-  },
   "a67dad7f01a70967654925fe95f271de232f2b08": {
     "kind": "runtime",
     "automatic": true,

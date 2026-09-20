@@ -2,7 +2,6 @@ import type {
   AiGrant,
   AuthorizationCode,
   AccessCredential,
-  ApiKeyCredential,
 } from "../domain/ai-authorization.ts";
 import type { AiReceipt, AiOperation } from "../domain/ai-operation.ts";
 
@@ -19,8 +18,6 @@ export interface AiAuthorizationRepository {
   removeCode(hash: string): void;
   access(hash: string): AccessCredential | undefined;
   saveAccess(access: AccessCredential): void;
-  apiKey(hash: string): ApiKeyCredential | undefined;
-  saveApiKey(key: ApiKeyCredential): void;
 }
 
 export interface AiOperationRepository {

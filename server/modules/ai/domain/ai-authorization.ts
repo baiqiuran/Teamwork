@@ -36,18 +36,6 @@ export interface AiGrant {
   createdAt: number;
   revokedAt: number | null;
   lastUsedAt: number;
-  credentialType: "oauth" | "api-key";
-  name: string | null;
-}
-export const createApiKeyInput = z
-  .object({
-    name: z.string().trim().min(1).max(80),
-    scopes: z.array(z.enum(capabilities)).min(1).max(5),
-  })
-  .strict();
-export interface ApiKeyCredential {
-  hash: string;
-  grantId: string;
 }
 export interface AuthorizationCode {
   hash: string;
