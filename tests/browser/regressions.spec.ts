@@ -15,6 +15,37 @@ async function login(page: Page) {
   });
   await page.goto("/diaries");
 }
+
+test("维护中保存失败保留编辑内容，恢复后可重试保存", async ({ page }) => {
+  await login(page);
+  await page.getByRole("button", { name: "＋ 新建日报", exact: true }).click();
+  await page.getByLabel("日报标题", { exact: true }).fill("维护时的草稿");
+  await page.getByLabel("工作 1", { exact: true }).fill("未保存内容不能丢失");
+  await page.route("**/api/diaries**", (route) =>
+    route.request().method() === "POST"
+      ? route.fulfill({
+          status: 503,
+          contentType: "text/html",
+          headers: { "Retry-After": "60" },
+          body: "维护中",
+        })
+      : route.continue(),
+  );
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(page.getByRole("alert")).toContainText(
+    "服务维护中，当前输入已保留，请稍后重试保存。",
+  );
+  await expect(page.getByLabel("日报标题", { exact: true })).toHaveValue(
+    "维护时的草稿",
+  );
+  await expect(page.getByLabel("工作 1", { exact: true })).toHaveValue(
+    "未保存内容不能丢失",
+  );
+  await expect(page.getByRole("status")).not.toContainText("已保存");
+  await page.unroute("**/api/diaries**");
+  await page.getByRole("button", { name: "保存草稿", exact: true }).click();
+  await expect(page.getByRole("status")).toContainText("草稿已保存");
+});
 test("任务定义编辑不会串到另一任务", async ({ page }) => {
   await login(page);
   const project = await (
@@ -44,13 +75,11 @@ test("失败附件需明确处理后才可提交，正文草稿保留", async ({
   await page.getByLabel("工作 1", { exact: true }).fill("正文不能丢失");
   await page.locator(".attachments summary").click();
   await page.getByLabel("日报标题", { exact: true }).fill("长".repeat(101));
-  await page
-    .getByLabel("工作 1 添加附件", { exact: true })
-    .setInputFiles({
-      name: "正常.txt",
-      mimeType: "text/plain",
-      buffer: Buffer.from("正常内容"),
-    });
+  await page.getByLabel("工作 1 添加附件", { exact: true }).setInputFiles({
+    name: "正常.txt",
+    mimeType: "text/plain",
+    buffer: Buffer.from("正常内容"),
+  });
   await expect(page.getByRole("alert")).toContainText("长度限制");
   await page.getByRole("button", { name: "放弃此附件", exact: true }).click();
   await expect(page.getByLabel("日报标题", { exact: true })).toBeEnabled();

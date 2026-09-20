@@ -407,6 +407,9 @@ data/
 
 ## 进一步阅读
 
+- [CI/CD 实施与验证](docs/cicd.md)：固定提交产物、CI 检查及当前实施边界。
+- [CI/CD 生产接入与运维](docs/cicd-production.md)：本地备份、GitHub 配置、首次切换及真实验收清单。
+
 - [阿里云 ECS 部署手册](docs/deployment.md)：公网 IP HTTPS、首次初始化、备份恢复及更新。
 - [MCP 实施验收记录](docs/mcp-verification.md)：M01–M30 证据、实际 Codex、升级恢复与公网边界。
 - [MCP 接入、权限与部署](docs/mcp.md)：Codex 连接、长期授权、撤销、工具边界与升级恢复。

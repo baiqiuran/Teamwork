@@ -1,0 +1,9 @@
+{
+  "name": "daily-flow-deployment-control",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "ali-oss": "6.23.0",
+    "@alicloud/credentials": "2.4.7"
+  }
+}

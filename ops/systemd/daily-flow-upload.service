@@ -1,0 +1,11 @@
+[Unit]
+Description=Upload verified immutable daily-flow backups
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/node /opt/daily-flow/control/ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json upload
+UMask=0077
+TimeoutStartSec=infinity
+Nice=10
+IOSchedulingClass=idle

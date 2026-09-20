@@ -1,0 +1,35 @@
+{
+  "Version": "1",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["oss:GetBucketAcl", "oss:GetBucketVersioning"],
+      "Resource": ["acs:oss:*:*:REPLACE_BUCKET"]
+    },
+    {
+      "Effect": "Allow",
+      "Action": ["oss:ListObjects"],
+      "Resource": ["acs:oss:*:*:REPLACE_BUCKET"],
+      "Condition": { "StringLike": { "oss:Prefix": ["snapshots/*"] } }
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "oss:PutObject",
+        "oss:GetObject",
+        "oss:DeleteObject",
+        "oss:PutObjectAcl"
+      ],
+      "Resource": ["acs:oss:*:*:REPLACE_BUCKET/snapshots/*"]
+    },
+    {
+      "Effect": "Deny",
+      "Action": ["oss:*"],
+      "Resource": [
+        "acs:oss:*:*:REPLACE_BUCKET",
+        "acs:oss:*:*:REPLACE_BUCKET/*"
+      ],
+      "Condition": { "Bool": { "acs:SecureTransport": "false" } }
+    }
+  ]
+}

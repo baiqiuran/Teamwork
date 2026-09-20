@@ -1,0 +1,133 @@
+{
+  "a67dad7f01a70967654925fe95f271de232f2b08": {
+    "kind": "runtime",
+    "automatic": true,
+    "description": "新增以应用运行成员权限检查附件目录可访问性，保留原文件格式。"
+  },
+  "c2fa635d70dbf35b0dea6857395ea83370eb85b7": {
+    "kind": "additive",
+    "automatic": true,
+    "description": "新增只读就绪、SQLite完整性和已有团队检查，不改结构及历史数据。"
+  },
+  "fae73b7e36dd384a3ad4c7e290e0ad51d556e1d4": {
+    "kind": "additive",
+    "automatic": true,
+    "description": "新增只读就绪、SQLite完整性和已有团队检查，不改结构及历史数据。"
+  },
+  "67e5261bcb2c7e0fd0c5e0e9c36ca06e37fb0a68": {
+    "kind": "additive",
+    "automatic": true,
+    "description": "新增只读就绪、SQLite完整性和已有团队检查，不改结构及历史数据。"
+  },
+  "moved:2919345049d0cb7b57b0be788d7985031b529383": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。",
+    "replacement": "server/modules/ai/infrastructure/sqlite/ai-authorization-repository.ts",
+    "replacementBlob": "2919345049d0cb7b57b0be788d7985031b529383"
+  },
+  "2919345049d0cb7b57b0be788d7985031b529383": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。"
+  },
+  "moved:e1e02d5466a9e19365765641cf35c8e8ee63a1f7": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。",
+    "replacement": "server/modules/ai/infrastructure/sqlite/ai-operation-repository.ts",
+    "replacementBlob": "e1e02d5466a9e19365765641cf35c8e8ee63a1f7"
+  },
+  "e1e02d5466a9e19365765641cf35c8e8ee63a1f7": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。"
+  },
+  "moved:a3b321a58212095b2d03c6836d01fbc408065749": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。",
+    "replacement": "server/modules/attachments/infrastructure/files.ts",
+    "replacementBlob": "a3b321a58212095b2d03c6836d01fbc408065749"
+  },
+  "a3b321a58212095b2d03c6836d01fbc408065749": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。"
+  },
+  "moved:fbe5f3134b32f525b8239db1708f27216500124b": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。",
+    "replacement": "server/modules/attachments/infrastructure/sqlite/attachment-repository.ts",
+    "replacementBlob": "fbe5f3134b32f525b8239db1708f27216500124b"
+  },
+  "fbe5f3134b32f525b8239db1708f27216500124b": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。"
+  },
+  "moved:0a5f3c69ab26f07a801cc1c09533df806e6ee2d0": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。",
+    "replacement": "server/modules/journal/infrastructure/sqlite/diary-repository.ts",
+    "replacementBlob": "0a5f3c69ab26f07a801cc1c09533df806e6ee2d0"
+  },
+  "0a5f3c69ab26f07a801cc1c09533df806e6ee2d0": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。"
+  },
+  "moved:f752101097e29a6e191368511474b1a3d47dd62b": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。",
+    "replacement": "server/modules/membership/infrastructure/sqlite/membership-repository.ts",
+    "replacementBlob": "f752101097e29a6e191368511474b1a3d47dd62b"
+  },
+  "f752101097e29a6e191368511474b1a3d47dd62b": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。"
+  },
+  "moved:ddfb4054a6933d28c5fcf01bac0f9df058631a86": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。",
+    "replacement": "server/modules/sharing/infrastructure/sqlite/sharing-repository.ts",
+    "replacementBlob": "ddfb4054a6933d28c5fcf01bac0f9df058631a86"
+  },
+  "ddfb4054a6933d28c5fcf01bac0f9df058631a86": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 模块归属调整，文件内容保持一致，不改变表结构与持久化行为。"
+  },
+  "moved:fae4eb59ebee95695bc7641cd42b6e4b7b0d01f8": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "DDD 工作仓储搬迁，仅拆分 TaskEvent 的类型导入，SQL 与持久化行为保持一致。",
+    "replacement": "server/modules/work/infrastructure/sqlite/work-repository.ts",
+    "replacementBlob": "ea3f11560b865a1a57605ee69f9c8315a7824cb6"
+  },
+  "ea3f11560b865a1a57605ee69f9c8315a7824cb6": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "DDD 工作仓储搬迁，仅拆分 TaskEvent 的类型导入，SQL 与持久化行为保持一致。"
+  },
+  "e02747adb3207bb7f6bd924ed6ceac8f7856c52d": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "Runtime 类型导入改为 shared 目录，数据库结构、事务和数据保持一致。"
+  },
+  "a48af1c53624ab0bb412a428e86ab09e30c28ed9": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "DDD 装配改用模块端口；按 MCP URL 哈希登记 Codex 回调，保留已有授权与数据，不执行结构迁移。"
+  },
+  "6902f6101dbea27d66a16e08abd765ed88c59931": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "合并时保留 DDD 装配并暂时移除推导回调；后续 73ab191 恢复回调，完整跨度需验证授权兼容，不改变业务历史数据。"
+  }
+}
