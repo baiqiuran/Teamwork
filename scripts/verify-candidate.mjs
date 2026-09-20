@@ -122,10 +122,13 @@ for (const commit of commits) {
       note?.description?.trim(),
       `MIGRATION_NOTES_MISSING: ${commit}:${path}`,
     );
+    const migration =
+      path.startsWith("server/infrastructure/sqlite/") ||
+      path === "server/composition/resources.ts";
     assert.equal(
       note.kind,
-      "additive",
-      `DESTRUCTIVE_MIGRATION: ${commit}:${path}`,
+      migration ? "additive" : "runtime",
+      `MIGRATION_KIND_MISMATCH: ${commit}:${path}`,
     );
     const diff = git(
       "show",
@@ -139,14 +142,24 @@ for (const commit of commits) {
     const additions = diff
       .split("\n")
       .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
-      .join("\n");
-    assert.ok(
-      !/\b(DROP\s+(TABLE|COLUMN)|TRUNCATE|DELETE\s+FROM|UPDATE\s+\w+\s+SET|RENAME\s+(TO|COLUMN))\b/i.test(
-        additions,
-      ),
-      `DESTRUCTIVE_MIGRATION: data rewriting SQL in ${path}`,
-    );
-    changes.push({ commit, path, diffSha256: hash(diff) });
+      .map((line) => line.slice(1))
+      .join("\n")
+      .replace(/\/\*[\s\S]*?\*\//g, " ")
+      .replace(/^\s*(?:\/\/|--).*$/gm, "");
+    if (migration) {
+      // Conservative at the migration boundary: quoted names, comments and line
+      // breaks must not turn destructive operations into an automatic release.
+      assert.ok(
+        !/\b(DROP|TRUNCATE|DELETE|UPDATE|RENAME)\b/i.test(additions),
+        `DESTRUCTIVE_MIGRATION: data rewriting SQL in ${path}`,
+      );
+    } else {
+      assert.ok(
+        !/\b(CREATE|ALTER|DROP)\s+(TABLE|INDEX)\b/i.test(additions),
+        `MIGRATION_LOCATION_INVALID: schema changes belong in server/infrastructure/sqlite`,
+      );
+    }
+    changes.push({ commit, path, migration, diffSha256: hash(diff) });
   }
 }
 assert.equal(
