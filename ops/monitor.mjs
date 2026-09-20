@@ -8,52 +8,125 @@ import { configuration, command, exists, capacity } from "./host.mjs";
 import { json, durable } from "./io.mjs";
 import { status as backupStatus } from "./offsite.mjs";
 import { alive } from "./process-identity.mjs";
+import { withControlLock } from "./retention.mjs";
+import { freeze } from "./recovery.mjs";
 
 const [flag, path, action, id] = process.argv.slice(2);
 assert.equal(flag, "--config");
-assert.ok(["inspect", "complete"].includes(action));
+assert.ok(["inspect", "complete", "external-failure"].includes(action));
 assert.match(id ?? "", /^[a-zA-Z0-9_-]{1,72}$/);
 let config = await configuration(path);
 const directory = resolve(config.stateDir, "inspections");
 await mkdir(directory, { recursive: true, mode: 0o700 });
 const output = resolve(directory, `${id}.json`);
 async function main() {
-  if (action === "complete") {
-    const report = await json(output);
-    const runtime = await json(resolve(config.stateDir, "runtime.json"));
-    assert.equal(report.phase, "healthy");
-    assert.equal(report.actualCommit, runtime.commit);
-    assert.ok(Date.now() - Date.parse(report.checkedAt) < 300000);
-    assert.ok(!(await exists(resolve(config.stateDir, "operation.lock"))));
-    assert.ok(!(await exists(resolve(config.stateDir, "incident.json"))));
-    await durable(resolve(config.stateDir, "last-inspection-success.json"), {
-      id,
-      commit: runtime.commit,
-      at: new Date().toISOString(),
+  if (action === "external-failure") {
+    return withControlLock(config, `external-${id}`, async () => {
+      config = await configuration(path);
+      const report = await json(output);
+      const runtime = await json(resolve(config.stateDir, "runtime.json"));
+      if (report.actualCommit !== runtime.commit)
+        return { id, phase: "busy", reason: "VERSION_CHANGED" };
+      const age = Date.now() - Date.parse(report.checkedAt);
+      assert.ok(age >= 0 && age < 300000);
+      const file = resolve(config.stateDir, "external-availability.json");
+      const prior = (await exists(file)) ? await json(file) : {};
+      // Replaying a failed observation must not count it twice.
+      const ids = prior.commit === runtime.commit ? (prior.ids ?? []) : [];
+      if (!ids.includes(id)) ids.push(id);
+      const firstFailureAt =
+        prior.commit === runtime.commit && prior.failures > 0
+          ? prior.firstFailureAt
+          : Date.now();
+      const failures = ids.length;
+      const maintenance = failures >= 3 && Date.now() - firstFailureAt >= 60000;
+      await durable(file, {
+        commit: runtime.commit,
+        failures,
+        ids,
+        firstFailureAt,
+        lastFailureAt: Date.now(),
+      });
+      const operation = {
+        id: `external-${id}`,
+        command: "inspect",
+        phase: "failed",
+        actualCommit: runtime.commit,
+        recovery: "preserved-new-data",
+        failure: "EXTERNAL_HTTPS_OR_PROTOCOL_FAILED",
+        finishedAt: new Date().toISOString(),
+      };
+      await durable(
+        resolve(config.stateDir, "operations", `${operation.id}.json`),
+        operation,
+      );
+      await freeze(config, operation, operation.failure, maintenance);
+      return {
+        id,
+        phase: "failed",
+        actualCommit: runtime.commit,
+        failures,
+        maintenance,
+        issues: [operation.failure],
+      };
     });
-    return { phase: "completed", id, actualCommit: runtime.commit };
+  }
+  if (action === "complete") {
+    return withControlLock(config, `confirm-${id}`, async () => {
+      const report = await json(output);
+      const runtime = await json(resolve(config.stateDir, "runtime.json"));
+      assert.equal(report.phase, "healthy");
+      if (report.actualCommit !== runtime.commit)
+        return { id, phase: "busy", reason: "VERSION_CHANGED" };
+      const age = Date.now() - Date.parse(report.checkedAt);
+      assert.ok(age >= 0 && age < 300000);
+      assert.ok(!(await exists(resolve(config.stateDir, "incident.json"))));
+      await durable(resolve(config.stateDir, "last-inspection-success.json"), {
+        id,
+        commit: runtime.commit,
+        at: new Date().toISOString(),
+      });
+      await durable(resolve(config.stateDir, "external-availability.json"), {
+        commit: runtime.commit,
+        failures: 0,
+        ids: [],
+      });
+      return { phase: "completed", id, actualCommit: runtime.commit };
+    });
   }
   if (await exists(output)) return json(output);
   const issues = [];
   let publicService, busy;
   const lockPath = resolve(config.stateDir, "operation.lock");
-  if (await exists(lockPath)) {
-    const lock = await json(lockPath);
-    busy = { id: lock.id, alive: await alive(lock) };
-    if (!busy.alive) issues.push("UNKNOWN_OPERATION_REQUIRES_RECONCILIATION");
-    const operationPath = resolve(
-      config.stateDir,
-      "operations",
-      `${lock.id}.json`,
-    );
-    if (await exists(operationPath)) {
-      const operation = await json(operationPath);
-      busy.phase = operation.phase;
-      busy.startedAt = operation.createdAt;
-      if (Date.now() - Date.parse(operation.createdAt) > 600000)
-        issues.push("OPERATION_BUDGET_EXCEEDED");
+  const observedCommit = (await json(resolve(config.stateDir, "runtime.json")))
+    .commit;
+  async function currentOperation() {
+    if (!(await exists(lockPath))) return undefined;
+    try {
+      const lock = await json(lockPath);
+      const value = { id: lock.id, alive: await alive(lock) };
+      if (!value.alive)
+        issues.push("UNKNOWN_OPERATION_REQUIRES_RECONCILIATION");
+      const operationPath = resolve(
+        config.stateDir,
+        "operations",
+        `${lock.id}.json`,
+      );
+      if (await exists(operationPath)) {
+        const operation = await json(operationPath);
+        value.phase = operation.phase;
+        value.startedAt = operation.createdAt;
+        if (Date.now() - Date.parse(operation.createdAt) > 600000)
+          issues.push("OPERATION_BUDGET_EXCEEDED");
+      }
+      return value;
+    } catch (error) {
+      if (error.code === "ENOENT") return undefined;
+      throw error;
     }
-  } else {
+  }
+  busy = await currentOperation();
+  if (!busy) {
     let response;
     try {
       response = execFileSync(
@@ -84,6 +157,11 @@ async function main() {
           maintenance: operation.inspection.maintenance === true,
         };
         if (!publicService.healthy) issues.push("SERVICE_UNAVAILABLE");
+      } else if (operation.failure === "OPERATION_BUSY") {
+        busy = (await currentOperation()) ?? {
+          phase: "changed-during-inspection",
+          alive: true,
+        };
       } else issues.push("UNKNOWN_OPERATION_REQUIRES_RECONCILIATION");
     } catch {
       issues.push("UNKNOWN_OPERATION_REQUIRES_RECONCILIATION");
@@ -197,12 +275,16 @@ async function main() {
     : drill?.phase === "verified"
       ? drill.finishedAt
       : null;
+  const latestRuntime = await json(resolve(config.stateDir, "runtime.json"));
+  busy = (await currentOperation()) ?? busy;
+  if (latestRuntime.commit !== observedCommit)
+    busy ??= { phase: "changed-during-inspection", alive: true };
   const report = {
     id,
     phase: issues.length ? "failed" : busy ? "busy" : "healthy",
     checkedAt: new Date().toISOString(),
-    actualCommit: runtime.commit,
-    slot: runtime.slot,
+    actualCommit: latestRuntime.commit,
+    slot: latestRuntime.slot,
     publicService,
     busy,
     backup,
@@ -221,13 +303,17 @@ try {
   const result = await main();
   console.log(JSON.stringify(result));
   if (result.phase === "failed") process.exitCode = 1;
-} catch {
-  console.log(
-    JSON.stringify({
-      id,
-      phase: "failed",
-      issues: ["INSPECTION_EVIDENCE_UNAVAILABLE"],
-    }),
-  );
-  process.exitCode = 1;
+} catch (error) {
+  if (error.message === "OPERATION_BUSY") {
+    console.log(JSON.stringify({ id, phase: "busy" }));
+  } else {
+    console.log(
+      JSON.stringify({
+        id,
+        phase: "failed",
+        issues: ["INSPECTION_EVIDENCE_UNAVAILABLE"],
+      }),
+    );
+    process.exitCode = 1;
+  }
 }

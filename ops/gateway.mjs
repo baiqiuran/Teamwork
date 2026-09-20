@@ -67,14 +67,16 @@ async function main() {
     );
   } else {
     assert.match(id ?? "", /^[a-zA-Z0-9_-]{1,80}$/);
-    if (["inspect", "inspection-complete"].includes(action)) {
+    if (
+      ["inspect", "inspection-complete", "external-failure"].includes(action)
+    ) {
       assert.ok(!value);
       // Diagnosis failures are data: preserve their sanitized report for Actions.
       try {
         process.stdout.write(
           run(
             "./monitor.mjs",
-            action === "inspect" ? "inspect" : "complete",
+            action === "inspection-complete" ? "complete" : action,
             id,
           ),
         );

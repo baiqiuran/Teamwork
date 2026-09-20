@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile, writeFile, rm } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { slotsFixture } from "./slots-fixture.mjs";
@@ -97,6 +97,23 @@ test("inspection distinguishes live service, stale backups, failed transfers and
     f.root + "/control/last-inspection-success.json",
     "utf8",
   );
+  const raceHook = f.root + "/lock-race.mjs";
+  await writeFile(
+    raceHook,
+    `import cp from 'node:child_process'; import fs from 'node:fs'; import {syncBuiltinESMExports} from 'node:module';
+const original=cp.execFileSync; cp.execFileSync=function(command,args,...rest) {
+ if(args.some(x=>String(x).endsWith('/control.mjs'))) {
+ const stat=fs.readFileSync('/proc/'+process.pid+'/stat','utf8');
+ fs.writeFileSync(${JSON.stringify(f.root + "/control/operation.lock")},JSON.stringify({id:'concurrent-release',pid:process.pid,bootId:fs.readFileSync('/proc/sys/kernel/random/boot_id','utf8').trim(),startTime:stat.slice(stat.lastIndexOf(')')+2).split(' ')[19]}));
+ return JSON.stringify({phase:'failed',failure:'OPERATION_BUSY'}); }
+ return original.call(this,command,args,...rest); };syncBuiltinESMExports();`,
+  );
+  const raced = await inspect("racing", raceHook);
+  assert.equal(raced.report.phase, "busy");
+  assert.ok(
+    !raced.report.issues.includes("UNKNOWN_OPERATION_REQUIRES_RECONCILIATION"),
+  );
+  await rm(f.root + "/control/operation.lock");
   const priorPath = f.root + "/control/uploads/prior.json";
   const prior = JSON.parse(await readFile(priorPath, "utf8"));
   await writeFile(
@@ -139,13 +156,24 @@ test("inspection distinguishes live service, stale backups, failed transfers and
     (await f.request(`/api/diaries/${f.diary.id}`)).published.entries[0].body,
     "恢复前的内容",
   );
-  run("systemctl", "stop", f.config.slots.green.unit);
-  result = await inspect("unavailable-one");
-  assert.ok(result.report.issues.includes("SERVICE_UNAVAILABLE"));
+  // External HTTPS failures are independent of healthy host protocol checks.
+  await inspect("external-one");
+  result = await inspect("external-one", undefined, "external-failure");
+  assert.equal(result.report.failures, 1);
+  assert.equal(result.report.maintenance, false);
+  assert.equal(
+    (await inspect("external-one", undefined, "external-failure")).report
+      .failures,
+    1,
+  );
+  assert.equal((await fetch(f.origin + "/login")).status, 200);
   const hook = f.root + "/later.mjs";
   await writeFile(hook, "const now=Date.now; Date.now=()=>now()+61000;");
-  await inspect("unavailable-two", hook);
-  result = await inspect("unavailable-three", hook);
-  assert.equal(result.report.publicService.maintenance, true);
+  await inspect("external-two", hook);
+  result = await inspect("external-two", hook, "external-failure");
+  assert.equal(result.report.maintenance, false);
+  await inspect("external-three", hook);
+  result = await inspect("external-three", hook, "external-failure");
+  assert.equal(result.report.maintenance, true);
   assert.equal((await fetch(f.origin + "/login")).status, 503);
 });

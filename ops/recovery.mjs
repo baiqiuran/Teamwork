@@ -352,5 +352,10 @@ export async function resolveIncident(config, operation) {
     commit: operation.expectedCommit,
     failures: 0,
   });
+  await durable(resolve(config.stateDir, "external-availability.json"), {
+    commit: operation.expectedCommit,
+    failures: 0,
+    ids: [],
+  });
   return operation;
 }

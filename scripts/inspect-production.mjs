@@ -46,38 +46,48 @@ async function publicCheck(commit) {
     assert.equal((await read(path, method)).status, status);
   }
 }
-let result;
-// A maintenance window is observed, never cancelled by a scheduled check.
-for (let n = 0; n < 21; n++) {
-  result = await inspect(`${id}-wait-${n}`);
-  if (result.phase !== "busy") break;
-  await wait(30000);
-}
-if (
-  result.publicService?.healthy === false &&
-  !result.publicService.maintenance
-) {
-  for (let n = 0; n < 2; n++) {
-    await wait(31000);
-    result = await inspect(`${id}-retry-${n}`);
-    if (result.publicService?.healthy) break;
+let confirmed = false,
+  failedSamples = 0;
+for (let attempt = 0; attempt < 21; attempt++) {
+  const result = await inspect(`${id}-${attempt}`);
+  await report(result);
+  if (result.phase === "busy") {
+    await wait(30000);
+    continue;
   }
+  // Backup/drill alarms must not suppress the independent public check.
+  if (!/^[a-f0-9]{40}$/.test(result.actualCommit ?? "")) break;
+  let publicHealthy = false;
+  try {
+    await publicCheck(result.actualCommit);
+    publicHealthy = true;
+    await report({ publicHttps: "healthy", actualCommit: result.actualCommit });
+  } catch {
+    try {
+      await report(await remote(`external-failure ${result.id}`));
+    } catch (error) {
+      if (error.result) await report(error.result);
+      else throw error;
+    }
+  }
+  if (result.phase === "healthy" && publicHealthy) {
+    const completed = await remote(`inspection-complete ${result.id}`);
+    await report(completed);
+    if (completed.phase === "completed") {
+      confirmed = true;
+      break;
+    }
+    if (completed.phase === "busy") {
+      await wait(30000);
+      continue;
+    }
+    break;
+  }
+  if (publicHealthy && result.publicService?.healthy) break;
+  if (++failedSamples >= 3) break;
+  await wait(31000);
 }
-await report(result);
-if (result.phase !== "healthy")
-  throw new Error(
-    "INSPECTION_FAILED: follow the reported issue codes; do not replay a deployment or restore old data",
-  );
-try {
-  await publicCheck(result.actualCommit);
-} catch {
-  await report({
-    phase: "failed",
-    issues: ["EXTERNAL_HTTPS_OR_PROTOCOL_FAILED"],
-    actualCommit: result.actualCommit,
-  });
-  throw new Error(
-    "EXTERNAL_CHECK_FAILED: inspect ingress/network/certificate; host data was not restored",
-  );
-}
-await report(await remote(`inspection-complete ${result.id}`));
+assert.ok(
+  confirmed,
+  "INSPECTION_FAILED: follow reported issue codes; preserve current data, do not replay deployment",
+);
