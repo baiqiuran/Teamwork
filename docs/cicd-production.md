@@ -4,7 +4,7 @@
 
 ## 已核对的生产现场
 
-2026-09-20 通过已验证 SSH 主机身份只读检查：
+2026-09-20 首次通过已验证 SSH 主机身份只读检查（下表是准备前快照）：
 
 | 项目 | 实测结果 |
 | --- | --- |
@@ -20,7 +20,13 @@
 | 新控制程序 | `/opt/daily-flow/control`、新控制状态及 `deploy.json` 尚未安装 |
 | 备份方案 | 2026-09-20 用户取消云备份，采用服务器本地备份；无需 OSS/RAM |
 
-这些是检查时的快照，实施切换前必须再核对。当前未停止服务、未切换数据库、未改证书、未初始化团队。
+这些是首次检查时的快照，实施切换前必须再核对。
+
+同日后续已完成准备：控制程序 42171fa 安装到 `/opt/daily-flow/control/ops`，配置采用 `backupMode: local`、实际数据库名 `daily-flow.sqlite`；独立 `daily-deploy` 强制 SSH 命令、受限 sudo 与 GitHub production 两项 Secrets 已配置。主机指纹已核验，任意 shell 读取命令被拒绝。运行状态尚未登记，`baseline` 暂不能作为已接入验收。
+
+旧运行材料封存为 `/opt/daily-flow/artifacts/legacy-8d08b2b/application.tar.gz`，摘要 `18d09eaf2ada65ffded6e7ec97bc339b4b66d6e811307b34d976ba70cbed67b6`，明确标为 legacy 材料而非 CI 产物。新控制器使用 `/opt/daily-flow/managed-current`；blue 链接、环境、健康凭证和数据锁 tmpfiles 已准备，两个槽位均未启动。原配置的受限副本在 `/root/daily-flow-before-managed`。
+
+旧 `daily-flow.service` 与原备份 timer 仍 active，未修改 Nginx、未停止服务、未切换数据库、未改证书或初始化团队。接续安装时复用并核对这些材料，不重复覆盖配置/密钥。
 
 ## 1. 本地备份方案
 
@@ -32,7 +38,7 @@
 
 ## 2. GitHub 与部署身份
 
-在本机运行 `gh auth login --web`，完成有仓库管理权限的账号登录。2026-09-20 已验证 `baiqiuran` 具备仓库 admin 权限；随后已建立 production Environment（仅 main）、main PR/必需检查保护及非秘密变量；发布与巡检开关均为 false。部署 Secrets 尚未安装。无需发送令牌。首次设置需要仓库/Environment/分支规则权限；普通 workflow token 只保留工作流中声明的只读权限。
+在本机运行 `gh auth login --web`，完成有仓库管理权限的账号登录。2026-09-20 已验证 `baiqiuran` 具备仓库 admin 权限；随后已建立 production Environment（仅 main）、main PR/必需检查保护及非秘密变量；发布与巡检开关均为 false。部署 Secrets 后续已安装（见上方准备记录），应用切换尚未执行。无需发送令牌。首次设置需要仓库/Environment/分支规则权限；普通 workflow token 只保留工作流中声明的只读权限。
 
 | 位置 | 名称 | 值/来源 |
 | --- | --- | --- |
@@ -52,7 +58,7 @@ production Environment 只接受 main。main 要求 PR、`Verified Linux artifac
 
 ## 3. 首次接入：需要完成的维护步骤
 
-以下是首次切换检查单，**尚未执行**。没有实测旧版恢复材料与已验证本地副本时，不开始切换。
+以下是首次切换检查单。控制程序、部署身份、旧版运行归档及独立配置已准备；**流量/服务切换和生产验收尚未执行**。没有实测旧版恢复材料与已验证本地副本时，不开始切换。
 
 1. 留存当前 Nginx、systemd、备份 timer 和秘密环境文件的受限运维副本；备份秘密文件只放 root 目录，不能上传 Actions。核对真实数据库大小和控制器磁盘预算。
 2. 针对实际 `8d08b2b…` 到候选版本，逐提交审查持久化变更，生成明确迁移说明，运行 `verify-candidate.mjs` 的旧库升级与配套恢复。当前 CI 的固定历史基线验证不能替代真实线上基线验证。历史分支合并涉及文件移动，缺失说明时应停止并人工审查，不能把整个跨度一律标为自动安全。
@@ -108,3 +114,9 @@ node /opt/daily-flow/control/ops/control.mjs --config /etc/daily-flow/deploy.jso
 通知配置与受控收件测试见 [小时巡检](../ops/README.md#小时巡检和通知任务-10)。手动作业的失败邮件与定时作业的收件对象可能不同，两者分别确认。每周检查实际 schedule 运行与最后成功时间，不能仅以配置文件存在判断巡检运行。
 
 目前缺少首次生产切换/PR 发布、定时邮件收件和真实本地副本恢复证据，因此任务 11 保持未完成。现有线上服务继续按原方式运行。
+
+## 本轮验证证据
+
+代码提交 42171fa 的 PR 构建与真实 Linux 主机验收均通过：[Actions run 35497545434](https://github.com/baiqiuran/Teamwork/actions/runs/35497545434)。本地完整主机回归 27/27，通过审查后的定向回归 2/2。
+
+真实线上源码版本 8d08b2b 编译后，对 PR 测试合并提交 00ce8ca70fbd05dfd903392d16f83c165ba52372 的原样运行包执行隔离升级与旧备份恢复，通过账号、会话、草稿、事件、公开链接、附件和授权校验。产物摘要 ffc6cc719472b257312ab6c459303b710db5ca854e14738b80ac7065adcaf1ea。此证据不等于完整历史迁移说明已审阅，也不把 PR 测试合并提交当作正式 main；首次接入仍须核对最终 main 产物。
