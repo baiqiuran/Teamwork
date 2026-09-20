@@ -1,7 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn } from "node:child_process";
-import { once } from "node:events";
-import { createReadStream } from "node:fs";
+import { execFileSync } from "node:child_process";
 import {
   mkdir,
   mkdtemp,
@@ -12,12 +10,10 @@ import {
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { sha256 } from "../ops/io.mjs";
+import { sshControl } from "./ssh-control.mjs";
 const env = process.env;
+const remote = sshControl(env);
 assert.match(env.GITHUB_REPOSITORY ?? "", /^[a-zA-Z0-9_.-]+\/[a-zA-Z0-9_.-]+$/);
-assert.match(env.DEPLOY_HOST ?? "", /^[a-zA-Z0-9.-]+$/);
-assert.match(env.DEPLOY_USER ?? "", /^[a-z_][a-z0-9_-]*$/);
-for (const name of ["DEPLOY_KEY_FILE", "DEPLOY_KNOWN_HOSTS"])
-  assert.ok(env[name]);
 const directory = await mkdtemp(
   resolve(env.RUNNER_TEMP ?? tmpdir(), "daily-publish-"),
 );
@@ -28,41 +24,6 @@ const run = (name, ...args) =>
   }).trim();
 const execute = (name, ...args) =>
   execFileSync(name, args, { stdio: "inherit" });
-const sshArgs = [
-  "-i",
-  env.DEPLOY_KEY_FILE,
-  "-o",
-  "BatchMode=yes",
-  "-o",
-  "StrictHostKeyChecking=yes",
-  "-o",
-  `UserKnownHostsFile=${env.DEPLOY_KNOWN_HOSTS}`,
-  "-o",
-  "ConnectTimeout=10",
-  "-o",
-  "ServerAliveInterval=15",
-  "-o",
-  "ServerAliveCountMax=3",
-  `${env.DEPLOY_USER}@${env.DEPLOY_HOST}`,
-];
-async function remote(command, file) {
-  const child = spawn("ssh", [...sshArgs, command], {
-    stdio: ["pipe", "pipe", "inherit"],
-  });
-  let output = "";
-  child.stdout.on("data", (v) => (output += v));
-  child.stdin.on("error", () => {});
-  if (file) createReadStream(file).pipe(child.stdin);
-  else child.stdin.end();
-  const [code] = await once(child, "exit");
-  if (!output.trim())
-    throw new Error(
-      "SSH_OBSERVATION_FAILED: query the same operation on rerun",
-    );
-  const result = JSON.parse(output);
-  if (code !== 0) throw new Error(result.error ?? "REMOTE_OPERATION_FAILED");
-  return result;
-}
 const wait = () => new Promise((r) => setTimeout(r, 5000));
 async function report(value) {
   const text = JSON.stringify(value);

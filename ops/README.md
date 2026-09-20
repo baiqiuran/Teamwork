@@ -1,6 +1,6 @@
 # 发布控制（实施中）
 
-这是与业务数据库分开的主机运维入口。目前提供一致备份、查询、配套恢复、同机双槽发布、按开放边界处理失败及独立执行/启动核对，使用真实 Linux systemd/Nginx 验收。OSS 和生产接入由后续任务接入；本目录尚未安装到正式服务器。
+这是与业务数据库分开的主机运维入口，提供一致备份、双槽单活发布、失败恢复、OSS 补传与保留、受限 SSH 和巡检。通过真实 Linux systemd/Nginx 验收；真实 OSS、GitHub 配置及生产接入仍待任务 11，本目录尚未安装到正式服务器。
 
 ## 操作入口
 
@@ -158,3 +158,29 @@ command="sudo -n /usr/local/sbin/daily-flow-ssh-entry \"$SSH_ORIGINAL_COMMAND\""
 迁移说明存于 `docs/migrations/automatic.json`，以 `git hash-object <文件>` 得到的精确文件 blob 为键，包含 automatic、kind 和具体说明。这样 PR 可在同一提交包含说明，无需猜未来合并 SHA。每个跨度中的持久化文件版本都必须有已审阅说明，缺失/删除/破坏性操作会停止自动发布。当前仅登记本轮已审阅的健康检查变更，不把更早未核对的线上版本默认为可自动升级。`create-plan.mjs` 生成逐提交计划后，仍执行实际基线数据升级与匹配恢复验证。
 
 CI 在无生产资料的临时 Linux 环境构建同一固定产物，再启动真实 systemd/Nginx/SSH 隔离容器跑 `ops/testing/*.test.mjs`；新增验收文件自动纳入门槛。首次上云前也应在本地执行该入口，并核对生产旧版的单实例接入与初始备份。
+
+## 小时巡检和通知（任务 10）
+
+`Production inspection` 每小时 UTC 的第 17 分钟运行，独立于发布队列，不取消已受理发布。生产 Environment 增加 `DEPLOY_URL`（完整 HTTPS origin，无结尾斜线）；仓库变量 `INSPECTION_ENABLED=true` 才启用。部署账号增加的固定命令仅为 `inspect ID`、`inspection-complete ID`。主机诊断包含当前版本/槽位、维护和事故、备份数据时间、失败补传、可用磁盘、证书到期时间、续期/备份/补传/清理 timer，以及最近恢复演练。业务正文和令牌不进入报告。
+
+```sh
+node ops/monitor.mjs --config /etc/daily-flow/deploy.json inspect manual-UNIQUE
+systemctl list-timers daily-flow-backup.timer daily-flow-upload.timer daily-flow-retention.timer snap.certbot.renew.timer
+```
+
+配置 `certificateFile` 指向实际公开证书，`renewalTimer` 指向已有续期 timer，示例的 snap 名称需以服务器实时输出为准。证书少于 6 小时、timer 停止或最近任务失败会报警；不改动证书策略。新证书仍由 GitHub 外部 HTTPS 请求核验信任、主机名及有效期。`monitorTimers` 仅供受信任主机配置指定等效 timer，默认检查三项日序 timer，不能用空配置绕过生产交接核对。
+
+主机使用既有 `control inspect` 和共同操作锁验证协议/数据。活动操作短暂维护时等待最多约 10 分钟，不与发布争抢数据；锁对应进程失效、未完成状态不明、预算超时均报告人工核对。服务失败时隔 31 秒复查两次，沿用至少三次且跨 60 秒的门槛；明确数据异常立即维护。根因修复后仍需 `resolve-incident` 明确解除事故冻结，不能用“重新跑巡检”或删除锁代替。
+
+报告要区分：`publicService.healthy=true` 且 `backup.pending>0` 表示应用正常、正在补传；`OFFSITE_UPLOAD_FAILED` 表示上传异常；`OFFSITE_BACKUP_STALE` 使发布门槛暂时不满足，网页仍服务，补传成功后门槛自动恢复。二者不会自动恢复旧数据，也不会自己清除既有事故冻结。磁盘不足先扩容或按保留规则清理非保护材料，不能删除未上传备份。
+
+主机诊断和外部 HTTPS/readiness/login/MCP/OAuth 全部成功后才记录 `last-inspection-success.json`；匿名 MCP 返回 401、空 OAuth 请求返回 400 是预期结果。失败报告保存在 `latest-inspection.json`，成功时间不会被失败覆盖。最近的异地备份时间和恢复演练时间分别显示；演练超过 31 天、失败或超出恢复目标会报告。隔离演练失败报告也可经 `record-drill.mjs` 导入，保留此前 `last-drill-success.json`。
+
+原生失败邮件的启用与验证：
+
+1. 负责人进入个人 Settings → Notifications → Actions，启用 Email，可选择仅失败通知；确认邮箱已验证。
+2. Actions → Production inspection → Run workflow，选择 `verify_notification=true`。这只制造一条明确的失败记录，不连接或修改服务器。实际收件后登记作业链接、触发账号、邮箱确认时间；随后正常手动运行，确认绿灯。
+3. [GitHub 通知规则](https://docs.github.com/en/actions/concepts/workflows-and-actions/notifications-for-workflow-runs)说明，本人触发作业通知发给本人；定时作业通知通常发给最初创建者，修改 cron 或重新启用工作流会改变通知接收者。负责人的实际定时失败收件仍须任务 11 验证，不能用“订阅仓库”或手动作业收件代替。
+4. 每周核对 Actions 中最近 `Production inspection` 的 schedule 运行和服务器最后成功时间。超过两小时没有运行记录时，检查工作流是否 Disabled、`INSPECTION_ENABLED`、生产 Environment/Secrets、Actions 额度与服务状态；明确启用工作流并手动运行一次，再等待下一次 schedule 验证。
+
+[GitHub 调度限制](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)：高负载可延迟或丢弃定时作业，公开仓库 60 天无活动可停用。只在默认分支运行，错开整点能降低拥堵，不能保证实时告警；当调度器本身停止时不会凭空产生失败邮件，需上述人工检查。首版没有独立实时监控服务。

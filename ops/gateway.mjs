@@ -67,7 +67,23 @@ async function main() {
     );
   } else {
     assert.match(id ?? "", /^[a-zA-Z0-9_-]{1,80}$/);
-    if (action === "status") {
+    if (["inspect", "inspection-complete"].includes(action)) {
+      assert.ok(!value);
+      // Diagnosis failures are data: preserve their sanitized report for Actions.
+      try {
+        process.stdout.write(
+          run(
+            "./monitor.mjs",
+            action === "inspect" ? "inspect" : "complete",
+            id,
+          ),
+        );
+      } catch (error) {
+        if (!error.stdout) throw error;
+        process.stdout.write(String(error.stdout));
+        process.exitCode = 1;
+      }
+    } else if (action === "status") {
       assert.ok(!value);
       const operation = resolve(config.stateDir, "operations", `${id}.json`),
         request = resolve(config.stateDir, "requests", `${id}.json`);

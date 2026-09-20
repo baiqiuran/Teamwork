@@ -13,6 +13,23 @@ const job = await json(
   resolve(config.stateDir, "uploads", `${report.id}.json`),
 );
 assert.equal(job.phase, "verified");
+if (report.phase === "failed") {
+  const failedAt = Date.parse(report.failedAt);
+  assert.ok(
+    Number.isFinite(failedAt) &&
+      failedAt >= Date.parse(job.snapshotAt) &&
+      failedAt <= Date.now(),
+  );
+  await durable(resolve(config.stateDir, "latest-drill.json"), {
+    id: report.id,
+    phase: "failed",
+    failedAt: report.failedAt,
+    failure: "RECOVERY_DRILL_FAILED",
+    importedAt: new Date().toISOString(),
+  });
+  console.log(JSON.stringify({ id: report.id, phase: "failure-recorded" }));
+  process.exit(0);
+}
 assert.equal(report.phase, "verified");
 assert.equal(report.manifestDigest, job.manifestDigest);
 assert.equal(report.commit, job.commit);
@@ -41,7 +58,7 @@ assert.ok(
     end >= start &&
     end <= Date.now(),
 );
-await durable(resolve(config.stateDir, "latest-drill.json"), {
+const verified = {
   id: report.id,
   phase: "verified",
   commit: report.commit,
@@ -57,5 +74,7 @@ await durable(resolve(config.stateDir, "latest-drill.json"), {
   protocolsVerified: true,
   checks: report.checks,
   importedAt: new Date().toISOString(),
-});
+};
+await durable(resolve(config.stateDir, "latest-drill.json"), verified);
+await durable(resolve(config.stateDir, "last-drill-success.json"), verified);
 console.log(JSON.stringify({ id: report.id, phase: "recorded" }));

@@ -33,6 +33,8 @@
   "dataLock": "/run/lock/daily-flow-data.lock",
   "probeUrl": "http://127.0.0.1:4310/api/setup/status",
   "ingressUrl": "https://8.148.245.224",
+  "certificateFile": "/etc/letsencrypt/live/8.148.245.224/fullchain.pem",
+  "renewalTimer": "snap.certbot.renew.timer",
   "serviceUser": "daily-flow",
   "reserveBytes": 268435456,
   "oss": {

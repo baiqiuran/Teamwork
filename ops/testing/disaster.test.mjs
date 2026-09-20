@@ -142,6 +142,49 @@ test("isolated recovery uses only remote materials and proves business, attachme
   assert.equal(proof.withinRpo, true);
   assert.equal(proof.checks.projects.rows, 1);
   assert.equal(proof.checks.ai_grants.rows, 1);
+  const reportPath = f.root + "/drill-report.json";
+  await writeFile(reportPath, JSON.stringify(proof));
+  run(
+    process.execPath,
+    "ops/record-drill.mjs",
+    "--config",
+    path,
+    "--report",
+    reportPath,
+  );
+  assert.equal(
+    JSON.parse(
+      await readFile(f.root + "/control/last-drill-success.json", "utf8"),
+    ).phase,
+    "verified",
+  );
+  await writeFile(
+    reportPath,
+    JSON.stringify({
+      ...proof,
+      phase: "failed",
+      failedAt: new Date().toISOString(),
+    }),
+  );
+  run(
+    process.execPath,
+    "ops/record-drill.mjs",
+    "--config",
+    path,
+    "--report",
+    reportPath,
+  );
+  assert.equal(
+    JSON.parse(await readFile(f.root + "/control/latest-drill.json", "utf8"))
+      .phase,
+    "failed",
+  );
+  assert.equal(
+    JSON.parse(
+      await readFile(f.root + "/control/last-drill-success.json", "utf8"),
+    ).phase,
+    "verified",
+  );
   assert.equal(
     (await f.request(`/api/diaries/${f.diary.id}`)).published.entries[0].body,
     "恢复前的内容",
