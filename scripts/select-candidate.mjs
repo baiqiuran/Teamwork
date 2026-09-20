@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 const [runsPath, current] = process.argv.slice(2);
 assert.match(current ?? "", /^[a-f0-9]{40}$/);
@@ -25,10 +25,21 @@ const ancestry = git(
   "--first-parent",
   "refs/remotes/origin/main",
 ).split("\n");
-assert.ok(ancestry.includes(current), "PRODUCTION_NOT_ON_MAIN");
+const descendsFromCurrent = (sha) => {
+  const result = spawnSync(
+    "git",
+    ["merge-base", "--is-ancestor", current, sha],
+    { stdio: "ignore" },
+  );
+  assert.ok([0, 1].includes(result.status), "INVALID_COMMIT_HISTORY");
+  return result.status === 0;
+};
+// Candidates stay on main's first-parent chain, but the adopted production
+// baseline may have arrived through a merged side branch.
+assert.ok(descendsFromCurrent(ancestry[0]), "PRODUCTION_NOT_ON_MAIN");
 let selected;
 for (const sha of ancestry) {
-  if (sha === current) break;
+  if (sha === current || !descendsFromCurrent(sha)) break;
   if (candidates.has(sha)) {
     selected = candidates.get(sha);
     break;
