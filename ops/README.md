@@ -103,3 +103,32 @@ node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json status
 隔离测试通过 Node 模块 hook 替换 OSS I/O，覆盖离线、摘要错误、补传重启和新鲜度；没有在生产配置中加入跳过门槛开关。真实资源验证入口是上面的 backup/upload/status 组合，先使用独立测试桶和合成数据，勿把业务备份放入 GitHub runner。
 
 上传扫描会对账已完整落盘的快照，补建因进程中断缺失的任务；原子首次发布队列记录避免并发对账覆盖已验证结果。发布完成与状态查询关联本次快照的实时 pending/failed/verified，失败退避从该次失败时刻起计算。
+
+## 保留与异地恢复（任务 08）
+
+`retention-plan` 只生成计划，`retention-apply` 使用与发布/备份/恢复相同的操作锁执行。每日备份本机七天、OSS 三十天；发布前备份本机最近一次、OSS 最近十次。待上传、上传失败、无队列证明、恢复中的快照，以及本地/异地最后一个有效恢复点不删除。每份快照自带应用包、Node、配置，无跨快照共享材料；清理整份目录并保留仍被引用材料清单，不清理活动 releases 或事故现场。空间不足停止操作，不能删保护点换空间。
+
+```sh
+node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json retention-plan
+node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json retention-apply
+```
+
+异地拉取与清理还使用 OSS `snapshots/coordination/lock.json` 排他锁。恢复者先写 `restore-pin-*.json`，验证完成才删除；远端清理见到 pin 会保留。锁不会按时间自动过期，防止慢恢复时误清理。进程崩溃遗留锁必须由运维确认原工作进程停止、相关恢复点已保护后，再手动清除；不要把删锁当作常规重试。
+
+每月在运维控制的隔离 Linux 主机执行以下演练（禁止在生产运行；真实材料不能进入 GitHub runner）：
+
+1. 从独立运维存档安装相同 Node 二进制、控制程序及锁定依赖；安装 systemd/Nginx、服务用户和数据锁。准备同路径的空数据、备份、版本目录；绑定独立配置与**仅回环监听**的代理。`recoveryMode` 设置为 `isolated`。源配置中的数据库绝对路径及槽位/端口必须保持对应，跨域名/端口正式切换另作基础设施维护。
+2. 给恢复主机关联受限恢复角色。配置相同私有桶及前缀，关闭应用、备份和清理定时器，勿把恢复机接入正式流量。
+3. 用明确的快照 ID 拉取。完成标记、清单和全部材料逐一核验，缺失则保留失败证据并停止。下载包含秘密配置，目标目录 0700、文件 0600。
+
+```sh
+node ops/offsite-cli.mjs --config /etc/daily-flow/recovery.json pull SNAPSHOT_ID
+node ops/control.mjs --config /etc/daily-flow/recovery.json restore --id restore-UNIQUE --snapshot SNAPSHOT_ID
+node ops/offsite-cli.mjs --config /etc/daily-flow/recovery.json drill-verify SNAPSHOT_ID
+```
+
+4. `drill-verify` 比较团队、成员、日报、项目、任务、分享、附件、会话、授权和回执的恢复内容，校验附件字节及网页/MCP/OAuth协议；报告只包含校验结果、数量和耗时，不输出业务正文或凭证。RPO目标24小时、RTO目标4小时，实际值与是否达标分别记录在 `stateDir/drills/<id>.json`。失败/缺失材料会留存阶段及失败记录。
+5. 人工核对隔离主机与报告后，把报告文件通过运维通道带回生产控制主机，用 `node ops/record-drill.mjs --config /etc/daily-flow/deploy.json --report /root/isolated-drill.json` 登记。入口核对源快照摘要与时间，供后续巡检识别月度演练过期。报告导入需要可信运维身份；文件本身不构成远程主机的密码学证明。
+6. 实际整机故障恢复按同样过程先在隔离入口验证，再由运维核对公开地址、OAuth资源、证书和代理后开放。恢复的是快照生成时的数据，不能把旧快照恢复进仍接受写入的生产实例。
+
+当前证据为真实 Linux/systemd/Nginx 加合成对象存储的完整恢复；真实 OSS 桶及独立云主机恢复留待任务11，未据此声明已达到生产 RPO/RTO。

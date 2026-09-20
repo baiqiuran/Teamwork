@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { destination } from "./offsite.mjs";
 const require = createRequire(import.meta.url);
 
@@ -61,9 +61,38 @@ export async function createStore(config) {
       return hash.digest("hex");
     },
     async get(key, path) {
-      await client.get(key, path);
+      const result = await client.get(key, path);
+      assert.equal(
+        result.res.headers["x-oss-server-side-encryption"],
+        "AES256",
+        "OSS_ENCRYPTION_MISSING",
+      );
     },
     async remove(key) {
+      await client.delete(key);
+    },
+    async lock() {
+      const token = randomUUID();
+      await client.put(
+        `${config.oss.prefix}coordination/lock.json`,
+        Buffer.from(token),
+        {
+          headers: {
+            "x-oss-forbid-overwrite": "true",
+            "x-oss-server-side-encryption": "AES256",
+            "x-oss-object-acl": "private",
+          },
+        },
+      );
+      return token;
+    },
+    async unlock(token) {
+      const key = `${config.oss.prefix}coordination/lock.json`;
+      assert.equal(
+        (await client.get(key)).content.toString(),
+        token,
+        "REMOTE_LOCK_CHANGED",
+      );
       await client.delete(key);
     },
     async list(prefix) {

@@ -143,7 +143,7 @@ export async function status(config, now = Date.now()) {
     latestSnapshotId: latest?.id,
     ageMilliseconds: latest ? now - Date.parse(latest.snapshotAt) : null,
     fresh: !!latest && now - Date.parse(latest.snapshotAt) <= 86400000,
-    pending: queue.filter((j) => j.phase !== "verified").length,
+    pending: queue.filter((j) => !["verified", "retired"].includes(j.phase)).length,
     failures: queue
       .filter((j) => j.phase === "failed")
       .map((j) => ({
@@ -164,7 +164,7 @@ export async function upload(config, store) {
   const results = [];
   for (let job of await jobs(config)) {
     if (
-      job.phase === "verified" ||
+      ["verified", "retired"].includes(job.phase) ||
       Date.parse(job.nextAttemptAt ?? "") > Date.now()
     )
       continue;

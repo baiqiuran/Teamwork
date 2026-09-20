@@ -44,6 +44,14 @@ export async function createStore(config) {
     async remove(key) {
       await rm(resolve(root, key), { force: true });
     },
+    async lock() {
+      await mkdir(root, { recursive: true });
+      await writeFile(resolve(root, "lock"), "test", { flag: "wx" });
+      return "test";
+    },
+    async unlock() {
+      await rm(resolve(root, "lock"));
+    },
     async list(prefix) {
       const names = await readdir(resolve(root, prefix), {
         recursive: true,
