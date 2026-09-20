@@ -33,6 +33,8 @@ test("destructive migration SQL and missing explanations block before runtime pr
     "db.exec(`DELETE\nFROM diaries`);",
     'db.exec(\'UPDATE "diaries" SET draft=""\');',
     'db.exec("DROP TABLE diaries");',
+    'db.exec("REPLACE INTO diaries SELECT * FROM replacement");',
+    'db.exec("INSERT OR REPLACE INTO diaries SELECT * FROM replacement");',
   ]) {
     const result = await migrationAttempt(
       "server/infrastructure/sqlite/database.ts",

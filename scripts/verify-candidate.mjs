@@ -150,7 +150,7 @@ for (const commit of commits) {
       // Conservative at the migration boundary: quoted names, comments and line
       // breaks must not turn destructive operations into an automatic release.
       assert.ok(
-        !/\b(DROP|TRUNCATE|DELETE|UPDATE|RENAME)\b/i.test(additions),
+        !/\b(DROP|TRUNCATE|DELETE|UPDATE|RENAME|REPLACE)\b/i.test(additions),
         `DESTRUCTIVE_MIGRATION: data rewriting SQL in ${path}`,
       );
     } else {
