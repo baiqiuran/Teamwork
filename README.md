@@ -4,7 +4,7 @@
 
 项目采用 **TypeScript 全栈 + DDD 模块化单体**。React 页面与 NestJS（Express 适配器）接口同源运行，SQLite 保存业务数据，附件保存在本地私有目录。团队日报、项目页工作进展和公开页的进展日报采用桌面多列瀑布流卡片。
 
-当前提供单团队网页及成员授权的 MCP 服务，已验证 Codex 接入。公开链接支持免登录读取。2026-09-18 已在单台 Ubuntu ECS 上完成公网 IP HTTPS 部署与真实网页登录验收，操作路径见[部署手册](docs/deployment.md)。
+当前提供单团队网页及成员授权的 MCP 服务，已验证 Codex 接入。公开链接支持免登录读取。2026-09-18 已在单台 Ubuntu ECS 上完成公网 IP HTTPS 部署与真实网页登录验收，2026-09-20 已完成双槽单活接管与本地备份恢复验收，现行运维入口见 [CI/CD 生产手册](docs/cicd-production.md)。
 
 [快速开始](#快速开始) · [配置](#配置) · [Codex 接入](#codex-接入) · [技术架构](#技术架构) · [开发与验证](#开发与验证) · [数据与备份](#数据与备份) · [常见问题](#常见问题)
 
@@ -375,7 +375,7 @@ data/
 
 ## 部署边界
 
-应用由单个 Node.js 进程提供前端和 API，SQLite 与附件依赖本地持久磁盘。现有 ECS 部署使用 systemd、Nginx 和公网 IP HTTPS；重建、更新及恢复步骤见[阿里云 ECS 部署手册](docs/deployment.md)。源码推送 GitHub 后，仍需在目标服务器构建并启动服务才能使用。
+应用由单个 Node.js 进程提供前端和 API，SQLite 与附件依赖本地持久磁盘。现有 ECS 使用 systemd、Nginx 和公网 IP HTTPS，已由发布控制器管理 blue/green 双槽且始终单活。日常变更经过分支 PR 和必需检查，合入 main 后由 GitHub Actions 构建固定版本，再经专用 SSH 账号发布；最终发布结果以 Actions 和控制器回执为准。应用更新、本地备份及恢复按 [CI/CD 生产手册](docs/cicd-production.md) 执行；[原单实例部署手册](docs/deployment.md) 保留首次建站与基础环境的历史步骤。
 
 在新环境重建公网部署时，需要落实以下配置（操作步骤见[部署手册](docs/deployment.md)）：
 

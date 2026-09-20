@@ -108,7 +108,7 @@ node ops/backup-cli.mjs --config /etc/daily-flow/deploy.json retention-apply
 每月在运维控制的隔离 Linux 环境演练，真实备份不得进入 GitHub runner。步骤：
 
 1. 在生产控制锁无活动时，暂停清理 timer，将选定的完整快照目录复制到受限运维目录，复制前后核对全部摘要，再恢复清理 timer。备份目录及副本 0700、材料 0600，不能把秘密配置放公共仓库。
-2. 在独立环境安装同版本 Node、控制程序与 systemd/Nginx。准备对应的空数据/备份/版本路径和运行用户；入口仅回环监听。设置 `backupMode: local`、`recoveryMode: isolated`，不接正式流量。数据库路径、端口和槽位与快照中的运行配置保持对应。
+2. 在独立环境安装同版本 Node、控制程序与 systemd/Nginx。准备对应的空数据/备份/版本路径和运行用户；入口仅回环监听。设置 `backupMode: local`、`recoveryMode: isolated`，不接正式流量。`database` 沿用快照中的实际文件名（本机为 `daily-flow.sqlite`），但数据路径、端口、控制状态、锁、systemd 单元和 Nginx 入口全部使用隔离环境独立值。配套恢复会还原 `config.env`，因此运行服务必须在它之后读取一份不会被恢复覆盖的隔离环境文件，明确覆盖 `DAILY_DATABASE_PATH` 和 `PORT`。不要只写 systemd 的 `Environment=PORT=...`：EnvironmentFile 会覆盖它。
 3. 将完整副本放在 `/root/recovery-materials/SNAPSHOT_ID`，执行导入、配套恢复和业务核验：
 
 ```sh
@@ -123,7 +123,7 @@ node ops/backup-cli.mjs --config /etc/daily-flow/recovery.json drill-verify SNAP
 node ops/record-drill.mjs --config /etc/daily-flow/deploy.json --report /root/recovery-evidence.json
 ```
 
-恢复报告绑定本地快照摘要与代码版本；只含校验结果、数量及耗时。保留成功与失败记录供巡检检查。若公网 origin 是 HTTPS，隔离配置设置 `recoveryPublicUrl` 为原地址，代理保留 Host，仍只监听回环。
+恢复报告绑定本地快照摘要与代码版本；只含校验结果、数量及耗时。保留成功与失败记录供巡检检查。若公网 origin 是 HTTPS，隔离配置设置 `recoveryPublicUrl` 为原地址，Nginx 显式设置该原地址的 Host 和 `X-Forwarded-Proto https`，仍只监听回环；不能通过改成公共监听来让检查通过。演练开始前核对运行用户不能访问生产数据目录，恢复后停止隔离实例，按本地权限要求清理真实数据副本。记录准备/复制的开始时间与最终核验时间；报告内 `recoveryMilliseconds` 只计算导入至验证，不包含预先建设环境及复制耗时。
 
 备份保全前提下，以 24 小时恢复点、4 小时恢复耗时作为演练目标。**同机备份不覆盖服务器或磁盘全部丢失**，不再承诺整机灾难恢复。导入失败不会覆盖既有快照；发生落盘后回执中断时先保留目录并人工核验，不删除旧恢复点盲目重试。
 

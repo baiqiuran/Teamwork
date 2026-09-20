@@ -56,6 +56,41 @@ test("qualified candidates follow main ancestry, never completion order or a non
   await writeFile(path, JSON.stringify(runs));
   assert.equal(select(commits[0]).commit, commits[1]);
   assert.equal(select(commits[2]).upToDate, true);
+  // Existing production may be a side-branch commit later merged into main.
+  git("checkout", "-b", "legacy", commits[1]);
+  await writeFile(resolve(root, "legacy"), "previously deployed version");
+  git("add", "legacy");
+  git("commit", "-m", "legacy deployment");
+  const legacy = git("rev-parse", "HEAD");
+  git("checkout", "main");
+  git("merge", "--no-ff", "legacy", "-m", "adopt deployed branch");
+  const merged = git("rev-parse", "HEAD");
+  git("update-ref", "refs/remotes/origin/main", merged);
+  runs[0].conclusion = "success";
+  runs.push({
+    id: 5,
+    head_sha: merged,
+    head_branch: "main",
+    event: "push",
+    conclusion: "success",
+  });
+  await writeFile(path, JSON.stringify(runs));
+  assert.equal(select(legacy).commit, merged);
+  runs.at(-1).conclusion = "failure";
+  await writeFile(path, JSON.stringify(runs));
+  assert.equal(
+    select(legacy).upToDate,
+    true,
+    "never select a main version that predates the deployed branch merge",
+  );
+  git("checkout", "legacy");
+  await writeFile(resolve(root, "unmerged"), "not adopted");
+  git("add", "unmerged");
+  git("commit", "-m", "unmerged work");
+  assert.throws(
+    () => select(git("rev-parse", "HEAD")),
+    /PRODUCTION_NOT_ON_MAIN/,
+  );
 });
 test("migration plans require explicit notes for exact persistent code blobs", async (t) => {
   const root = await mkdtemp(resolve(tmpdir(), "deploy-plan-"));
