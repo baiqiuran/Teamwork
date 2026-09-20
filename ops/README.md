@@ -143,7 +143,7 @@ command="sudo -n /usr/local/sbin/daily-flow-ssh-entry \"$SSH_ORIGINAL_COMMAND\""
 
 分支规则：main 禁止直接推送/强推/删除，Require pull request，必需上述两个检查、要求分支最新；允许本人合并，不强制第二审核人。GitHub 应用/管理员绕过需关闭或单独受控。PR/普通构建无生产 Secrets，`workflow_run` 只处理本仓库 main push；部署脚本取默认分支，不执行 PR 分支部署代码。规则与邮件实际生效待任务11核验。
 
-迁移说明存于 `docs/migrations/automatic.json`，以 `git hash-object <文件>` 得到的精确文件 blob 为键，包含 automatic、kind 和具体说明。这样 PR 可在同一提交包含说明，无需猜未来合并 SHA。每个跨度中的持久化文件版本都必须有已审阅说明，缺失/删除/破坏性操作会停止自动发布。当前仅登记本轮已审阅的健康检查变更，不把更早未核对的线上版本默认为可自动升级。`create-plan.mjs` 生成逐提交计划后，仍执行实际基线数据升级与匹配恢复验证。
+迁移说明存于 `docs/migrations/automatic.json`，以 `git hash-object <文件>` 得到的精确文件 blob 为键，包含 automatic、kind 和具体说明。这样 PR 可在同一提交包含说明，无需猜未来合并 SHA。每个跨度中的持久化文件版本都必须有已审阅说明，说明缺失、未说明的删除及破坏性操作会停止自动发布。纯文件搬迁须另以 `moved:<旧文件 blob>` 登记 replacement 路径和 replacementBlob；生成及验收两处核对实际父提交旧文件与目标提交新文件，目标文件也需单独说明。存在不同父版本的歧义则停止。当前登记健康检查及从线上 8d08b2b 开始的历史 DDD 搬迁、类型导入和 Codex 回调变更，未把未知版本默认为可升级。`create-plan.mjs` 生成逐提交计划后，仍执行实际基线数据升级与匹配恢复验证。
 
 CI 在无生产资料的临时 Linux 环境构建同一固定产物，再启动真实 systemd/Nginx/SSH 隔离容器跑 `ops/testing/*.test.mjs`；新增验收文件自动纳入门槛。首次上云前也应在本地执行该入口，并核对生产旧版的单实例接入与初始备份。
 

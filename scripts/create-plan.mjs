@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { writeFile, readFile } from "node:fs/promises";
+import { fileBlob, previousBlob, verifyMove } from "./migration-moves.mjs";
 const args = process.argv.slice(2),
   options = {};
 while (args.length) {
@@ -43,8 +44,9 @@ for (const commit of git(
       ),
   );
   for (const path of paths) {
-    const blob = git("rev-parse", `${commit}:${path}`),
-      note = notes[blob];
+    const blob = fileBlob(git, commit, path);
+    const prior = blob ? undefined : previousBlob(git, commit, path);
+    const note = notes[blob ?? `moved:${prior}`];
     const kind =
       path.startsWith("server/infrastructure/sqlite/") ||
       path === "server/composition/resources.ts"
@@ -56,7 +58,16 @@ for (const commit of git(
         note.kind === kind,
       `MIGRATION_NOTES_MISSING: ${commit}:${path}:${blob}`,
     );
-    changes.push({ commit, path, kind, description: note.description });
+    const change = { commit, path, kind, description: note.description };
+    if (!blob) {
+      Object.assign(change, {
+        previousBlob: prior,
+        replacement: note.replacement,
+        replacementBlob: note.replacementBlob,
+      });
+      verifyMove(git, commit, path, change);
+    }
+    changes.push(change);
   }
 }
 await writeFile(

@@ -2,7 +2,14 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync, spawnSync } from "node:child_process";
 import { resolve } from "node:path";
-import { mkdtemp, mkdir, writeFile, access, rm } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  writeFile,
+  access,
+  rm,
+  readFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { createHash } from "node:crypto";
 
@@ -61,7 +68,39 @@ test("ordinary repository UPDATE reaches compatibility validation instead of bei
   assert.doesNotMatch(result.stderr, /DESTRUCTIVE_MIGRATION/);
 });
 
-async function migrationAttempt(path, sql, kind) {
+test("hash update calls in composition do not masquerade as data rewriting SQL", async () => {
+  const result = await migrationAttempt(
+    "server/composition/resources.ts",
+    'const digest = createHash("sha256").update(new URL("/mcp", origin).href).digest("hex");',
+    "additive",
+  );
+  assert.match(result.stderr, /EXPECTED_SOURCE_BUILD_BOUNDARY/);
+  assert.doesNotMatch(result.stderr, /DESTRUCTIVE_MIGRATION/);
+});
+
+test("reviewed infrastructure moves require exact prior and replacement blobs", async () => {
+  for (const mode of [
+    "valid",
+    "missing",
+    "wrong-blob",
+    "deleted",
+    "tampered-plan",
+  ]) {
+    const result = await migrationAttempt(
+      "server/infrastructure/sqlite/repository.ts",
+      "// moved implementation",
+      "additive",
+      mode,
+    );
+    if (mode === "valid") {
+      assert.match(result.stderr, /EXPECTED_SOURCE_BUILD_BOUNDARY/);
+    } else {
+      assert.match(result.stderr, /MIGRATION_(NOTES_MISSING|MOVE_INVALID)/);
+    }
+  }
+});
+
+async function migrationAttempt(path, sql, kind, move) {
   const root = await mkdtemp(resolve(tmpdir(), "daily-candidate-test-"));
   try {
     const git = (...args) =>
@@ -94,7 +133,15 @@ async function migrationAttempt(path, sql, kind) {
     git("add", ".");
     git("commit", "-m", "source");
     const from = git("rev-parse", "HEAD");
-    await writeFile(resolve(root, path), sql + "\n");
+    const replacement =
+      "server/modules/work/infrastructure/sqlite/repository.ts";
+    if (move) {
+      await rm(resolve(root, path));
+      if (move !== "deleted") {
+        await mkdir(resolve(root, replacement, ".."), { recursive: true });
+        await writeFile(resolve(root, replacement), sql + "\n");
+      }
+    } else await writeFile(resolve(root, path), sql + "\n");
     git("add", ".");
     git("commit", "-m", "candidate");
     const to = git("rev-parse", "HEAD");
@@ -125,18 +172,77 @@ async function migrationAttempt(path, sql, kind) {
     );
     const plan = resolve(root, "plan.json"),
       output = resolve(root, "evidence.json");
-    await writeFile(
-      plan,
-      JSON.stringify({
-        from,
-        to,
-        automatic: true,
-        description: "Fixture change",
-        changes: kind
-          ? [{ commit: to, path, kind, description: "Change explanation" }]
-          : [],
-      }),
-    );
+    if (move) {
+      const previousBlob = git("rev-parse", `${from}:${path}`);
+      const replacementBlob =
+        move === "deleted"
+          ? "0".repeat(40)
+          : git("rev-parse", `${to}:${replacement}`);
+      const notes = {
+        [replacementBlob]: {
+          kind: "runtime",
+          automatic: true,
+          description: "Reviewed destination",
+        },
+        ...(move === "missing"
+          ? {}
+          : {
+              [`moved:${previousBlob}`]: {
+                kind,
+                automatic: true,
+                description: "Reviewed move",
+                replacement,
+                replacementBlob:
+                  move === "wrong-blob" ? "1".repeat(40) : replacementBlob,
+              },
+            }),
+      };
+      const notesPath = resolve(root, "notes.json");
+      await writeFile(notesPath, JSON.stringify(notes));
+      const planned = spawnSync(
+        process.execPath,
+        [
+          resolve("scripts/create-plan.mjs"),
+          "--from",
+          from,
+          "--to",
+          to,
+          "--notes",
+          notesPath,
+          "--output",
+          plan,
+        ],
+        { cwd: root, encoding: "utf8" },
+      );
+      if (move !== "valid" && move !== "tampered-plan") {
+        assert.notEqual(planned.status, 0);
+        return planned;
+      }
+      assert.equal(planned.status, 0, planned.stderr);
+      const content = JSON.parse(await readFile(plan, "utf8"));
+      assert.equal(
+        content.changes.find((item) => item.path === path).previousBlob,
+        previousBlob,
+      );
+      if (move === "tampered-plan") {
+        content.changes.find((item) => item.path === path).previousBlob =
+          "2".repeat(40);
+        await writeFile(plan, JSON.stringify(content));
+      }
+    } else {
+      await writeFile(
+        plan,
+        JSON.stringify({
+          from,
+          to,
+          automatic: true,
+          description: "Fixture change",
+          changes: kind
+            ? [{ commit: to, path, kind, description: "Change explanation" }]
+            : [],
+        }),
+      );
+    }
     const result = spawnSync(
       process.execPath,
       [

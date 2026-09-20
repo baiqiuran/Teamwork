@@ -6,6 +6,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { npmCli } from "./npm-cli.mjs";
+import { fileBlob, verifyMove } from "./migration-moves.mjs";
 
 const args = process.argv.slice(2);
 const options = {};
@@ -130,6 +131,7 @@ for (const commit of commits) {
       migration ? "additive" : "runtime",
       `MIGRATION_KIND_MISMATCH: ${commit}:${path}`,
     );
+    if (!fileBlob(git, commit, path)) verifyMove(git, commit, path, note);
     const diff = git(
       "show",
       "--format=",
@@ -150,7 +152,11 @@ for (const commit of commits) {
       // Conservative at the migration boundary: quoted names, comments and line
       // breaks must not turn destructive operations into an automatic release.
       assert.ok(
-        !/\b(DROP|TRUNCATE|DELETE|UPDATE|RENAME|REPLACE)\b/i.test(additions),
+        // SQLite UPDATE is followed by a table/OR clause, not a call parenthesis.
+        // In particular Node crypto's .update(...) does not rewrite database rows.
+        !/\b(DROP|TRUNCATE|DELETE|UPDATE(?!\s*\()|RENAME|REPLACE)\b/i.test(
+          additions,
+        ),
         `DESTRUCTIVE_MIGRATION: data rewriting SQL in ${path}`,
       );
     } else {
