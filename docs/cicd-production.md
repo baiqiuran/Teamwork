@@ -40,7 +40,7 @@
 
 ## 2. GitHub 与部署身份
 
-在本机运行 `gh auth login --web`，完成有仓库管理权限的账号登录。2026-09-20 已验证 `baiqiuran` 具备仓库 admin 权限；随后已建立 production Environment（仅 main）、main PR/必需检查保护及非秘密变量；发布与巡检开关均为 false。部署 Secrets 后续已安装（见上方准备记录），应用切换尚未执行。无需发送令牌。首次设置需要仓库/Environment/分支规则权限；普通 workflow token 只保留工作流中声明的只读权限。
+首次设置时，在本机运行 `gh auth login --web`，完成有仓库管理权限的账号登录。2026-09-20 已验证 `baiqiuran` 具备仓库 admin 权限；随后建立 production Environment（仅 main）、main PR/必需检查保护、非秘密变量和部署 Secrets。准备时发布与巡检开关为 false；完成接管及首次发布后，两项现已开启。无需发送令牌。首次设置需要仓库/Environment/分支规则权限；普通 workflow token 只保留工作流中声明的只读权限。
 
 | 位置 | 名称 | 值/来源 |
 | --- | --- | --- |
