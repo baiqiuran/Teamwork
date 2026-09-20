@@ -1,6 +1,6 @@
 # 发布控制（实施中）
 
-这是与业务数据库分开的主机运维入口。目前提供一致备份、查询、配套恢复、同机双槽发布及按开放边界处理失败，使用真实 Linux systemd/Nginx 验收。断线接管、OSS 和生产接入由后续任务接入；本目录尚未安装到正式服务器。
+这是与业务数据库分开的主机运维入口。目前提供一致备份、查询、配套恢复、同机双槽发布、按开放边界处理失败及独立执行/启动核对，使用真实 Linux systemd/Nginx 验收。OSS 和生产接入由后续任务接入；本目录尚未安装到正式服务器。
 
 ## 操作入口
 
@@ -51,7 +51,23 @@ node ops/control.mjs --config /etc/daily-flow/deploy.json resolve-incident --id 
 
 恢复先校验全部材料，再停止应用，恢复数据与匹配代码、配置。使用相同 Node 二进制校验，不擅自升级主机运行时；原数据改名为 `dataDir.before-restore-<id>` 保留现场。数据先在同一文件系统准备，再切换。运行产物不允许包含符号链接、硬链接或设备文件；新增依赖若需要这些类型，应先另行审查打包方式。
 
-本地备份失败会尝试恢复原服务；如果恢复服务或明确恢复操作失败，保持维护并记录 `incident.json`。容量不足直接失败，不清理关键备份强行继续。任务 06 完成前，进程被强制终止造成的锁或未完成记录需要人工核对，不能仅删锁后盲目重跑。
+本地备份失败会尝试恢复原服务；如果恢复服务或明确恢复操作失败，保持维护并记录 `incident.json`。容量不足直接失败，不清理关键备份强行继续。进程被强制终止造成的锁或未完成记录必须通过重新核对入口处理，不能仅删锁后盲目重跑。
+
+## SSH 断线与主机启动
+
+远程调用 `dispatch.mjs` 提交持久请求，短命 SSH 命令只负责交给独立的 `daily-flow-operation-<id>.service`。systemd 持有工作进程，关闭观察窗口或取消 SSH 不结束数据操作；不要用取消 Actions 的方式停止服务器服务。`control.mjs` 是内部执行/查询入口，日常远程发布应使用 dispatch。
+
+```sh
+node ops/dispatch.mjs --config /etc/daily-flow/deploy.json release --id release-UNIQUE --candidate /opt/daily-flow/incoming/VERIFIED --baseline FULL_DEPLOYED_SHA
+node ops/control.mjs --config /etc/daily-flow/deploy.json status --id release-UNIQUE
+node ops/reconcile.mjs --config /etc/daily-flow/deploy.json
+```
+
+请求绑定规范参数和四份候选材料的摘要，同标识不同内容拒绝。重发相同请求返回原状态；不会重复执行已完成、已恢复或失败操作。已排队材料在执行前再次校验。没有操作回执且工作服务已失效时，查询显示未知而不伪报成功。
+
+操作锁保存 PID、进程启动标识及开机标识，避免把复用 PID 误当作原工作进程。核对入口不打断仍活着的持锁进程；确认原进程消失后先停止它所属的 systemd 工作组，再处理遗留状态。开放前且已验证备份的激活中断恢复旧版；可能开放之后一律保留数据、维护并冻结，等待明确人工处理。正在恢复的数据阶段或损坏记录不猜测、不重复迁移。未完成操作也会阻止新操作绕过核对。
+
+应用槽的 `ExecStartPre` 核验 root 保存的数据所有者许可及开机标识，非活动槽不能因人为启动或自动重启夺取数据。新开机必须由 `daily-flow-reconcile.service` 核对并重新签发许可，两个槽不单独 enable；实际数据库锁仍是第二道互斥。首次生产安装及重启顺序绑定在任务11执行。
 
 `systemd/daily-flow-backup.timer` 安排北京时间每日 04:00，调用相同控制入口，服务使用无限启动时间以免在处理数据时被固定作业超时杀死。实际替换现有生产备份脚本与定时器留到首次接入阶段，避免两套备份流程交错启停应用。
 

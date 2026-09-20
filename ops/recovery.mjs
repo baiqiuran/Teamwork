@@ -45,7 +45,7 @@ export async function freeze(config, operation, reason, closeTraffic) {
     }
   }
 }
-async function verifyBaseline(config, commit) {
+export async function verifyBaseline(config, commit) {
   assert.equal(
     (await json(resolve(config.current, "release.json"))).commit,
     commit,
@@ -99,7 +99,7 @@ async function verifyBaseline(config, commit) {
       );
   }
 }
-async function verifyPublicBaseline(config, commit) {
+export async function verifyPublicBaseline(config, commit) {
   if (
     await exists(
       resolve(config.current, "build/server/interfaces/http/readiness.js"),

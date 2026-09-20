@@ -3,6 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdir, rm, access, statfs } from "node:fs/promises";
 import { resolve, isAbsolute, sep } from "node:path";
 import { json, durable } from "./io.mjs";
+import { bootId } from "./process-identity.mjs";
 
 export const command = (name, ...args) =>
   execFileSync(name, args, {
@@ -19,11 +20,12 @@ export const exists = async (path) => {
     throw error;
   }
 };
-export async function configuration(path) {
+export async function configuration(path, readRuntime = true) {
   assert.equal(process.platform, "linux", "Deployment control requires Linux");
   const config = await json(path);
   assert.equal(config.schema, 1);
   if (
+    readRuntime &&
     typeof config.stateDir === "string" &&
     isAbsolute(config.stateDir) &&
     (await exists(resolve(config.stateDir, "runtime.json")))
@@ -142,6 +144,16 @@ export function assertStopped(unit) {
   assert.ok(["inactive", "failed"].includes(active), "OLD_SERVICE_NOT_STOPPED");
 }
 export async function start(config, deadline = Date.now() + 120000) {
+  if (config.slots) {
+    const manifest = await json(
+      resolve(config.slots[config.activeSlot].link, "release.json"),
+    );
+    await durable(resolve(config.stateDir, "owner.json"), {
+      slot: config.activeSlot,
+      commit: manifest.commit,
+      bootId: await bootId(),
+    });
+  }
   command("/bin/systemctl", "start", config.unit);
   while (Date.now() < deadline) {
     if (

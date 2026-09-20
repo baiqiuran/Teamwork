@@ -4,5 +4,5 @@ Description=Daily Flow consistent local backup
 [Service]
 Type=oneshot
 UMask=0077
-ExecStart=/usr/local/bin/node /usr/local/lib/daily-flow-control/control.mjs --config /etc/daily-flow/deploy.json backup --kind daily
+ExecStart=/usr/local/bin/node /opt/daily-flow/control/ops/dispatch.mjs --config /etc/daily-flow/deploy.json backup --kind daily
 TimeoutStartSec=infinity

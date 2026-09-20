@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
-import { open, rm } from "node:fs/promises";
+import { open, rm, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
+import { intent } from "./intent.mjs";
+import { processIdentity } from "./process-identity.mjs";
 import { json, durable } from "./io.mjs";
 import {
   configuration,
@@ -24,8 +26,8 @@ import {
 const args = process.argv.slice(2);
 assert.equal(args.shift(), "--config");
 const configPath = args.shift();
-let config = await configuration(configPath);
 const action = args.shift();
+let config = await configuration(configPath, action !== "status");
 assert.ok(
   [
     "backup",
@@ -63,7 +65,40 @@ if (input["--snapshot"])
   assert.match(input["--snapshot"], /^[a-zA-Z0-9_-]{1,80}$/);
 const statePath = resolve(config.stateDir, "operations", `${id}.json`);
 if (action === "status") {
-  console.log(JSON.stringify(await json(statePath)));
+  if (await exists(statePath))
+    console.log(JSON.stringify(await json(statePath)));
+  else if (
+    await exists(resolve(config.stateDir, "requests", `${id}.result.json`))
+  )
+    console.log(
+      JSON.stringify(
+        await json(resolve(config.stateDir, "requests", `${id}.result.json`)),
+      ),
+    );
+  else {
+    const request = await json(
+      resolve(config.stateDir, "requests", `${id}.json`),
+    );
+    const active = command(
+      "/bin/systemctl",
+      "show",
+      request.unit,
+      "--property=ActiveState",
+      "--value",
+    ).trim();
+    console.log(
+      JSON.stringify({
+        id,
+        phase: ["active", "activating"].includes(active)
+          ? "accepted"
+          : "unknown",
+        unit: request.unit,
+        ...(["active", "activating"].includes(active)
+          ? {}
+          : { reason: "WORKER_STATE_REQUIRES_RECONCILIATION" }),
+      }),
+    );
+  }
 } else {
   const kind =
     action === "release" ? "pre-release" : (input["--kind"] ?? "manual");
@@ -75,20 +110,7 @@ if (action === "status") {
     assert.ok(input["--candidate"], "Candidate directory required");
     input["--candidate"] = resolve(input["--candidate"]);
   }
-  const fingerprint = createHash("sha256")
-    .update(
-      JSON.stringify({
-        action,
-        kind,
-        snapshot: input["--snapshot"],
-        candidate: input["--candidate"],
-        baseline: input["--baseline"],
-        incident: input["--incident"],
-        expectedCommit: input["--expected-commit"],
-        note: input["--note"],
-      }),
-    )
-    .digest("hex");
+  const { fingerprint } = await intent(action, input);
   if (await exists(statePath)) {
     const previous = await json(statePath);
     assert.equal(previous.fingerprint, fingerprint, "OPERATION_ID_CONFLICT");
@@ -122,9 +144,23 @@ if (action === "status") {
           if (error.code === "EEXIST") throw new Error("OPERATION_BUSY");
           throw error;
         }
-        await lock.writeFile(JSON.stringify({ id, pid: process.pid }));
+        await lock.writeFile(
+          JSON.stringify({ id, ...(await processIdentity()) }),
+        );
         await lock.sync();
         config = await configuration(configPath);
+        for (const name of await readdir(
+          resolve(config.stateDir, "operations"),
+        )) {
+          if (!name.endsWith(".json") || name === `${id}.json`) continue;
+          const previous = await json(
+            resolve(config.stateDir, "operations", name),
+          );
+          assert.ok(
+            ["completed", "failed"].includes(previous.phase),
+            "PENDING_OPERATION_RECONCILIATION",
+          );
+        }
         // Another process may have completed this ID between our first lookup
         // and acquiring the lock. Never overwrite its receipt, even on conflict.
         if (await exists(statePath)) {

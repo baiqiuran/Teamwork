@@ -8,6 +8,7 @@ Group=daily-flow
 WorkingDirectory=/opt/daily-flow/slots/%i/current
 EnvironmentFile=/etc/daily-flow/daily-flow.env
 EnvironmentFile=/etc/daily-flow/slot-%i.env
+ExecStartPre=+/usr/local/bin/node /opt/daily-flow/control/ops/owner-guard.mjs --config /etc/daily-flow/deploy.json --slot %i
 ExecStart=/usr/bin/flock --nonblock /run/lock/daily-flow-data.lock /usr/local/bin/node build/server/main.js
 KillMode=control-group
 TimeoutStopSec=35
