@@ -7,6 +7,7 @@ import { configuration, command, exists, capacity } from "./host.mjs";
 import { json, sha256, syncPath, durable } from "./io.mjs";
 import { archiveSize, extract } from "./snapshots.mjs";
 import { status as backupStatus } from "./offsite.mjs";
+import { externalProbe } from "./release.mjs";
 async function main() {
   const [flag, path, commandFlag, original] = process.argv.slice(2);
   assert.equal(flag, "--config");
@@ -27,11 +28,14 @@ async function main() {
       resolve(path),
       ...args,
     );
-  function summary(result) {
+  async function summary(result) {
+    const runtime = await json(resolve(config.stateDir, "runtime.json"));
     return {
       id: result.id,
       phase: result.phase,
-      actualCommit: result.actualCommit ?? result.commit,
+      actualCommit: result.actualCommit ?? runtime.commit,
+      runningCommit: runtime.commit,
+      snapshotCommit: result.commit,
       slot: result.slot,
       recovery: result.recovery,
       backup: result.offsite,
@@ -55,6 +59,9 @@ async function main() {
         busy: !!lock,
         operationId: lock?.id,
         frozen: await exists(resolve(config.stateDir, "incident.json")),
+        incidentId: (await exists(resolve(config.stateDir, "incident.json")))
+          ? (await json(resolve(config.stateDir, "incident.json"))).id
+          : undefined,
         enabled: config.automationEnabled === true,
       }),
     );
@@ -82,7 +89,9 @@ async function main() {
       } else
         console.log(
           JSON.stringify(
-            summary(JSON.parse(run("./control.mjs", "status", "--id", id))),
+            await summary(
+              JSON.parse(run("./control.mjs", "status", "--id", id)),
+            ),
           ),
         );
     } else {
@@ -104,7 +113,7 @@ async function main() {
             for await (const chunk of process.stdin) {
               bytes += chunk.length;
               assert.ok(bytes <= 536870912, "UPLOAD_TOO_LARGE");
-              await file.write(chunk);
+              await file.writeFile(chunk);
             }
             await file.sync();
           } finally {
@@ -172,7 +181,31 @@ async function main() {
         );
         git("merge-base", "--is-ancestor", value, receipt.commit);
         const current = await json(resolve(config.stateDir, "runtime.json"));
-        if (current.commit === receipt.commit)
+        if (
+          (await exists(
+            resolve(config.stateDir, "operations", `${id}.json`),
+          )) ||
+          (await exists(resolve(config.stateDir, "requests", `${id}.json`)))
+        ) {
+          console.log(
+            JSON.stringify(
+              await summary(
+                JSON.parse(run("./control.mjs", "status", "--id", id)),
+              ),
+            ),
+          );
+          return;
+        }
+        if (await exists(resolve(config.stateDir, "operation.lock"))) {
+          console.log(JSON.stringify({ id, phase: "busy" }));
+          return;
+        }
+        if (current.commit === receipt.commit) {
+          assert.ok(
+            !(await exists(resolve(config.stateDir, "incident.json"))),
+            "INCIDENT_REQUIRES_MANUAL_RESOLUTION",
+          );
+          await externalProbe(config, current.commit);
           console.log(
             JSON.stringify({
               id,
@@ -182,7 +215,7 @@ async function main() {
               recovery: "already-current",
             }),
           );
-        else {
+        } else {
           assert.equal(current.commit, value, "BASELINE_CHANGED");
           if (await exists(resolve(config.stateDir, "operation.lock"))) {
             console.log(JSON.stringify({ id, phase: "busy" }));
@@ -200,7 +233,7 @@ async function main() {
               value,
             ),
           );
-          console.log(JSON.stringify(summary(state)));
+          console.log(JSON.stringify(await summary(state)));
         }
       } else throw new Error("REMOTE_COMMAND_NOT_ALLOWED");
     }

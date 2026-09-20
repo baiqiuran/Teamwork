@@ -48,6 +48,12 @@ test("restricted SSH uploads a fixed candidate, rechecks status and refuses stal
   assert.equal(result.code, 0, result.output + result.error);
   result = await ssh(`status ${id}`);
   assert.equal(JSON.parse(result.output).phase, "uploaded");
+  f.config.automationEnabled = false;
+  await writeFile(f.root + "/deploy.json", JSON.stringify(f.config));
+  result = await ssh(`release ${id} ${baseline}`);
+  assert.equal(JSON.parse(result.output).error, "AUTOMATION_DISABLED");
+  f.config.automationEnabled = true;
+  await writeFile(f.root + "/deploy.json", JSON.stringify(f.config));
   result = await ssh(`release ${id} ${baseline}`);
   assert.equal(result.code, 0, result.output + result.error);
   let receipt;
@@ -61,7 +67,40 @@ test("restricted SSH uploads a fixed candidate, rechecks status and refuses stal
   assert.equal(receipt.phase, "completed", JSON.stringify(receipt));
   assert.equal(receipt.backup.snapshot.phase, "pending");
   result = await ssh(`release ${id} ${baseline}`);
-  assert.equal(JSON.parse(result.output).recovery, "already-current");
+  assert.equal(JSON.parse(result.output).phase, "completed");
+  assert.equal(JSON.parse(result.output).actualCommit, receipt.actualCommit);
+  // A persisted version pointer is not a completed operation receipt.
+  const operationPath = f.root + `/control/operations/${id}.json`;
+  const completed = JSON.parse(await readFile(operationPath, "utf8"));
+  await writeFile(
+    operationPath,
+    JSON.stringify({
+      ...completed,
+      phase: "activating",
+      actualCommit: undefined,
+    }),
+  );
+  result = await ssh(`release ${id} ${baseline}`);
+  assert.equal(JSON.parse(result.output).phase, "activating");
+  await writeFile(
+    operationPath,
+    JSON.stringify({
+      ...completed,
+      phase: "failed",
+      actualCommit: undefined,
+      recovery: "preserved-new-data",
+    }),
+  );
+  result = await ssh(`status ${id}`);
+  assert.equal(JSON.parse(result.output).actualCommit, receipt.actualCommit);
+  assert.equal(JSON.parse(result.output).snapshotCommit, baseline);
+  assert.equal(JSON.parse(result.output).recovery, "preserved-new-data");
+  await writeFile(operationPath, JSON.stringify(completed));
+  const knownHosts = await readFile(f.root + "/known_hosts", "utf8");
+  await writeFile(f.root + "/known_hosts", "");
+  result = await ssh("baseline");
+  assert.notEqual(result.code, 0, "An unknown SSH host must not be trusted");
+  await writeFile(f.root + "/known_hosts", knownHosts);
   const old = f.root + "/old";
   await mkdir(old);
   await cp("/fixture-artifact/application.tar.gz", old + "/application.tar.gz");

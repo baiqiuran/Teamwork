@@ -78,7 +78,16 @@ const prepared = new Set();
 while (Date.now() - started < 3000000) {
   const baseline = await remote("baseline");
   assert.equal(baseline.enabled, true, "AUTOMATION_DISABLED");
-  assert.equal(baseline.frozen, false, "INCIDENT_REQUIRES_MANUAL_RESOLUTION");
+  if (baseline.frozen) {
+    if (baseline.incidentId)
+      await report(await remote(`status ${baseline.incidentId}`));
+    await report({
+      phase: "manual-intervention",
+      actualCommit: baseline.commit,
+      backup: baseline.backup,
+    });
+    throw new Error("INCIDENT_REQUIRES_MANUAL_RESOLUTION");
+  }
   if (baseline.busy) {
     await wait();
     continue;
@@ -219,6 +228,7 @@ while (Date.now() - started < 3000000) {
         "may-be-open",
         "rolling-back",
         "rollback-data-ready",
+        "rollback-may-be-open",
       ].includes(state.phase),
       "UNKNOWN_STATE_REQUIRES_RECONCILIATION",
     );

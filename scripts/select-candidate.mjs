@@ -12,6 +12,7 @@ const candidates = new Map(
         r.event === "push" &&
         r.head_branch === "main",
     )
+    .sort((a, b) => a.id - b.id)
     .map((r) => [r.head_sha, r]),
 );
 const git = (...args) =>
