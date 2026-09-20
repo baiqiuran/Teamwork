@@ -1,0 +1,22 @@
+{
+  "a67dad7f01a70967654925fe95f271de232f2b08": {
+    "kind": "runtime",
+    "automatic": true,
+    "description": "新增以应用运行成员权限检查附件目录可访问性，保留原文件格式。"
+  },
+  "c2fa635d70dbf35b0dea6857395ea83370eb85b7": {
+    "kind": "additive",
+    "automatic": true,
+    "description": "新增只读就绪、SQLite完整性和已有团队检查，不改结构及历史数据。"
+  },
+  "fae73b7e36dd384a3ad4c7e290e0ad51d556e1d4": {
+    "kind": "additive",
+    "automatic": true,
+    "description": "新增只读就绪、SQLite完整性和已有团队检查，不改结构及历史数据。"
+  },
+  "67e5261bcb2c7e0fd0c5e0e9c36ca06e37fb0a68": {
+    "kind": "additive",
+    "automatic": true,
+    "description": "新增只读就绪、SQLite完整性和已有团队检查，不改结构及历史数据。"
+  }
+}

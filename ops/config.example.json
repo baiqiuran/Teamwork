@@ -1,5 +1,8 @@
 {
   "schema": 1,
+  "automationEnabled": false,
+  "incoming": "/opt/daily-flow/incoming",
+  "repository": "/var/lib/daily-flow-git/repository.git",
   "dataDir": "/var/lib/daily-flow",
   "database": "data.sqlite",
   "stateDir": "/var/lib/daily-flow-control",

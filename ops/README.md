@@ -138,3 +138,23 @@ node ops/offsite-cli.mjs --config /etc/daily-flow/recovery.json drill-verify SNA
 清理执行前会重新验证将保留的本地和异地最新恢复点的四份完整材料摘要，任何缺失/不符都停止全部清理，保留更旧恢复点。下载已落盘但 fetched 回执丢失时，重新拉取会核对已有目录的摘要与完整性后补齐回执；不同内容拒绝覆盖。
 
 OSS 桶须从未启用版本控制，SDK 会检查并拒绝 Enabled/Suspended。原因是 [PutObject 官方说明](https://help.aliyun.com/en/oss/developer-reference/putobject) 明确：版本控制开启或暂停时 `x-oss-forbid-overwrite` 无效，不能据此建立排他锁。角色增加只读 `GetBucketVersioning` 权限；此版本也不通过删除标记伪装成历史版本已按期清理。
+
+## GitHub 串接与受限 SSH（任务 09）
+
+仓库变量 `DEPLOY_ENABLED` 默认不存在（关闭），主机 `automationEnabled` 默认 false；首次生产验收前均不打开。生产 Environment 名为 `production`，只允许 main，Secrets 仅含 `DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`，变量设 `DEPLOY_HOST`、`DEPLOY_USER`。必须经已可信 SSH/控制台核对服务器 host key 后保存，工作流不使用 ssh-keyscan 临时信任远端，也不使用 root 登录或旧密码。
+
+运维以 root 安装本目录至 `/opt/daily-flow/control/ops`，依赖单独 npm ci；复制 `ssh-entry.sh` 为 `/usr/local/sbin/daily-flow-ssh-entry`，root:root 0755。新建只有 SSH 公钥的部署用户 `daily-deploy`。sudoers 只允许 `daily-deploy ALL=(root) NOPASSWD: /usr/local/sbin/daily-flow-ssh-entry`。其 authorized_keys 使用以下强制命令前缀后接 CI 公钥：
+
+```text
+command="sudo -n /usr/local/sbin/daily-flow-ssh-entry \"$SSH_ORIGINAL_COMMAND\"",no-port-forwarding,no-agent-forwarding,no-X11-forwarding,no-pty ssh-ed25519 REPLACE_PUBLIC_KEY
+```
+
+`gateway.mjs` 只接收 baseline、status ID、upload ID SHA256、release ID BASELINE。上传经标准输入，只接受四份固定名称文件，限制压缩/展开空间、核对摘要并保存 root 所有的固定材料；不能指定路径、执行 shell、读取秘密配置或替换高权限控制程序。配置中的 root 管理 bare repository 固定 origin 为本仓库，发布前 fetch main 并核对候选祖先关系。系统控制程序升级另走运维审查，普通应用发布不覆盖它。
+
+流水线先按 main 的提交关系选最新成功的 `Application checks` push 作业，完整工作流成功才算合格（包含 `Verified Linux artifact` 和 `Linux release and recovery`）。重复请求先查询稳定操作 ID；已上传、已受理及已完成可接续，不重新迁移。实际生产基线改变则重新选取并验证；当前发布完成后再选择最新合格 main。GitHub concurrency 使用不取消运行中的作业；pending 替换顺序不当作版本顺序，服务器独立 systemd 作业也不受观察端取消影响。报告区分实际上线、开放前恢复、开放后需人工处理及异地备份待补传。
+
+分支规则：main 禁止直接推送/强推/删除，Require pull request，必需上述两个检查、要求分支最新；允许本人合并，不强制第二审核人。GitHub 应用/管理员绕过需关闭或单独受控。PR/普通构建无生产 Secrets，`workflow_run` 只处理本仓库 main push；部署脚本取默认分支，不执行 PR 分支部署代码。规则与邮件实际生效待任务11核验。
+
+迁移说明存于 `docs/migrations/automatic.json`，以 `git hash-object <文件>` 得到的精确文件 blob 为键，包含 automatic、kind 和具体说明。这样 PR 可在同一提交包含说明，无需猜未来合并 SHA。每个跨度中的持久化文件版本都必须有已审阅说明，缺失/删除/破坏性操作会停止自动发布。当前仅登记本轮已审阅的健康检查变更，不把更早未核对的线上版本默认为可自动升级。`create-plan.mjs` 生成逐提交计划后，仍执行实际基线数据升级与匹配恢复验证。
+
+CI 在无生产资料的临时 Linux 环境构建同一固定产物，再启动真实 systemd/Nginx/SSH 隔离容器跑 `ops/testing/*.test.mjs`；新增验收文件自动纳入门槛。首次上云前也应在本地执行该入口，并核对生产旧版的单实例接入与初始备份。
