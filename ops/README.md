@@ -1,6 +1,6 @@
 # 发布控制（实施中）
 
-这是与业务数据库分开的主机运维入口。目前提供任务 03 的一致备份、查询与配套恢复，使用真实 Linux systemd/Nginx 验收。双槽发布、阶段恢复、断线接管、OSS 和生产接入由后续任务接入；本目录尚未安装到正式服务器。
+这是与业务数据库分开的主机运维入口。目前提供一致备份、查询、配套恢复及同机双槽发布，使用真实 Linux systemd/Nginx 验收。阶段恢复、断线接管、OSS 和生产接入由后续任务接入；本目录尚未安装到正式服务器。
 
 ## 操作入口
 
@@ -16,7 +16,21 @@ node ops/control.mjs --config /etc/daily-flow/deploy.json restore --id recover-c
 
 `stateDir/operation.lock` 互斥所有备份与恢复。应用服务必须使用同一个 `dataLock` 启动，例如 `ExecStart=/usr/bin/flock --nonblock /run/lock/daily-flow-data.lock /usr/local/bin/node .../build/server/main.js`，文件预先创建并归运行成员所有。维护路径必须让 Nginx worker 能遍历，并让所有业务入口返回 503 和 Retry-After；控制入口会核对真实代理响应后才停止应用。测试配置可见 `testing/backup.test.mjs`。
 
-流程为：检查状态与恢复材料 → 维护 → systemd 停止并确认退出 → 独占数据文件锁 → 备份或恢复 → 启动及验收 → 开放。当前任务的 `pre-release` 只标记备份类型，仍恢复原服务；发布内部持续维护的调用会在任务 04 复用数据操作阶段，不能用一个独立备份命令代替整个发布事务。
+流程为：检查状态与恢复材料 → 维护 → systemd 停止并确认退出 → 独占数据文件锁 → 备份或恢复 → 启动及验收 → 开放。独立 `backup --kind pre-release` 只标记备份类型，仍恢复原服务；发布内部复用数据操作阶段并保持维护，不能用一个独立备份命令代替整个发布事务。
+
+## 双槽发布
+
+受信任上传目录内包含 `application.tar.gz`、构建的 `receipt.json`、实际基线升级验证的 `upgrade.json` 及同次验证的 `plan.json`。SHA、运行时、平台、检查清单、计划摘要和实际活动版本全部匹配后才准备候选。部署账号和传输入口的信任边界在任务 09 落实；不能接受普通成员上传的自制证明。
+
+```sh
+node ops/control.mjs --config /etc/daily-flow/deploy.json release --id release-UNIQUE --candidate /opt/daily-flow/incoming/VERIFIED --baseline FULL_DEPLOYED_SHA
+```
+
+新版本解压后在全新临时数据库中预检；该进程退出并清理后才进入维护。确认旧服务和非活动槽退出，持有相同数据锁生成一致快照，再启动另一槽。Nginx upstream 只包含活动槽的一个地址，切换过程中始终保持维护。开放之前持久写入 `mayHaveOpenedAt`；记录缺失或故障不能被误当作尚未接收写入。当前任务 04 的发布失败保持维护并记录事件，自动回退由任务 05 补齐。
+
+`/health/ready` 仅公开就绪结果和提交 SHA；`/internal/health` 提供 SQLite 检查及迁移版本，须本机连接和随机健康检查凭证。Nginx 禁止该路径并移除专用头，凭证仅保存在 root 可读文件和槽位环境文件。维护标志目录必须可由 Nginx 遍历（建议独立 0755 目录），不能放进 0700 的控制状态目录。两个槽不能独立 enable；启动须使用同一 `flock`，普通应用用户仅拥有业务数据和锁文件。
+
+应用关闭会排空已接受请求，25 秒仍未结束才断开剩余连接，之后释放数据库；systemd 使用 35 秒停止预算并确认进程已退出。启动及开放前验证共用 120 秒预算；维护通常 1～3 分钟、预算目标 10 分钟，状态记录实际耗时，超时不能并发打开生产库。网页收到 503 保留当前输入并提示稍后重试；MCP 客户端须沿用原操作 ID 重试，授权和幂等回执随同一数据库保留。
 
 ## 恢复材料与故障
 
