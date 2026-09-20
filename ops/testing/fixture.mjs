@@ -81,7 +81,11 @@ export async function fixture() {
   await writeFile(`${root}/deploy.json`, JSON.stringify(config));
   const origin = `http://127.0.0.1:${proxyPort}`;
   for (let attempt = 0; attempt < 100; attempt++) {
-    if ((await fetch(`${origin}/api/setup/status`)).status === 200) break;
+    try {
+      if ((await fetch(`${origin}/api/setup/status`)).status === 200) break;
+    } catch {
+      // Nginx reload can return before its new listener accepts connections.
+    }
     await new Promise((done) => setTimeout(done, 50));
   }
   let cookie = "";

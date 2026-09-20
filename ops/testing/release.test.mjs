@@ -199,7 +199,12 @@ while(true) { try { await fs.access(${JSON.stringify(`${f.root}/resume`)}); brea
     "--baseline",
     baseline,
   );
-  assert.deepEqual(JSON.parse(retry.output), receipt);
+  const retried = JSON.parse(retry.output);
+  assert.ok(retried.offsite.ageMilliseconds >= receipt.offsite.ageMilliseconds);
+  assert.deepEqual(
+    { ...retried, offsite: { ...retried.offsite, ageMilliseconds: 0 } },
+    { ...receipt, offsite: { ...receipt.offsite, ageMilliseconds: 0 } },
+  );
   await writeFile(`${f.root}/resume`, "resume");
   const backupAfter = await delayed;
   assert.equal(backupAfter.code, 0, backupAfter.output + backupAfter.error);
