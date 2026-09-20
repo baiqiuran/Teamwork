@@ -57,7 +57,8 @@ if (action === "status") {
   } else {
     const lockPath = resolve(config.stateDir, "operation.lock");
     let lock,
-      enteredMaintenance = false;
+      enteredMaintenance = false,
+      ownsRecord = false;
     let operation = {
       id,
       command: action,
@@ -68,95 +69,111 @@ if (action === "status") {
       createdAt: new Date().toISOString(),
       localBackup: "pending",
     };
-    try {
+    execution: {
       try {
-        lock = await open(lockPath, "wx", 0o600);
-      } catch (error) {
-        if (error.code === "EEXIST") throw new Error("OPERATION_BUSY");
-        throw error;
-      }
-      await lock.writeFile(JSON.stringify({ id, pid: process.pid }));
-      await lock.sync();
-      assert.ok(
-        !(await exists(config.maintenance)) &&
-          !(await exists(resolve(config.stateDir, "incident.json"))),
-        "MAINTENANCE_OR_INCIDENT_ACTIVE",
-      );
-      await durable(statePath, operation);
-      if (action === "restore") {
-        const checked = await validate(
-          config,
-          resolve(config.backupDir, input["--snapshot"]),
-        );
-        await rm(checked, { recursive: true, force: true });
-      }
-      enteredMaintenance = true;
-      await maintenance(config, true);
-      operation = { ...operation, phase: "stopping" };
-      await durable(statePath, operation);
-      stop(config);
-      operation = {
-        ...operation,
-        phase: "data-operation",
-        stoppedAt: new Date().toISOString(),
-      };
-      await durable(statePath, operation);
-      command(
-        "/usr/bin/flock",
-        "--nonblock",
-        config.dataLock,
-        process.execPath,
-        fileURLToPath(new URL("./data-worker.mjs", import.meta.url)),
-        resolve(configPath),
-        id,
-      );
-      operation = await json(statePath);
-      await start(config);
-      await maintenance(config, false);
-      enteredMaintenance = false;
-      operation = {
-        ...operation,
-        phase: "completed",
-        finishedAt: new Date().toISOString(),
-      };
-      await durable(statePath, operation);
-      console.log(JSON.stringify(operation));
-    } catch (error) {
-      let recovery = "not-needed";
-      if (enteredMaintenance) {
-        if (action === "backup") {
-          try {
-            await start(config);
-            await maintenance(config, false);
-            recovery = "original-service-restored";
-          } catch {
-            recovery = "manual-intervention";
-          }
-        } else recovery = "manual-intervention";
-        if (recovery === "manual-intervention") {
-          await durable(config.maintenance, "maintenance\n", 0o644);
-          await durable(resolve(config.stateDir, "incident.json"), {
-            id,
-            at: new Date().toISOString(),
-            reason: "Operation failed while data was controlled",
-          });
+        try {
+          lock = await open(lockPath, "wx", 0o600);
+        } catch (error) {
+          if (error.code === "EEXIST") throw new Error("OPERATION_BUSY");
+          throw error;
         }
-      }
-      const detail = error.stderr ? String(error.stderr) : error.message;
-      operation = {
-        ...operation,
-        phase: "failed",
-        failure: detail,
-        recovery,
-        finishedAt: new Date().toISOString(),
-      };
-      if (lock) await durable(statePath, operation);
-      console.log(JSON.stringify(operation));
-      process.exitCode = 1;
-    } finally {
-      if (lock) {
-        await lock.close();
-        await rm(lockPath);
+        await lock.writeFile(JSON.stringify({ id, pid: process.pid }));
+        await lock.sync();
+        // Another process may have completed this ID between our first lookup
+        // and acquiring the lock. Never overwrite its receipt, even on conflict.
+        if (await exists(statePath)) {
+          const previous = await json(statePath);
+          assert.equal(
+            previous.fingerprint,
+            fingerprint,
+            "OPERATION_ID_CONFLICT",
+          );
+          console.log(JSON.stringify(previous));
+          if (previous.phase === "failed") process.exitCode = 1;
+          break execution;
+        }
+        assert.ok(
+          !(await exists(config.maintenance)) &&
+            !(await exists(resolve(config.stateDir, "incident.json"))),
+          "MAINTENANCE_OR_INCIDENT_ACTIVE",
+        );
+        ownsRecord = true;
+        await durable(statePath, operation);
+        if (action === "restore") {
+          const checked = await validate(
+            config,
+            resolve(config.backupDir, input["--snapshot"]),
+          );
+          await rm(checked, { recursive: true, force: true });
+        }
+        enteredMaintenance = true;
+        await maintenance(config, true);
+        operation = { ...operation, phase: "stopping" };
+        await durable(statePath, operation);
+        stop(config);
+        operation = {
+          ...operation,
+          phase: "data-operation",
+          stoppedAt: new Date().toISOString(),
+        };
+        await durable(statePath, operation);
+        command(
+          "/usr/bin/flock",
+          "--nonblock",
+          config.dataLock,
+          process.execPath,
+          fileURLToPath(new URL("./data-worker.mjs", import.meta.url)),
+          resolve(configPath),
+          id,
+        );
+        operation = await json(statePath);
+        await start(config);
+        await maintenance(config, false);
+        enteredMaintenance = false;
+        operation = {
+          ...operation,
+          phase: "completed",
+          finishedAt: new Date().toISOString(),
+        };
+        await durable(statePath, operation);
+        console.log(JSON.stringify(operation));
+      } catch (error) {
+        let recovery = "not-needed";
+        if (enteredMaintenance) {
+          if (action === "backup") {
+            try {
+              await start(config);
+              await maintenance(config, false);
+              recovery = "original-service-restored";
+            } catch {
+              recovery = "manual-intervention";
+            }
+          } else recovery = "manual-intervention";
+          if (recovery === "manual-intervention") {
+            await durable(config.maintenance, "maintenance\n", 0o644);
+            await durable(resolve(config.stateDir, "incident.json"), {
+              id,
+              at: new Date().toISOString(),
+              reason: "Operation failed while data was controlled",
+            });
+          }
+        }
+        const detail = error.stderr ? String(error.stderr) : error.message;
+        operation = {
+          ...operation,
+          phase: "failed",
+          failure: detail,
+          recovery,
+          finishedAt: new Date().toISOString(),
+        };
+        if (ownsRecord) await durable(statePath, operation);
+        console.log(JSON.stringify(operation));
+        process.exitCode = 1;
+      } finally {
+        if (lock) {
+          await lock.close();
+          await rm(lockPath);
+        }
       }
     }
   }

@@ -2,7 +2,15 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, writeFile, readFile, symlink, cp } from "node:fs/promises";
+import {
+  mkdir,
+  writeFile,
+  readFile,
+  symlink,
+  cp,
+  readdir,
+  access,
+} from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import { resolve } from "node:path";
@@ -118,10 +126,16 @@ async function fixture() {
     requestId: randomUUID(),
   });
   const attachment = diary.published.entries[0].attachments[0].id;
-  const control = (...args) => {
+  const controlWith = (nodeArgs, ...args) => {
     const child = spawn(
       process.execPath,
-      [resolve("ops/control.mjs"), "--config", `${root}/deploy.json`, ...args],
+      [
+        ...nodeArgs,
+        resolve("ops/control.mjs"),
+        "--config",
+        `${root}/deploy.json`,
+        ...args,
+      ],
       { stdio: ["ignore", "pipe", "pipe"] },
     );
     let output = "",
@@ -130,7 +144,18 @@ async function fixture() {
     child.stderr.on("data", (chunk) => (error += chunk));
     return once(child, "exit").then(([code]) => ({ code, output, error }));
   };
-  return { root, id, origin, config, request, control, diary, attachment };
+  const control = (...args) => controlWith([], ...args);
+  return {
+    root,
+    id,
+    origin,
+    config,
+    request,
+    control,
+    controlWith,
+    diary,
+    attachment,
+  };
 }
 
 test("consistent backup, real maintenance, matched restore and corruption refusal", async (t) => {
@@ -149,6 +174,27 @@ test("consistent backup, real maintenance, matched restore and corruption refusa
     await readFile(`${f.root}/backups/baseline/manifest.json`, "utf8"),
   );
   assert.match(snapshot.commit, /^[a-f0-9]{40}$/);
+  await writeFile(
+    `${f.root}/deploy.json`,
+    JSON.stringify({ ...f.config, reserveBytes: Number.MAX_SAFE_INTEGER }),
+  );
+  const noSpace = await f.control(
+    "restore",
+    "--id",
+    "no-space",
+    "--snapshot",
+    "baseline",
+  );
+  assert.notEqual(noSpace.code, 0);
+  assert.match(noSpace.output, /INSUFFICIENT_DISK/);
+  assert.equal(JSON.parse(noSpace.output).recovery, "not-needed");
+  assert.ok(
+    !(await readdir(`${f.root}/control`)).some((name) =>
+      name.startsWith(".validated-"),
+    ),
+  );
+  assert.equal((await fetch(`${f.origin}/login`)).status, 200);
+  await writeFile(`${f.root}/deploy.json`, JSON.stringify(f.config));
   const newDiary = await f.request("/api/diaries", {
     title: "恢复时应移除",
     entries: [],
@@ -196,6 +242,47 @@ test("consistent backup, real maintenance, matched restore and corruption refusa
     "original attachment bytes",
   );
   run("systemctl", "stop", `${f.id}.service`);
+});
+
+test("a delayed duplicate returns the completed receipt after acquiring the lock", async (t) => {
+  const f = await fixture();
+  t.after(() => run("systemctl", "stop", `${f.id}.service`));
+  const hook = `${f.root}/pause-lock.mjs`;
+  await writeFile(
+    hook,
+    `import fs from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
+const original = fs.open;
+fs.open = async function(path, ...args) {
+  if (String(path).endsWith('/operation.lock')) {
+    await fs.writeFile(${JSON.stringify(`${f.root}/paused`)}, 'ready');
+    while (true) { try { await fs.access(${JSON.stringify(`${f.root}/resume`)}); break; } catch { await new Promise(r => setTimeout(r, 20)); } }
+  }
+  return original.call(this, path, ...args);
+};
+syncBuiltinESMExports();`,
+  );
+  const delayed = f.controlWith(
+    ["--import", hook],
+    "backup",
+    "--id",
+    "same-request",
+  );
+  for (let i = 0; i < 100; i++) {
+    try {
+      await access(`${f.root}/paused`);
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+  await access(`${f.root}/paused`);
+  const first = await f.control("backup", "--id", "same-request");
+  assert.equal(first.code, 0, first.output + first.error);
+  await writeFile(`${f.root}/resume`, "resume");
+  const second = await delayed;
+  assert.equal(second.code, 0, second.output + second.error);
+  assert.deepEqual(JSON.parse(second.output), JSON.parse(first.output));
 });
 
 test("maintenance blocks every entrance and concurrent data operations cannot steal control", async (t) => {

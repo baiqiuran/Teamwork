@@ -7,6 +7,7 @@ import { json, durable } from "./io.mjs";
 export const command = (name, ...args) =>
   execFileSync(name, args, {
     encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
     stdio: ["ignore", "pipe", "pipe"],
   });
 export const exists = async (path) => {
@@ -74,11 +75,22 @@ export async function configuration(path) {
   });
   return config;
 }
-export async function capacity(config, required) {
-  for (const directory of [config.dataDir, config.backupDir, config.releases]) {
+export async function capacity(config, required, stagingDirectories = []) {
+  assert.ok(
+    Number.isSafeInteger(required) && required >= 0,
+    "INVALID_DISK_BUDGET",
+  );
+  for (const directory of new Set([
+    config.dataDir,
+    config.backupDir,
+    config.releases,
+    config.stateDir,
+    ...stagingDirectories,
+  ])) {
     const disk = await statfs(directory, { bigint: true });
     assert.ok(
-      disk.bavail * disk.bsize >= BigInt(required + config.reserveBytes),
+      disk.bavail * disk.bsize >=
+        BigInt(required) + BigInt(config.reserveBytes),
       "INSUFFICIENT_DISK: protected backups are not deleted to make space",
     );
   }

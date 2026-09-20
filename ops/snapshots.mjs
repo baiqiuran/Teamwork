@@ -66,7 +66,7 @@ async function databaseState(config, directory) {
     db.close();
   }
 }
-function extract(archive, directory) {
+function archiveSize(archive) {
   const paths = command("/usr/bin/tar", "-tzf", archive)
     .split("\n")
     .filter(Boolean);
@@ -76,13 +76,27 @@ function extract(archive, directory) {
     ),
     "UNSAFE_ARCHIVE_PATH",
   );
-  const entries = command("/usr/bin/tar", "-tvzf", archive)
+  const entries = command("/usr/bin/tar", "--numeric-owner", "-tvzf", archive)
     .split("\n")
     .filter(Boolean);
   assert.ok(
     entries.every((line) => ["-", "d"].includes(line[0])),
     "UNSAFE_ARCHIVE_LINK",
   );
+  const size = entries.reduce((sum, line) => {
+    const bytes = Number(line.trim().split(/\s+/)[2]);
+    assert.ok(
+      Number.isSafeInteger(bytes) && bytes >= 0,
+      "INVALID_ARCHIVE_SIZE",
+    );
+    // Allow allocation overhead for small files and directories as well.
+    return sum + Math.ceil(bytes / 4096) * 4096 + 4096;
+  }, 0);
+  assert.ok(Number.isSafeInteger(size), "INVALID_ARCHIVE_SIZE");
+  return size;
+}
+function extract(archive, directory) {
+  archiveSize(archive);
   command(
     "/usr/bin/tar",
     "--no-same-owner",
@@ -196,6 +210,13 @@ export async function validate(
     manifest.materials.find((file) => file.name === "node").sha256,
     "RUNTIME_BINARY_MISMATCH",
   );
+  // Budget expanded data and runtime before the first temporary extraction,
+  // including filesystems distinct from the live data filesystem.
+  const required =
+    archiveSize(resolve(snapshot, "data.tar.gz")) * 2 +
+    archiveSize(resolve(snapshot, "application.tar.gz")) * 2 +
+    manifest.materials.reduce((sum, file) => sum + file.bytes, 0);
+  await capacity(config, required, [stagingParent, dirname(config.dataDir)]);
   const staging = await mkdtemp(resolve(stagingParent, ".validated-"));
   try {
     extract(resolve(snapshot, "data.tar.gz"), staging);
@@ -215,10 +236,6 @@ export async function restore(config, operation) {
   const snapshot = resolve(config.backupDir, operation.snapshot);
   const manifest = await json(resolve(snapshot, "manifest.json"));
   assert.equal(manifest.id, operation.snapshot, "SNAPSHOT_ID_MISMATCH");
-  const size =
-    manifest.files.reduce((sum, file) => sum + file.bytes, 0) +
-    manifest.materials.reduce((sum, file) => sum + file.bytes, 0);
-  await capacity(config, size * 3);
   const staging = await validate(config, snapshot, dirname(config.dataDir));
   const release = resolve(config.releases, `restored-${operation.id}`);
   await mkdir(release, { mode: 0o755 });
