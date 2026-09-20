@@ -34,3 +34,12 @@ node --test scripts/release-artifact.test.mjs
 ```
 
 运行包验证始终创建自己的临时数据库，并清除调用者的日序运行配置。不要把生产环境凭证注入测试作业。
+
+## 任务 01 验证记录（2026-09-20）
+
+- 受检提交：`42d0bea18c6e929bc98c72bf1e3f5e004724974b`。
+- 本机 Windows 与隔离 Linux 均通过架构/类型/构建、42 项 API、10 项 Chromium 页面和 3 项产物入口回归。
+- Linux：官方 `node:24.15.0-bookworm` 镜像，摘要 `sha256:f22d6a1f082c02f292e86929b5b0442ac2e5eaf438a5dea9b1566601c3e05940`。失败检查和不合法提交身份均被拒绝；压缩包独立解压后再次通过生产依赖 HTTP/OAuth/MCP 验证。
+- Linux 包 SHA-256：`5f95947bf54667636813590579718c8025550f606ba595b8740b11a6f55ccd3f`。
+- Standards 审查与 Spec 审查的问题已修复：校验脚本使用归档版本、拒绝 tree/tag 对象冒充提交；Linux npm 路径经实跑修正。
+- 这是本地隔离 Linux 验收，GitHub 托管作业尚未实际执行，生产部署未启用。
