@@ -5,15 +5,13 @@ import { cp, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { npmCli } from "./npm-cli.mjs";
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const temporaryRoot = resolve(tmpdir());
 const directory = await mkdtemp(resolve(temporaryRoot, "daily-production-"));
 const source = resolve(directory, "source"),
   runtime = resolve(directory, "runtime");
-const npm =
-  process.env.npm_execpath ??
-  resolve(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js");
 async function command(cwd, ...args) {
   const environment = {
     ...process.env,
@@ -24,7 +22,7 @@ async function command(cwd, ...args) {
   for (const key of Object.keys(environment))
     if (key.toLowerCase() === "npm_config_allow_scripts")
       delete environment[key];
-  const invocation = spawn(process.execPath, [npm, ...args], {
+  const invocation = spawn(process.execPath, [npmCli, ...args], {
     cwd,
     stdio: "inherit",
     windowsHide: true,

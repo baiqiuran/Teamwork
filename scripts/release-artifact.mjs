@@ -10,8 +10,9 @@ import {
   rename,
 } from "node:fs/promises";
 import { tmpdir, release } from "node:os";
-import { dirname, resolve } from "node:path";
+import { resolve } from "node:path";
 import { createHash } from "node:crypto";
+import { npmCli } from "./npm-cli.mjs";
 
 const args = process.argv.slice(2);
 assert.equal(
@@ -58,9 +59,6 @@ const run = (cwd, command, ...argv) =>
     stdio: "inherit",
     windowsHide: true,
   });
-const npm =
-  process.env.npm_execpath ??
-  resolve(dirname(process.execPath), "node_modules/npm/bin/npm-cli.js");
 const directory = await mkdtemp(resolve(tmpdir(), "daily-release-"));
 try {
   const source = resolve(directory, "source"),
@@ -75,8 +73,8 @@ try {
     commit,
   );
   run(source, "tar", "-xf", resolve(directory, "source.tar"));
-  run(source, process.execPath, npm, "ci");
-  run(source, process.execPath, npm, "run", "test:ci");
+  run(source, process.execPath, npmCli, "ci");
+  run(source, process.execPath, npmCli, "run", "test:ci");
   await mkdir(runtime);
   for (const name of [
     "build/server",
@@ -87,7 +85,7 @@ try {
     await cp(resolve(source, name), resolve(runtime, name), {
       recursive: true,
     });
-  run(runtime, process.execPath, npm, "ci", "--omit=dev");
+  run(runtime, process.execPath, npmCli, "ci", "--omit=dev");
   const manifest = {
     schema: 1,
     commit,
