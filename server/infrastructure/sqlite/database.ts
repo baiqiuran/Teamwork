@@ -82,7 +82,25 @@ export function openDatabase(path: string) {
         rollbackOnly = false;
       }
     };
-    return { db, transaction, close: () => db.close() };
+    return {
+      db,
+      transaction,
+      close: () => db.close(),
+      inspect: (deep: boolean) => {
+        db.prepare("SELECT 1").get();
+        if (!deep) return {};
+        const integrity = db.prepare("PRAGMA quick_check").get()?.quick_check;
+        if (integrity !== "ok") throw new Error("Database integrity failed");
+        const schema = Number(
+          db
+            .prepare(
+              "SELECT COALESCE(MAX(version),0) AS version FROM schema_migrations",
+            )
+            .get()?.version,
+        );
+        return { integrity: "ok", schema };
+      },
+    };
   } catch (error) {
     db.close();
     throw error;

@@ -30,6 +30,8 @@ export async function api<T>(path: string, body?: object): Promise<T> {
   } catch {
     throw new ApiError(0, "无法连接，请检查服务是否正在运行，然后重试。");
   }
+  if (response.status === 503)
+    throw new ApiError(503, "服务维护中，当前输入已保留，请稍后重试保存。");
   const result = await response.json();
   if (!response.ok)
     throw new ApiError(

@@ -13,6 +13,7 @@ import {
   command,
 } from "./host.mjs";
 import { validate } from "./snapshots.mjs";
+import { prepare, activate } from "./release.mjs";
 
 const args = process.argv.slice(2);
 assert.equal(args.shift(), "--config");
@@ -20,14 +21,16 @@ const configPath = args.shift();
 const config = await configuration(configPath);
 const action = args.shift();
 assert.ok(
-  ["backup", "restore", "status"].includes(action),
+  ["backup", "restore", "release", "status"].includes(action),
   "Unknown operation",
 );
 const input = {};
 while (args.length) {
   const key = args.shift();
   assert.ok(
-    ["--id", "--kind", "--snapshot"].includes(key) &&
+    ["--id", "--kind", "--snapshot", "--candidate", "--baseline"].includes(
+      key,
+    ) &&
       args.length &&
       !input[key],
     "Invalid operation option",
@@ -42,12 +45,26 @@ const statePath = resolve(config.stateDir, "operations", `${id}.json`);
 if (action === "status") {
   console.log(JSON.stringify(await json(statePath)));
 } else {
-  const kind = input["--kind"] ?? "manual";
+  const kind =
+    action === "release" ? "pre-release" : (input["--kind"] ?? "manual");
   assert.ok(["daily", "pre-release", "manual"].includes(kind));
   if (action === "restore")
     assert.ok(input["--snapshot"], "Restore requires a snapshot id");
+  if (action === "release") {
+    assert.match(input["--baseline"] ?? "", /^[a-f0-9]{40}$/);
+    assert.ok(input["--candidate"], "Candidate directory required");
+    input["--candidate"] = resolve(input["--candidate"]);
+  }
   const fingerprint = createHash("sha256")
-    .update(JSON.stringify({ action, kind, snapshot: input["--snapshot"] }))
+    .update(
+      JSON.stringify({
+        action,
+        kind,
+        snapshot: input["--snapshot"],
+        candidate: input["--candidate"],
+        baseline: input["--baseline"],
+      }),
+    )
     .digest("hex");
   if (await exists(statePath)) {
     const previous = await json(statePath);
@@ -64,6 +81,8 @@ if (action === "status") {
       command: action,
       kind,
       snapshot: input["--snapshot"],
+      candidate: input["--candidate"],
+      baseline: input["--baseline"],
       fingerprint,
       phase: "preparing",
       createdAt: new Date().toISOString(),
@@ -99,6 +118,10 @@ if (action === "status") {
         );
         ownsRecord = true;
         await durable(statePath, operation);
+        if (action === "release") {
+          operation.target = await prepare(config, operation);
+          await durable(statePath, operation);
+        }
         if (action === "restore") {
           const checked = await validate(
             config,
@@ -108,7 +131,11 @@ if (action === "status") {
         }
         enteredMaintenance = true;
         await maintenance(config, true);
-        operation = { ...operation, phase: "stopping" };
+        operation = {
+          ...operation,
+          phase: "stopping",
+          maintenanceAt: new Date().toISOString(),
+        };
         await durable(statePath, operation);
         stop(config);
         operation = {
@@ -127,13 +154,32 @@ if (action === "status") {
           id,
         );
         operation = await json(statePath);
-        await start(config);
+        if (action === "release") {
+          await activate(config, operation);
+          operation = {
+            ...operation,
+            phase: "may-be-open",
+            mayHaveOpenedAt: new Date().toISOString(),
+          };
+          // This marker deliberately precedes opening. A lost acknowledgement
+          // must never cause a later worker to overwrite newly accepted writes.
+          await durable(statePath, operation);
+        } else await start(config);
         await maintenance(config, false);
         enteredMaintenance = false;
         operation = {
           ...operation,
           phase: "completed",
           finishedAt: new Date().toISOString(),
+          ...(action === "release"
+            ? {
+                actualCommit: operation.target.commit,
+                slot: operation.target.slot,
+                maintenanceMilliseconds:
+                  Date.now() - Date.parse(operation.maintenanceAt),
+                maintenanceBudgetMilliseconds: 600000,
+              }
+            : {}),
         };
         await durable(statePath, operation);
         console.log(JSON.stringify(operation));

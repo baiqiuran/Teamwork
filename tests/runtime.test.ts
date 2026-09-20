@@ -6,6 +6,7 @@ import { once } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+import { request as httpRequest } from "node:http";
 
 test("编译后的服务由 Node 启动，成员可初始化、退出并重新登录", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "daily-runtime-"));
@@ -120,4 +121,35 @@ test("编译后的服务由 Node 启动，成员可初始化、退出并重新�
   const uppercaseMissing = await fetch(`${origin}/API/unknown-api`);
   assert.equal(uppercaseMissing.status, 404);
   assert.deepEqual(await uppercaseMissing.json(), { error: "未找到该接口。" });
+  if (process.platform !== "win32") {
+    const body = JSON.stringify({ title: "关闭前完成的请求", entries: [] });
+    const inFlight = httpRequest(origin + "/api/diaries", {
+      method: "POST",
+      headers: {
+        Origin: origin,
+        Cookie: cookie,
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+      },
+    });
+    const completion = new Promise<number>((resolve, reject) => {
+      inFlight.on("response", (response) => {
+        response.resume();
+        response.on("end", () => resolve(response.statusCode!));
+      });
+      inFlight.on("error", reject);
+    });
+    inFlight.write(body.slice(0, 10));
+    await new Promise((done) => setTimeout(done, 100));
+    const exited = once(child, "exit");
+    child.kill("SIGTERM");
+    await new Promise((done) => setTimeout(done, 100));
+    inFlight.end(body.slice(10));
+    assert.equal(
+      await completion,
+      201,
+      "Accepted write drains before closing the database",
+    );
+    await exited;
+  }
 });

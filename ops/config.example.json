@@ -8,8 +8,25 @@
   "releases": "/opt/daily-flow/releases",
   "envFile": "/etc/daily-flow/daily-flow.env",
   "artifact": "/opt/daily-flow/artifacts/REPLACE_WITH_VERIFIED_RELEASE/application.tar.gz",
-  "unit": "daily-flow.service",
-  "maintenance": "/run/daily-flow/maintenance",
+  "unit": "daily-flow@blue.service",
+  "activeSlot": "blue",
+  "slots": {
+    "blue": {
+      "unit": "daily-flow@blue.service",
+      "port": 4310,
+      "link": "/opt/daily-flow/slots/blue/current",
+      "envFile": "/etc/daily-flow/slot-blue.env"
+    },
+    "green": {
+      "unit": "daily-flow@green.service",
+      "port": 4312,
+      "link": "/opt/daily-flow/slots/green/current",
+      "envFile": "/etc/daily-flow/slot-green.env"
+    }
+  },
+  "upstreamFile": "/etc/daily-flow/upstream.conf",
+  "healthTokenFile": "/etc/daily-flow/health-token",
+  "maintenance": "/var/lib/daily-flow-ingress/maintenance",
   "dataLock": "/run/lock/daily-flow-data.lock",
   "probeUrl": "http://127.0.0.1:4310/api/setup/status",
   "ingressUrl": "https://8.148.245.224",

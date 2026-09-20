@@ -1,0 +1,23 @@
+[Unit]
+Description=Daily Flow application slot %i
+After=network.target
+
+[Service]
+User=daily-flow
+Group=daily-flow
+WorkingDirectory=/opt/daily-flow/slots/%i/current
+EnvironmentFile=/etc/daily-flow/daily-flow.env
+EnvironmentFile=/etc/daily-flow/slot-%i.env
+ExecStart=/usr/bin/flock --nonblock /run/lock/daily-flow-data.lock /usr/local/bin/node build/server/main.js
+KillMode=control-group
+TimeoutStopSec=35
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/daily-flow /run/lock/daily-flow-data.lock
+
+# Slots are started by the release controller, never enabled independently.

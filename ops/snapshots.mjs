@@ -66,7 +66,7 @@ async function databaseState(config, directory) {
     db.close();
   }
 }
-function archiveSize(archive) {
+export function archiveSize(archive) {
   const paths = command("/usr/bin/tar", "-tzf", archive)
     .split("\n")
     .filter(Boolean);
@@ -95,7 +95,7 @@ function archiveSize(archive) {
   assert.ok(Number.isSafeInteger(size), "INVALID_ARCHIVE_SIZE");
   return size;
 }
-function extract(archive, directory) {
+export function extract(archive, directory) {
   archiveSize(archive);
   command(
     "/usr/bin/tar",
@@ -266,12 +266,20 @@ export async function restore(config, operation) {
   await symlink(release, next);
   await rename(next, config.current);
   await syncPath(dirname(config.current));
+  if (config.slots && config.activeSlot) {
+    const link = config.slots[config.activeSlot].link;
+    const stagedLink = `${link}.${operation.id}`;
+    await symlink(release, stagedLink);
+    await rename(stagedLink, link);
+    await syncPath(dirname(link));
+  }
   const artifact = resolve(release, "application.tar.gz");
   await cp(resolve(snapshot, "application.tar.gz"), artifact);
   await syncPath(artifact);
   await durable(resolve(config.stateDir, "runtime.json"), {
     commit: manifest.commit,
     artifact,
+    ...(config.activeSlot ? { slot: config.activeSlot } : {}),
   });
   return manifest;
 }

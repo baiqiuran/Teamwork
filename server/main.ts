@@ -1,4 +1,4 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { createApp } from "./app.ts";
 import { secret } from "./infrastructure/security.ts";
@@ -12,7 +12,14 @@ const databasePath = resolve(
 );
 mkdirSync(dirname(databasePath), { recursive: true });
 const setupKey = process.env.DAILY_SETUP_KEY ?? secret();
+const release = existsSync("release.json")
+  ? z
+      .object({ commit: z.string().regex(/^[a-f0-9]{40}$/) })
+      .parse(JSON.parse(readFileSync("release.json", "utf8")))
+  : undefined;
 const service = await createApp({
+  releaseCommit: release?.commit,
+  healthToken: process.env.DAILY_HEALTH_TOKEN,
   databasePath,
   setupKey,
   publicUrl: process.env.DAILY_PUBLIC_URL,

@@ -34,6 +34,8 @@ export interface AppOptions {
   mcpMemberLimit?: number;
   mcpGrantLimit?: number;
   mcpMaxBodyBytes?: number;
+  releaseCommit?: string;
+  healthToken?: string;
 }
 
 /** The composition root exposes ports, never concrete adapter return types. */
@@ -53,6 +55,7 @@ export interface Resources {
   mcpMemberLimit?: number;
   mcpGrantLimit?: number;
   close(): void;
+  inspect(deep: boolean): { schema?: number; integrity?: string };
 }
 
 /** One owner per application, including when container initialization fails. */
@@ -118,6 +121,7 @@ export function createResources(options: AppOptions): Resources {
       files: localFiles(resolve(dirname(options.databasePath), "attachments")),
       setupKey: options.setupKey,
       close,
+      inspect: database.inspect,
     };
   } catch (error) {
     close();

@@ -1,0 +1,20 @@
+# Included inside the existing TLS server. Preserve its certificate settings.
+# upstream daily_flow { include /etc/daily-flow/upstream.conf; } belongs in http {}.
+error_page 503 = @daily_maintenance;
+location @daily_maintenance {
+    default_type application/json;
+    add_header Retry-After 60 always;
+    add_header Cache-Control no-store always;
+    return 503 '{"error":"服务维护中，请稍后重试。"}';
+}
+location /internal/ { return 404; }
+location / {
+    if (-f /var/lib/daily-flow-ingress/maintenance) { return 503; }
+    proxy_pass http://daily_flow;
+    proxy_set_header Host $http_host;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header X-Forwarded-For $remote_addr;
+    proxy_set_header X-Daily-Health "";
+    proxy_buffering off;
+    proxy_read_timeout 300s;
+}

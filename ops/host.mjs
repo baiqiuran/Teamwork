@@ -28,9 +28,13 @@ export async function configuration(path) {
     isAbsolute(config.stateDir) &&
     (await exists(resolve(config.stateDir, "runtime.json")))
   ) {
-    config.artifact = (
-      await json(resolve(config.stateDir, "runtime.json"))
-    ).artifact;
+    const runtime = await json(resolve(config.stateDir, "runtime.json"));
+    config.artifact = runtime.artifact;
+    if (runtime.slot && config.slots) {
+      config.activeSlot = runtime.slot;
+      config.unit = config.slots[runtime.slot].unit;
+      config.probeUrl = `http://127.0.0.1:${config.slots[runtime.slot].port}/api/setup/status`;
+    }
   }
   for (const key of [
     "dataDir",
@@ -114,11 +118,14 @@ export async function maintenance(config, enabled) {
 }
 export function stop(config) {
   command("/bin/systemctl", "stop", config.unit);
+  assertStopped(config.unit);
+}
+export function assertStopped(unit) {
   assert.equal(
     command(
       "/bin/systemctl",
       "show",
-      config.unit,
+      unit,
       "--property=MainPID",
       "--value",
     ).trim(),
@@ -128,15 +135,14 @@ export function stop(config) {
   const active = command(
     "/bin/systemctl",
     "show",
-    config.unit,
+    unit,
     "--property=ActiveState",
     "--value",
   ).trim();
   assert.ok(["inactive", "failed"].includes(active), "OLD_SERVICE_NOT_STOPPED");
 }
-export async function start(config) {
+export async function start(config, deadline = Date.now() + 120000) {
   command("/bin/systemctl", "start", config.unit);
-  const deadline = Date.now() + 120000;
   while (Date.now() < deadline) {
     try {
       const response = await fetch(config.probeUrl, {
