@@ -18,7 +18,9 @@
     "format": "prettier --write server src scripts tests docs *.json *.ts *.html *.md",
     "build:server": "node scripts/build-server.mjs",
     "test:upgrade": "node --import tsx scripts/verify-upgrade.mjs",
-    "test:production": "node scripts/verify-production.mjs"
+    "test:production": "node scripts/verify-production.mjs",
+    "test:ci": "npm run build && tsx --test tests/*.test.ts && playwright test && node --test scripts/release-artifact.test.mjs",
+    "release:build": "node scripts/release-artifact.mjs build"
   },
   "dependencies": {
     "@modelcontextprotocol/node": "2.0.0",
