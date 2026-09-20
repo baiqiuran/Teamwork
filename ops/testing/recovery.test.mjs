@@ -155,6 +155,28 @@ test("explicit data health failure closes ingress immediately and preserves byte
   const f = await slotsFixture(t);
   const result = await release(f, "healthy-release");
   assert.equal(result.code, 0, result.output + result.error);
+  const tokenPath = `${f.root}/health-token`,
+    originalToken = await readFile(tokenPath, "utf8");
+  await writeFile(tokenPath, "wrong_health_token_012345678901234567890");
+  const unknown = await f.control("inspect", "--id", "unknown-health-evidence");
+  assert.notEqual(unknown.code, 0);
+  assert.equal(
+    JSON.parse(unknown.output).inspection.reason,
+    "LOCAL_HEALTH_EVIDENCE_UNAVAILABLE",
+  );
+  assert.equal((await fetch(f.origin + "/login")).status, 200);
+  await writeFile(tokenPath, originalToken);
+  const healthyAgain = await f.control(
+    "inspect",
+    "--id",
+    "health-evidence-repaired",
+  );
+  assert.equal(JSON.parse(healthyAgain.output).inspection.healthy, true);
+  assert.equal(
+    JSON.parse(healthyAgain.output).inspection.frozen,
+    true,
+    "Healthy evidence never automatically clears an incident",
+  );
   run("chmod", "000", `${f.root}/data/attachments`);
   try {
     const status = await f.control("inspect", "--id", "data-health-failed");
@@ -168,9 +190,74 @@ test("explicit data health failure closes ingress immediately and preserves byte
       await readFile(`${f.root}/data/attachments/${f.attachment}`, "utf8"),
       "original attachment bytes",
     );
+    const hook = `${f.root}/broken-maintenance-proxy.mjs`;
+    await writeFile(
+      hook,
+      `const original=globalThis.fetch; globalThis.fetch=(url,options)=> String(url)===${JSON.stringify(f.origin + "/login")} ? Promise.resolve(new Response('proxy ignores gate',{status:200})) : original(url,options);`,
+    );
+    const contained = await f.controlWith(
+      ["--import", hook],
+      "inspect",
+      "--id",
+      "proxy-cannot-close",
+    );
+    assert.notEqual(contained.code, 0);
+    assert.equal(
+      JSON.parse(await readFile(`${f.root}/control/incident.json`, "utf8"))
+        .containment,
+      "applications-stopped",
+    );
+    assert.equal(
+      run(
+        "systemctl",
+        "show",
+        f.config.slots.green.unit,
+        "--property=MainPID",
+        "--value",
+      ).trim(),
+      "0",
+    );
   } finally {
     run("chmod", "755", `${f.root}/data/attachments`);
   }
+});
+
+test("manual repair can resolve an incident on the supported pre-readiness baseline", async (t) => {
+  const f = await slotsFixture(t);
+  const baseline = JSON.parse(
+    await readFile(`${f.root}/current/release.json`, "utf8"),
+  ).commit;
+  const hook = `${f.root}/legacy-recovery-fault.mjs`;
+  await writeFile(
+    hook,
+    `import cp from 'node:child_process'; import { syncBuiltinESMExports } from 'node:module'; const original=cp.execFileSync;
+cp.execFileSync=function(name,args,...rest) {
+if(name==='/bin/systemctl' && (args.join(' ')==='reload nginx' || (args[0]==='start' && args[1]===${JSON.stringify(f.config.slots.blue.unit)}))) throw new Error('INJECTED_OLD_START_FAILURE');
+return original.call(this,name,args,...rest); }; syncBuiltinESMExports();`,
+  );
+  const failed = await release(f, "old-start-failed", hook);
+  assert.notEqual(failed.code, 0);
+  assert.equal(JSON.parse(failed.output).recovery, "manual-intervention");
+  const incident = JSON.parse(
+    await readFile(`${f.root}/control/incident.json`, "utf8"),
+  );
+  const fixed = await f.control(
+    "resolve-incident",
+    "--id",
+    "old-start-repaired",
+    "--incident",
+    incident.id,
+    "--expected-commit",
+    baseline,
+    "--note",
+    "已修复旧版本启动条件",
+  );
+  assert.equal(fixed.code, 0, fixed.output + fixed.error);
+  await assert.rejects(access(`${f.root}/control/incident.json`));
+  assert.equal(
+    await f.request(`/api/attachments/${f.attachment}`, undefined, true),
+    "original attachment bytes",
+  );
 });
 
 test("post-open failure preserves newly submitted diary and attachment; only explicit resolution unfreezes", async (t) => {

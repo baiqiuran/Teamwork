@@ -99,6 +99,36 @@ async function verifyBaseline(config, commit) {
       );
   }
 }
+async function verifyPublicBaseline(config, commit) {
+  if (
+    await exists(
+      resolve(config.current, "build/server/interfaces/http/readiness.js"),
+    )
+  )
+    return externalProbe(config, commit);
+  assert.equal(
+    (await readFile(config.upstreamFile, "utf8")).trim(),
+    `server 127.0.0.1:${config.slots[config.activeSlot].port};`,
+    "LEGACY_UPSTREAM_MISMATCH",
+  );
+  for (const [path, expected, method] of [
+    ["/login", 200, "GET"],
+    ["/.well-known/oauth-authorization-server", 200, "GET"],
+    ["/oauth/authorize", 400, "GET"],
+    ["/mcp", 401, "POST"],
+  ]) {
+    assert.equal(
+      (
+        await fetch(new URL(path, config.ingressUrl), {
+          method,
+          signal: AbortSignal.timeout(5000),
+        })
+      ).status,
+      expected,
+      "LEGACY_PUBLIC_PROTOCOL_FAILED",
+    );
+  }
+}
 export async function recoverBeforeOpen(configPath, config, operation) {
   assert.ok(
     !operation.mayHaveOpenedAt && !operation.recoveryOpeningAt,
@@ -165,12 +195,7 @@ export async function recoverBeforeOpen(configPath, config, operation) {
   };
   await durable(statePath, operation);
   await maintenance(config, false);
-  if (
-    await exists(
-      resolve(config.current, "build/server/interfaces/http/readiness.js"),
-    )
-  )
-    await externalProbe(config, operation.target.oldCommit);
+  await verifyPublicBaseline(old, operation.target.oldCommit);
   return {
     ...operation,
     actualCommit: operation.target.oldCommit,
@@ -182,23 +207,44 @@ export async function recoverBeforeOpen(configPath, config, operation) {
 export async function observe(config, operation, expectedCommit) {
   let failure;
   try {
-    await externalProbe(config, expectedCommit);
+    await verifyPublicBaseline(config, expectedCommit);
   } catch (error) {
     failure = error.message;
   }
   let dataError = false;
   try {
-    const response = await fetch(new URL("/internal/health", config.probeUrl), {
-      headers: {
-        "X-Daily-Health": (
-          await readFile(config.healthTokenFile, "utf8")
-        ).trim(),
-      },
-      signal: AbortSignal.timeout(5000),
-    });
-    if (response.status === 503) dataError = true;
+    if (
+      !(await exists(
+        resolve(config.current, "build/server/interfaces/http/readiness.js"),
+      ))
+    ) {
+      await verifyBaseline(config, expectedCommit);
+    } else {
+      const response = await fetch(
+        new URL("/internal/health", config.probeUrl),
+        {
+          headers: {
+            "X-Daily-Health": (
+              await readFile(config.healthTokenFile, "utf8")
+            ).trim(),
+          },
+          signal: AbortSignal.timeout(5000),
+        },
+      );
+      if (response.status === 503) dataError = true;
+      else {
+        assert.equal(response.status, 200);
+        const detail = await response.json();
+        assert.equal(detail.ready, true);
+        assert.equal(detail.version, expectedCommit);
+        assert.equal(detail.integrity, "ok");
+        assert.equal(detail.initialized, true);
+        assert.equal(detail.attachmentsAccessible, true);
+        assert.ok(Number.isInteger(detail.schema));
+      }
+    }
   } catch {
-    /* Unreachable is assessed by repeated public readiness failures. */
+    failure ??= "LOCAL_HEALTH_EVIDENCE_UNAVAILABLE";
   }
   if (!failure && !dataError) {
     await durable(resolve(config.stateDir, "availability.json"), {
@@ -238,7 +284,13 @@ export async function observe(config, operation, expectedCommit) {
   await durable(path, record);
   const sustained =
     record.failures >= 3 && Date.now() - record.firstFailureAt >= 60000;
-  if (dataError || sustained) await maintenance(config, true);
+  if (dataError || sustained)
+    await freeze(
+      config,
+      operation,
+      dataError ? "DATA_HEALTH_FAILED" : "SUSTAINED_UNAVAILABLE",
+      true,
+    );
   return {
     healthy: false,
     reason: dataError ? "DATA_HEALTH_FAILED" : failure,
@@ -255,8 +307,22 @@ export async function resolveIncident(config, operation) {
   assert.ok(operation.note?.trim(), "MANUAL_RESOLUTION_NOTE_REQUIRED");
   for (const [slot, settings] of Object.entries(config.slots))
     if (slot !== config.activeSlot) assertStopped(settings.unit);
+  await maintenance(config, true);
   await start(config);
   await verifyBaseline(config, operation.expectedCommit);
+  assert.equal(
+    JSON.parse(
+      command("/usr/bin/tar", "-xOzf", config.artifact, "release.json"),
+    ).commit,
+    operation.expectedCommit,
+    "ACTIVE_ARTIFACT_MISMATCH",
+  );
+  await durable(
+    config.upstreamFile,
+    `server 127.0.0.1:${config.slots[config.activeSlot].port};\n`,
+    0o644,
+  );
+  await reloadProxy();
   // No data restore here: the operator repairs the current version/data first.
   operation = {
     ...operation,
@@ -268,7 +334,7 @@ export async function resolveIncident(config, operation) {
     operation,
   );
   await maintenance(config, false);
-  await externalProbe(config, operation.expectedCommit);
+  await verifyPublicBaseline(config, operation.expectedCommit);
   await mkdir(resolve(config.stateDir, "incidents"), {
     recursive: true,
     mode: 0o700,
