@@ -13,7 +13,17 @@ test("restricted SSH uploads a fixed candidate, rechecks status and refuses stal
   f.config.incoming = f.root + "/incoming";
   f.config.repository = f.root + "/repository.git";
   f.config.automationEnabled = true;
-  run("git", "clone", "--bare", "/repository", f.config.repository);
+  // The read-only checkout belongs to the runner, and PR HEAD is detached.
+  // Use a fixture-owned remote with an explicit main; never trust all directories.
+  const remote = f.root + "/remote.git";
+  run(
+    "git", "clone", "--bare", "--no-local",
+    "--upload-pack=git -c safe.directory=/repository/.git upload-pack",
+    "/repository", remote,
+  );
+  const candidate = JSON.parse(await readFile("/candidate-artifact/receipt.json", "utf8")).commit;
+  run("git", "--git-dir", remote, "update-ref", "refs/heads/main", candidate);
+  run("git", "clone", "--bare", remote, f.config.repository);
   await writeFile(
     f.root + "/control/runtime.json",
     JSON.stringify({
