@@ -12,7 +12,6 @@ import {
 import { tmpdir, release } from "node:os";
 import { dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
-import { fileURLToPath } from "node:url";
 
 const args = process.argv.slice(2);
 assert.equal(
@@ -35,7 +34,17 @@ assert.ok(options["--output"]);
 const repository = resolve(options["--repository"] ?? ".");
 const output = resolve(options["--output"]);
 const commit = options["--commit"];
+assert.equal(
+  execFileSync("git", ["cat-file", "-t", commit], {
+    cwd: repository,
+    encoding: "utf8",
+    windowsHide: true,
+  }).trim(),
+  "commit",
+  "Release identity must be a commit object",
+);
 const environment = { ...process.env, PLAYWRIGHT_CHANNEL: "chromium" };
+delete environment.NODE_TEST_CONTEXT;
 for (const key of Object.keys(environment))
   if (
     key.toLowerCase() === "npm_config_allow_scripts" ||
@@ -107,7 +116,7 @@ try {
   run(
     repository,
     process.execPath,
-    resolve(dirname(fileURLToPath(import.meta.url)), "verify-runtime.mjs"),
+    resolve(source, "scripts/verify-runtime.mjs"),
     runtime,
   );
   const archive = resolve(directory, "application.tar.gz");
