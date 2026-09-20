@@ -1,6 +1,13 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { writeFile, readFile, mkdir, symlink } from "node:fs/promises";
+import {
+  writeFile,
+  readFile,
+  mkdir,
+  symlink,
+  access,
+  chmod,
+} from "node:fs/promises";
 import { fixture, run, port } from "./fixture.mjs";
 import { randomBytes, randomUUID, createHash } from "node:crypto";
 
@@ -131,6 +138,37 @@ test("verified release switches real slots with one writer and preserved member 
     return result.result.structuredContent;
   };
   const created = await call();
+  // Pause a different operation at the file-lock boundary, after it has read
+  // blue's configuration. It must use green when resumed after this release.
+  const hook = `${f.root}/pause-backup.mjs`;
+  await writeFile(
+    hook,
+    `import fs from 'node:fs/promises'; import { syncBuiltinESMExports } from 'node:module';
+const original = fs.open;
+fs.open = async function(path,...args) { if(String(path).endsWith('/operation.lock')) {
+await fs.writeFile(${JSON.stringify(`${f.root}/paused`)}, 'ready');
+while(true) { try { await fs.access(${JSON.stringify(`${f.root}/resume`)}); break; } catch { await new Promise(r=>setTimeout(r,20)); } }
+} return original.call(this,path,...args); }; syncBuiltinESMExports();`,
+  );
+  const delayed = f.controlWith(
+    ["--import", hook],
+    "backup",
+    "--id",
+    "delayed-backup",
+  );
+  t.after(async () => {
+    await writeFile(`${f.root}/resume`, "resume");
+    await delayed;
+  });
+  for (let i = 0; i < 100; i++) {
+    try {
+      await access(`${f.root}/paused`);
+      break;
+    } catch {
+      await new Promise((r) => setTimeout(r, 20));
+    }
+  }
+  await access(`${f.root}/paused`);
   const running = f.control(
     "release",
     "--id",
@@ -214,4 +252,32 @@ test("verified release switches real slots with one writer and preserved member 
     baseline,
   );
   assert.deepEqual(JSON.parse(retry.output), receipt);
+  await writeFile(`${f.root}/resume`, "resume");
+  const backupAfter = await delayed;
+  assert.equal(backupAfter.code, 0, backupAfter.output + backupAfter.error);
+  assert.equal(
+    JSON.parse(
+      await readFile(`${f.root}/backups/delayed-backup/manifest.json`, "utf8"),
+    ).commit,
+    target,
+  );
+  await chmod(`${f.root}/data/attachments`, 0o000);
+  try {
+    assert.equal(
+      (
+        await fetch(
+          `http://127.0.0.1:${f.config.slots.green.port}/internal/health`,
+          {
+            headers: {
+              "X-Daily-Health": "isolated_health_token_012345678901234567890",
+            },
+          },
+        )
+      ).status,
+      503,
+      "Deep health must test access as the ordinary application user",
+    );
+  } finally {
+    await chmod(`${f.root}/data/attachments`, 0o755);
+  }
 });

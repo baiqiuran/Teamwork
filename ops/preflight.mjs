@@ -1,9 +1,9 @@
 // A candidate may initialize/migrate its disposable database; it never receives
 // the live configuration, environment, data directory or production credentials.
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import { spawn, execFileSync } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, chown } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "node:net";
@@ -12,12 +12,27 @@ import { randomBytes } from "node:crypto";
 const runtime = resolve(process.argv[2]),
   commit = process.argv[3];
 const directory = await mkdtemp(resolve(tmpdir(), "daily-preflight-"));
+const user = process.argv[4];
+assert.match(user ?? "", /^[a-z_][a-z0-9_-]*$/);
+const uid = Number(
+  execFileSync("/usr/bin/id", ["-u", user], { encoding: "utf8" }).trim(),
+);
+const gid = Number(
+  execFileSync("/usr/bin/id", ["-g", user], { encoding: "utf8" }).trim(),
+);
+assert.ok(
+  uid > 0 && Number.isInteger(uid) && Number.isInteger(gid),
+  "PREFLIGHT_REQUIRES_UNPRIVILEGED_USER",
+);
+await chown(directory, uid, gid);
 const reservation = createServer().listen(0, "127.0.0.1");
 await once(reservation, "listening");
 const port = reservation.address().port;
 await new Promise((done) => reservation.close(done));
 const child = spawn(process.execPath, ["build/server/main.js"], {
   cwd: runtime,
+  uid,
+  gid,
   env: {
     PATH: process.env.PATH,
     HOME: directory,

@@ -88,6 +88,7 @@ export async function prepare(config, operation) {
     fileURLToPath(new URL("./preflight.mjs", import.meta.url)),
     release,
     receipt.commit,
+    config.serviceUser,
   );
   return {
     slot,
