@@ -34,42 +34,63 @@ async function publicCheck(commit) {
       redirect: "error",
       signal: AbortSignal.timeout(10000),
     });
-  const ready = await read("/health/ready");
-  assert.equal(ready.status, 200);
-  assert.deepEqual(await ready.json(), { ready: true, version: commit });
+  let ready = false,
+    protocols = true;
+  try {
+    const response = await read("/health/ready");
+    const body = await response.json();
+    ready =
+      response.status === 200 && body.ready === true && body.version === commit;
+  } catch {
+    /* Collect each protocol independently. */
+  }
   for (const [path, status, method] of [
     ["/login", 200],
     ["/mcp", 401, "POST"],
     ["/oauth/authorize", 400],
     ["/.well-known/oauth-authorization-server", 200],
   ]) {
-    assert.equal((await read(path, method)).status, status);
+    try {
+      if ((await read(path, method)).status !== status) protocols = false;
+    } catch {
+      protocols = false;
+    }
+  }
+  return { ready, protocols };
+}
+async function observation(command) {
+  try {
+    return await remote(command);
+  } catch (error) {
+    if (error.result) return error.result;
+    throw error;
   }
 }
+
 let confirmed = false,
   failedSamples = 0;
 for (let attempt = 0; attempt < 21; attempt++) {
   const result = await inspect(`${id}-${attempt}`);
   await report(result);
-  if (result.phase === "busy") {
+  if (result.phase === "busy" || result.busy) {
     await wait(30000);
     continue;
   }
   // Backup/drill alarms must not suppress the independent public check.
   if (!/^[a-f0-9]{40}$/.test(result.actualCommit ?? "")) break;
-  let publicHealthy = false;
-  try {
-    await publicCheck(result.actualCommit);
-    publicHealthy = true;
-    await report({ publicHttps: "healthy", actualCommit: result.actualCommit });
-  } catch {
-    try {
-      await report(await remote(`external-failure ${result.id}`));
-    } catch (error) {
-      if (error.result) await report(error.result);
-      else throw error;
-    }
+  const external = await publicCheck(result.actualCommit);
+  await report({ publicHttps: external, actualCommit: result.actualCommit });
+  const recorded = await observation(
+    `${external.ready ? "external-ready" : "external-failure"} ${result.id}`,
+  );
+  await report(recorded);
+  if (recorded.phase === "busy") {
+    await wait(30000);
+    continue;
   }
+  if (external.ready && !external.protocols)
+    await report(await observation(`external-protocol-failure ${result.id}`));
+  const publicHealthy = external.ready && external.protocols;
   if (result.phase === "healthy" && publicHealthy) {
     const completed = await remote(`inspection-complete ${result.id}`);
     await report(completed);

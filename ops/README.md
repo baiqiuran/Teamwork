@@ -161,7 +161,7 @@ CI 在无生产资料的临时 Linux 环境构建同一固定产物，再启动�
 
 ## 小时巡检和通知（任务 10）
 
-`Production inspection` 每小时 UTC 的第 17 分钟运行，独立于发布队列，不取消已受理发布。生产 Environment 增加 `DEPLOY_URL`（完整 HTTPS origin，无结尾斜线）；仓库变量 `INSPECTION_ENABLED=true` 才启用。部署账号增加的固定命令仅为 `inspect ID`、`inspection-complete ID`、`external-failure ID`。主机诊断包含当前版本/槽位、维护和事故、备份数据时间、失败补传、可用磁盘、证书到期时间、续期/备份/补传/清理 timer，以及最近恢复演练。业务正文和令牌不进入报告。
+`Production inspection` 每小时 UTC 的第 17 分钟运行，独立于发布队列，不取消已受理发布。生产 Environment 增加 `DEPLOY_URL`（完整 HTTPS origin，无结尾斜线）；仓库变量 `INSPECTION_ENABLED=true` 才启用。部署账号增加的固定命令仅为 `inspect ID`、`inspection-complete ID`、`external-failure ID`、`external-ready ID`、`external-protocol-failure ID`。主机诊断包含当前版本/槽位、维护和事故、备份数据时间、失败补传、可用磁盘、证书到期时间、续期/备份/补传/清理 timer，以及最近恢复演练。业务正文和令牌不进入报告。
 
 ```sh
 node ops/monitor.mjs --config /etc/daily-flow/deploy.json inspect manual-UNIQUE
@@ -186,3 +186,5 @@ systemctl list-timers daily-flow-backup.timer daily-flow-upload.timer daily-flow
 [GitHub 调度限制](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#schedule)：高负载可延迟或丢弃定时作业，公开仓库 60 天无活动可停用。只在默认分支运行，错开整点能降低拥堵，不能保证实时告警；当调度器本身停止时不会凭空产生失败邮件，需上述人工检查。首版没有独立实时监控服务。
 
 公网检查独立执行，备份或演练告警不会跳过 HTTPS/协议探测。外部故障通过受限命令记录到独立的 `external-availability.json`，不被主机健康结果清零；同一个观测 ID 重试不重复计数，三次且跨至少 60 秒进入维护，保留当前数据并冻结后续发布。成功时间登记共用操作锁；与发布发生竞争或版本改变时重新取样，避免把正常切换误判为状态损坏。人工解除事故后重新开始计数。
+
+外部 readiness 与其他协议分别取样：readiness 恢复会独立清零连续失败计数，即使备份告警或事故冻结仍存在；这不代表自动解冻。仅 OAuth/其他协议异常会告警并冻结新发布，不计作 readiness 不可用而关闭全站。带活动操作标记的观察不用于判断外部故障，避免维护中的预期 503 产生事故。

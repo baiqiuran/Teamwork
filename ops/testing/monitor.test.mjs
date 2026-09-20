@@ -167,13 +167,33 @@ const original=cp.execFileSync; cp.execFileSync=function(command,args,...rest) {
     1,
   );
   assert.equal((await fetch(f.origin + "/login")).status, 200);
+  await inspect("external-ok");
+  assert.equal(
+    (await inspect("external-ok", undefined, "external-ready")).report.ready,
+    true,
+  );
+  const incidentAfterSuccess = JSON.parse(
+    await readFile(f.root + "/control/incident.json", "utf8"),
+  );
+  assert.ok(
+    incidentAfterSuccess.id,
+    "A successful observation does not unfreeze the incident",
+  );
+  result = await inspect("external-ok", undefined, "external-protocol-failure");
+  assert.equal(result.report.failures, 0);
+  assert.equal(result.report.maintenance, false);
   const hook = f.root + "/later.mjs";
   await writeFile(hook, "const now=Date.now; Date.now=()=>now()+61000;");
   await inspect("external-two", hook);
   result = await inspect("external-two", hook, "external-failure");
+  assert.equal(result.report.failures, 1);
   assert.equal(result.report.maintenance, false);
+  await writeFile(hook, "const now=Date.now; Date.now=()=>now()+122000;");
   await inspect("external-three", hook);
   result = await inspect("external-three", hook, "external-failure");
+  assert.equal(result.report.maintenance, false);
+  await inspect("external-four", hook);
+  result = await inspect("external-four", hook, "external-failure");
   assert.equal(result.report.maintenance, true);
   assert.equal((await fetch(f.origin + "/login")).status, 503);
 });

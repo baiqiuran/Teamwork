@@ -13,17 +13,26 @@ import { freeze } from "./recovery.mjs";
 
 const [flag, path, action, id] = process.argv.slice(2);
 assert.equal(flag, "--config");
-assert.ok(["inspect", "complete", "external-failure"].includes(action));
-assert.match(id ?? "", /^[a-zA-Z0-9_-]{1,72}$/);
+assert.ok(
+  [
+    "inspect",
+    "complete",
+    "external-failure",
+    "external-ready",
+    "external-protocol-failure",
+  ].includes(action),
+);
+assert.match(id ?? "", /^[a-zA-Z0-9_-]{1,70}$/);
 let config = await configuration(path);
 const directory = resolve(config.stateDir, "inspections");
 await mkdir(directory, { recursive: true, mode: 0o700 });
 const output = resolve(directory, `${id}.json`);
 async function main() {
-  if (action === "external-failure") {
+  if (action.startsWith("external-")) {
     return withControlLock(config, `external-${id}`, async () => {
       config = await configuration(path);
       const report = await json(output);
+      assert.ok(!report.busy, "BUSY_OBSERVATION_NOT_APPLICABLE");
       const runtime = await json(resolve(config.stateDir, "runtime.json"));
       if (report.actualCommit !== runtime.commit)
         return { id, phase: "busy", reason: "VERSION_CHANGED" };
@@ -31,21 +40,46 @@ async function main() {
       assert.ok(age >= 0 && age < 300000);
       const file = resolve(config.stateDir, "external-availability.json");
       const prior = (await exists(file)) ? await json(file) : {};
+      if (
+        Date.parse(prior.lastObservedAt ?? "") > Date.parse(report.checkedAt) ||
+        (prior.lastObservationId === id &&
+          prior.lastResult === "ready" &&
+          action === "external-failure")
+      )
+        return { id, phase: "observed", ignored: true };
+      if (action === "external-ready") {
+        await durable(file, {
+          commit: runtime.commit,
+          failures: 0,
+          ids: [],
+          lastObservedAt: report.checkedAt,
+          lastObservationId: id,
+          lastResult: "ready",
+        });
+        return { id, phase: "observed", ready: true };
+      }
+
       // Replaying a failed observation must not count it twice.
       const ids = prior.commit === runtime.commit ? (prior.ids ?? []) : [];
-      if (!ids.includes(id)) ids.push(id);
+      if (action === "external-failure" && !ids.includes(id)) ids.push(id);
       const firstFailureAt =
         prior.commit === runtime.commit && prior.failures > 0
           ? prior.firstFailureAt
           : Date.now();
       const failures = ids.length;
-      const maintenance = failures >= 3 && Date.now() - firstFailureAt >= 60000;
+      const maintenance =
+        action === "external-failure" &&
+        failures >= 3 &&
+        Date.now() - firstFailureAt >= 60000;
       await durable(file, {
         commit: runtime.commit,
         failures,
         ids,
         firstFailureAt,
         lastFailureAt: Date.now(),
+        lastObservedAt: report.checkedAt,
+        lastObservationId: id,
+        lastResult: "failed",
       });
       const operation = {
         id: `external-${id}`,
@@ -53,7 +87,10 @@ async function main() {
         phase: "failed",
         actualCommit: runtime.commit,
         recovery: "preserved-new-data",
-        failure: "EXTERNAL_HTTPS_OR_PROTOCOL_FAILED",
+        failure:
+          action === "external-failure"
+            ? "EXTERNAL_READINESS_FAILED"
+            : "EXTERNAL_PROTOCOL_FAILED",
         finishedAt: new Date().toISOString(),
       };
       await durable(
