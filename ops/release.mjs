@@ -143,6 +143,12 @@ export async function probe(
   const detail = await health.json();
   assert.equal(detail.integrity, "ok");
   assert.equal(detail.version, commit);
+  assert.equal(detail.initialized, true, "EXISTING_TEAM_MISSING");
+  assert.equal(
+    detail.attachmentsAccessible,
+    true,
+    "ATTACHMENT_STORAGE_UNAVAILABLE",
+  );
   assert.equal((await read("/login")).status, 200);
   assert.equal(
     (await read("/.well-known/oauth-authorization-server")).status,
@@ -151,6 +157,61 @@ export async function probe(
   assert.equal((await read("/oauth/authorize")).status, 400);
   assert.equal((await read("/mcp", { method: "POST" })).status, 401);
   return detail;
+}
+export async function externalProbe(config, commit) {
+  const read = (path, options = {}) =>
+    fetch(new URL(path, config.ingressUrl), {
+      ...options,
+      signal: AbortSignal.timeout(5000),
+    });
+  const ready = await read("/health/ready");
+  assert.equal(ready.status, 200, "PUBLIC_READINESS_FAILED");
+  const actual = await ready.json();
+  assert.deepEqual(
+    actual,
+    { ready: true, version: commit },
+    "PUBLIC_VERSION_MISMATCH",
+  );
+  for (const [path, status] of [
+    ["/login", 200],
+    ["/.well-known/oauth-authorization-server", 200],
+    ["/oauth/authorize", 400],
+  ])
+    assert.equal((await read(path)).status, status, "PUBLIC_PROTOCOL_FAILED");
+  assert.equal(
+    (await read("/mcp", { method: "POST" })).status,
+    401,
+    "PUBLIC_MCP_AUTH_FAILED",
+  );
+  return actual;
+}
+export async function reloadProxy(deadline = Date.now() + 120000) {
+  command("/usr/sbin/nginx", "-t");
+  const master = command(
+    "/bin/systemctl",
+    "show",
+    "nginx",
+    "--property=MainPID",
+    "--value",
+  ).trim();
+  assert.match(master, /^[1-9][0-9]*$/);
+  const workers = (
+    await readFile(`/proc/${master}/task/${master}/children`, "utf8")
+  )
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  command("/bin/systemctl", "reload", "nginx");
+  // A successful reload signal does not mean old workers/keep-alive routes
+  // have disappeared. Do not open while they can still use the old upstream.
+  while (
+    (await Promise.all(workers.map((pid) => exists(`/proc/${pid}`)))).some(
+      Boolean,
+    )
+  ) {
+    assert.ok(Date.now() < deadline, "PROXY_DRAIN_TIMEOUT");
+    await new Promise((done) => setTimeout(done, 50));
+  }
 }
 export async function activate(config, operation) {
   const target = operation.target;
@@ -172,8 +233,7 @@ export async function activate(config, operation) {
     `server 127.0.0.1:${selected.port};\n`,
     0o644,
   );
-  command("/usr/sbin/nginx", "-t");
-  command("/bin/systemctl", "reload", "nginx");
+  await reloadProxy(deadline);
   // The proxy remains in maintenance. New requests cannot reach the new data yet.
   assert.ok(await exists(config.maintenance), "MAINTENANCE_REQUIRED");
   await durable(resolve(config.stateDir, "runtime.json"), {

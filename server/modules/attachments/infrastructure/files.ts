@@ -1,6 +1,16 @@
-import { mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+  accessSync,
+  constants,
+} from "node:fs";
 import { resolve } from "node:path";
 import type { FileStorage } from "../application/ports.ts";
+export function assertStorageAccessible(directory: string) {
+  accessSync(directory, constants.R_OK | constants.W_OK | constants.X_OK);
+}
 export function localFiles(directory: string): FileStorage {
   mkdirSync(directory, { recursive: true });
   function path(id: string) {

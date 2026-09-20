@@ -6,7 +6,10 @@ import { diaryRepository } from "../modules/journal/infrastructure/sqlite/diary-
 import { membershipRepository } from "../modules/membership/infrastructure/sqlite/membership-repository.ts";
 import { sharingRepository } from "../modules/sharing/infrastructure/sqlite/sharing-repository.ts";
 import { workRepository } from "../modules/work/infrastructure/sqlite/work-repository.ts";
-import { localFiles } from "../modules/attachments/infrastructure/files.ts";
+import {
+  localFiles,
+  assertStorageAccessible,
+} from "../modules/attachments/infrastructure/files.ts";
 import * as security from "../infrastructure/security.ts";
 import { aiAuthorizationRepository } from "../modules/ai/infrastructure/sqlite/ai-authorization-repository.ts";
 import { aiOperationRepository } from "../modules/ai/infrastructure/sqlite/ai-operation-repository.ts";
@@ -55,7 +58,12 @@ export interface Resources {
   mcpMemberLimit?: number;
   mcpGrantLimit?: number;
   close(): void;
-  inspect(deep: boolean): { schema?: number; integrity?: string };
+  inspect(deep: boolean): {
+    schema?: number;
+    integrity?: string;
+    initialized?: boolean;
+    attachmentsAccessible?: boolean;
+  };
 }
 
 /** One owner per application, including when container initialization fails. */
@@ -121,7 +129,18 @@ export function createResources(options: AppOptions): Resources {
       files: localFiles(resolve(dirname(options.databasePath), "attachments")),
       setupKey: options.setupKey,
       close,
-      inspect: database.inspect,
+      inspect: (deep) => {
+        const status = database.inspect(deep);
+        if (!deep) return status;
+        assertStorageAccessible(
+          resolve(dirname(options.databasePath), "attachments"),
+        );
+        return {
+          ...status,
+          initialized: Boolean(membershipRepository(database.db).team()),
+          attachmentsAccessible: true,
+        };
+      },
     };
   } catch (error) {
     close();

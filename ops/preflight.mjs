@@ -35,12 +35,19 @@ child.once("exit", () => {
 });
 try {
   const deadline = Date.now() + 120000;
+  const read = (path, options = {}) => {
+    assert.ok(Date.now() < deadline, "ISOLATED_PREFLIGHT_TIMEOUT");
+    return fetch(`http://127.0.0.1:${port}${path}`, {
+      ...options,
+      signal: AbortSignal.timeout(
+        Math.max(1, Math.min(2000, deadline - Date.now())),
+      ),
+    });
+  };
   let ready = false;
   while (Date.now() < deadline && !finished) {
     try {
-      const r = await fetch(`http://127.0.0.1:${port}/health/ready`, {
-        signal: AbortSignal.timeout(1000),
-      });
+      const r = await read("/health/ready");
       const body = await r.json();
       ready = r.ok && body.ready === true && body.version === commit;
       if (ready) break;
@@ -51,26 +58,15 @@ try {
   }
   assert.ok(ready, "ISOLATED_PREFLIGHT_FAILED");
   assert.equal(
-    (
-      await fetch(`http://127.0.0.1:${port}/api/setup/status`).then((r) =>
-        r.json(),
-      )
-    ).needsSetup,
+    (await read("/api/setup/status").then((r) => r.json())).needsSetup,
     true,
   );
-  assert.equal((await fetch(`http://127.0.0.1:${port}/login`)).status, 200);
+  assert.equal((await read("/login")).status, 200);
   assert.equal(
-    (
-      await fetch(
-        `http://127.0.0.1:${port}/.well-known/oauth-authorization-server`,
-      )
-    ).status,
+    (await read("/.well-known/oauth-authorization-server")).status,
     200,
   );
-  assert.equal(
-    (await fetch(`http://127.0.0.1:${port}/mcp`, { method: "POST" })).status,
-    401,
-  );
+  assert.equal((await read("/mcp", { method: "POST" })).status, 401);
 } finally {
   if (!finished) {
     child.kill("SIGTERM");

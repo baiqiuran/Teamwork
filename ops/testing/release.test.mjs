@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { writeFile, readFile, mkdir, symlink } from "node:fs/promises";
 import { fixture, run, port } from "./fixture.mjs";
+import { randomBytes, randomUUID, createHash } from "node:crypto";
 
 async function slotsFixture(t) {
   const f = await fixture();
@@ -76,6 +77,60 @@ test("verified release switches real slots with one writer and preserved member 
   assert.notEqual(rejected.code, 0);
   assert.match(rejected.output, /BASELINE_CHANGED/);
   assert.equal((await fetch(f.origin + "/login")).status, 200);
+  const verifier = randomBytes(32).toString("base64url");
+  const scopes = ["progress:read", "drafts:write"];
+  const authRequest = {
+    client_id: "daily-flow-codex",
+    redirect_uri: "http://127.0.0.1:19876/callback",
+    resource: f.origin + "/mcp",
+    response_type: "code",
+    code_challenge_method: "S256",
+    code_challenge: createHash("sha256").update(verifier).digest("base64url"),
+    scope: scopes.join(" "),
+    state: "isolated-state",
+  };
+  const approval = await f.request("/api/ai/authorize", {
+    request: authRequest,
+    scopes,
+    approve: true,
+  });
+  const token = await fetch(f.origin + "/oauth/token", {
+    method: "POST",
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      client_id: authRequest.client_id,
+      redirect_uri: authRequest.redirect_uri,
+      resource: authRequest.resource,
+      code: new URL(approval.redirect).searchParams.get("code"),
+      code_verifier: verifier,
+    }),
+  }).then((r) => r.json());
+  const draft = {
+    operationId: randomUUID(),
+    title: "切换时重试",
+    entries: [{ id: randomUUID(), body: "MCP 保留回执" }],
+  };
+  const call = async () => {
+    const r = await fetch(f.origin + "/mcp", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token.access_token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "create_draft", arguments: draft },
+      }),
+    });
+    assert.equal(r.status, 200);
+    const result = await r.json();
+    assert.ok(!result.result.isError, JSON.stringify(result));
+    return result.result.structuredContent;
+  };
+  const created = await call();
   const running = f.control(
     "release",
     "--id",
@@ -103,6 +158,9 @@ test("verified release switches real slots with one writer and preserved member 
   const receipt = JSON.parse(result.output);
   assert.equal(receipt.actualCommit, target);
   assert.equal(receipt.slot, "green");
+  const replayed = await call();
+  assert.equal(replayed.replayed, true);
+  assert.equal(replayed.diary.id, created.diary.id);
   assert.ok(receipt.mayHaveOpenedAt && receipt.maintenanceMilliseconds > 0);
   assert.equal(
     run(

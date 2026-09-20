@@ -13,12 +13,12 @@ import {
   command,
 } from "./host.mjs";
 import { validate } from "./snapshots.mjs";
-import { prepare, activate } from "./release.mjs";
+import { prepare, activate, externalProbe } from "./release.mjs";
 
 const args = process.argv.slice(2);
 assert.equal(args.shift(), "--config");
 const configPath = args.shift();
-const config = await configuration(configPath);
+let config = await configuration(configPath);
 const action = args.shift();
 assert.ok(
   ["backup", "restore", "release", "status"].includes(action),
@@ -98,6 +98,7 @@ if (action === "status") {
         }
         await lock.writeFile(JSON.stringify({ id, pid: process.pid }));
         await lock.sync();
+        config = await configuration(configPath);
         // Another process may have completed this ID between our first lookup
         // and acquiring the lock. Never overwrite its receipt, even on conflict.
         if (await exists(statePath)) {
@@ -166,6 +167,10 @@ if (action === "status") {
           await durable(statePath, operation);
         } else await start(config);
         await maintenance(config, false);
+        if (action === "release") {
+          const observed = await externalProbe(config, operation.target.commit);
+          operation.actualCommit = observed.version;
+        }
         enteredMaintenance = false;
         operation = {
           ...operation,
@@ -173,7 +178,7 @@ if (action === "status") {
           finishedAt: new Date().toISOString(),
           ...(action === "release"
             ? {
-                actualCommit: operation.target.commit,
+                actualCommit: operation.actualCommit,
                 slot: operation.target.slot,
                 maintenanceMilliseconds:
                   Date.now() - Date.parse(operation.maintenanceAt),

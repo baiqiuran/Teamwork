@@ -30,6 +30,8 @@ test("发布就绪信息不泄露业务信息，深度检查需要本机专用�
   assert.equal(detail.integrity, "ok");
   assert.ok(Number.isInteger(detail.schema));
   assert.deepEqual(Object.keys(detail).sort(), [
+    "attachmentsAccessible",
+    "initialized",
     "integrity",
     "ready",
     "schema",
