@@ -80,3 +80,16 @@ node scripts/verify-candidate.mjs --from OLD_FULL_SHA --current ACTUAL_FULL_SHA 
 ## 任务 02 验证记录（2026-09-20）
 
 隔离 Linux 中，`73ab191fc515d900e48b96802edfa67cb8234708` 到 `4fddcd678f801a5e0f8fc7dd1bd0f9944954f55f` 的升级及匹配恢复通过，同时通过原始 `4414749` 历史基线。候选包摘要为 `45eeb3ef8b7451c57ade5b828258fd2dfc8d274ddada76bd901dbcde1095db20`，完整构建含 42 API/10 页面测试通过。Windows/Linux 的 3 项候选入口回归覆盖基线变化、说明缺失、破坏性 SQL 与业务 CRUD 区分。实际给编译候选注入删除日报行为时，验证因 `DESTRUCTIVE_MIGRATION` 失败，未把文字说明当作兼容证据。静态检查按审查补齐跨行、引号及 REPLACE 场景。这些是显式源版本的隔离验证，不是实时线上发布证明。
+
+
+## 发布与巡检验收（2026-09-20）
+
+01–10 的应用与控制能力已在隔离环境实现。生产接入仍待 OSS/RAM 和真实验收，详见 [生产接入与运维手册](cicd-production.md)。
+
+- 从全新 Linux 环境运行 `release-artifact.mjs` 与 `verify-host-control.mjs` 完整入口；候选 `73496fd0c0f2d7f1c0c28e394c8c2952ff3ef121` 的架构/类型/构建、43 项 API、11 项 Chromium 页面、8 项产物/候选/排序检查及纯生产依赖运行验证通过。
+- 候选包 SHA256：`5c888074eca24872371c026f2fd057257ecf83e7390ce8690c6ae2e5881941f3`。固定 `4fddcd6…` 与原始历史基线的升级、数据核验及匹配恢复均通过。
+- 真实 systemd/Nginx/SSH 隔离容器中 25 项验收全部通过，覆盖一致备份、单活切换、故障回退、开放后数据保留、断线/重启、异地补传/保留/恢复、专用 SSH 限制与巡检。
+- 后续控制器修正 `033ed86`、`242cd8d` 针对公网连续失败、协议告警和跨维护采样进行了真实 Linux 巡检定向回归，全部通过。应用运行包不包含高权限控制器；其安装另行受控。
+- Standards 审查修复重复请求过早完成、锁竞争误报和跨备份观察竞态；Spec 审查修复版本误报、事故回执缺失及外部巡检计数。成功的 readiness 观察只清零连续失败，不自动解除事故冻结。
+
+GitHub 的 production Environment 已建立，仅 main 可用；main 要求 PR 与两个检查、管理员也受约束、无需额外审核人。`DEPLOY_ENABLED`、`INSPECTION_ENABLED` 均保持 false。真实 OSS、部署密钥、首次合并驱动发布、定时邮件收件与云端恢复尚未完成，不以本地测试代替这些证据。
