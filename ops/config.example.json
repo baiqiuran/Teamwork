@@ -31,5 +31,12 @@
   "probeUrl": "http://127.0.0.1:4310/api/setup/status",
   "ingressUrl": "https://8.148.245.224",
   "serviceUser": "daily-flow",
-  "reserveBytes": 268435456
+  "reserveBytes": 268435456,
+  "oss": {
+    "region": "cn-shanghai",
+    "hostRegion": "cn-guangzhou",
+    "bucket": "replace-with-private-backup-bucket",
+    "prefix": "snapshots/",
+    "roleName": "DailyFlowBackupRole"
+  }
 }

@@ -3,6 +3,7 @@ import { configuration } from "./host.mjs";
 import { json, durable } from "./io.mjs";
 import { backup, restore } from "./snapshots.mjs";
 import { slotConfig } from "./release.mjs";
+import { enqueue } from "./offsite.mjs";
 
 const config = await configuration(process.argv[2]);
 const path = resolve(config.stateDir, "operations", `${process.argv[3]}.json`);
@@ -18,6 +19,8 @@ const result = rollback
   : ["backup", "release"].includes(operation.command)
     ? await backup(config, operation)
     : await restore(config, operation);
+if (!rollback && ["backup", "release"].includes(operation.command))
+  await enqueue(config, result.id);
 await durable(path, {
   ...operation,
   snapshotId: result.id,

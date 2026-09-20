@@ -84,3 +84,20 @@ docker exec -w /repository daily-flow-systemd-validation node --test ops/testing
 ```
 
 特权仅用于隔离容器里的 systemd/cgroup 验收。测试应用以 `nobody` 运行，使用合成团队、日报和附件，检查完整恢复、真实入口维护、并发互斥、坏附件、损坏归档和磁盘容量门槛。调试数据保留在容器中，停止并移除该测试容器可一并清理。
+
+## OSS 上传与新鲜度（任务 07）
+
+控制工具有独立依赖锁：在 `ops/` 执行 `npm ci --omit=dev`。这些依赖由运维安装，不随应用包替换。配置 `oss` 的 bucket、不同于 ECS 的中国内地 region、单层 prefix 与实例 roleName。桶须私有，开启公共访问阻止和默认 AES256 加密；上传额外指定私有 ACL 与 AES256，下载核验加密响应及逐文件 SHA256。采用 HTTPS、V4 签名、仅 ECS RAM 角色和 IMDSv2，不读取 CI AccessKey。
+
+角色最小权限模板见 `oss-policy.example.json`；替换桶名并保持配置前缀一致，只关联目标 ECS。正式桶/角色/网络访问尚未实测，任务 11 才能登记真实证明。凭证接法依据 [阿里云 OSS 官方 SDK 文档](https://help.aliyun.com/zh/oss/developer-reference/nodejs-sdk/)，SDK 与凭证库版本分别锁定 6.23.0 / 2.4.7。
+
+每次本地快照验证后，数据工作进程会先持久化 `uploads/<id>.json` 再允许启动。上传单独由 timer 执行，不延长当前维护窗口：
+
+```sh
+node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json upload
+node ops/offsite-cli.mjs --config /etc/daily-flow/deploy.json status
+```
+
+`pending → uploading → verified/failed`；失败按 1、2、4…分钟重试，上限一小时，进程中断的 uploading 会继续处理相同快照。远端 complete.json 最后写入；所有材料与清单读回校验后才标记 verified。应用发布成功与备份失败分别记录，上传失败不会恢复旧数据库。首次启用自动发布前先执行一次每日备份和上传，取得有效异地副本；release 入口在准备前和维护前均检查该副本，缺失或数据时间超过 24 小时拒绝新发布。既有网页、备份和补传继续运行。
+
+隔离测试通过 Node 模块 hook 替换 OSS I/O，覆盖离线、摘要错误、补传重启和新鲜度；没有在生产配置中加入跳过门槛开关。真实资源验证入口是上面的 backup/upload/status 组合，先使用独立测试桶和合成数据，勿把业务备份放入 GitHub runner。

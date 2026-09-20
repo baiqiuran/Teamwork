@@ -1,5 +1,6 @@
 import { writeFile, mkdir, symlink } from "node:fs/promises";
 import { fixture, run, port } from "./fixture.mjs";
+import { destination } from "../offsite.mjs";
 
 export async function slotsFixture(t) {
   const f = await fixture();
@@ -50,6 +51,24 @@ location / { if (-f ${f.root}/maintenance) { return 503; } proxy_pass http://ups
   f.config.activeSlot = "blue";
   f.config.upstreamFile = `${f.root}/upstream`;
   f.config.healthTokenFile = `${f.root}/health-token`;
+  f.config.oss = {
+    region: "cn-shanghai",
+    hostRegion: "cn-guangzhou",
+    bucket: "isolated-test",
+    prefix: "snapshots/",
+    roleName: "isolated-test",
+  };
+  // Boundary fixture: prior successful remote verification, no real cloud data.
+  await mkdir(`${f.root}/control/uploads`, { recursive: true });
+  await writeFile(
+    `${f.root}/control/uploads/prior.json`,
+    JSON.stringify({
+      id: "prior",
+      phase: "verified",
+      destination: destination(f.config),
+      snapshotAt: new Date().toISOString(),
+    }),
+  );
   await writeFile(`${f.root}/deploy.json`, JSON.stringify(f.config));
   return f;
 }

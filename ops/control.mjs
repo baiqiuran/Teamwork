@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { intent } from "./intent.mjs";
+import { requireFresh } from "./offsite.mjs";
 import { processIdentity } from "./process-identity.mjs";
 import { json, durable } from "./io.mjs";
 import {
@@ -218,6 +219,7 @@ if (action === "status") {
           break execution;
         }
         if (action === "release") {
+          operation.offsite = await requireFresh(config);
           operation.target = await prepare(config, operation);
           await durable(statePath, operation);
         }
@@ -228,6 +230,8 @@ if (action === "status") {
           );
           await rm(checked, { recursive: true, force: true });
         }
+        if (action === "release")
+          operation.offsite = await requireFresh(config);
         enteredMaintenance = true;
         await maintenance(config, true);
         operation = {
