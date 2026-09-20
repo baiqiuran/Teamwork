@@ -92,7 +92,7 @@ node scripts/verify-candidate.mjs --from OLD_FULL_SHA --current ACTUAL_FULL_SHA 
 - 后续控制器修正 `033ed86`、`242cd8d` 针对公网连续失败、协议告警和跨维护采样进行了真实 Linux 巡检定向回归，全部通过。应用运行包不包含高权限控制器；其安装另行受控。
 - Standards 审查修复重复请求过早完成、锁竞争误报和跨备份观察竞态；Spec 审查修复版本误报、事故回执缺失及外部巡检计数。成功的 readiness 观察只清零连续失败，不自动解除事故冻结。
 
-GitHub 的 production Environment 已建立，仅 main 可用；main 要求 PR 与两个检查、管理员也受约束、无需额外审核人。`DEPLOY_ENABLED`、`INSPECTION_ENABLED` 均保持 false。真实本地备份、部署密钥、首次合并驱动发布、定时邮件收件与本地副本恢复尚未完成，不以本地测试代替这些证据。
+GitHub 的 production Environment 已建立，仅 main 可用；main 要求 PR 与两个检查、管理员也受约束、无需额外审核人。`DEPLOY_ENABLED`、`INSPECTION_ENABLED` 均保持 false。部署密钥、真实本地备份与隔离副本恢复已验收；首次合并驱动发布与定时邮件收件仍待完成，不以本地测试代替这些证据。
 
 ## 2026-09-20 备份范围调整
 

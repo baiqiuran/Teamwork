@@ -14,7 +14,7 @@ node ops/control.mjs --config /etc/daily-flow/deploy.json restore --id recover-c
 
 相同操作标识及参数返回已记录状态，改变参数会拒绝；失败后不会因重跑同一标识而重新覆盖数据。恢复必须明确指定快照。状态位于独立 `stateDir/operations/`，不会随着业务数据恢复而消失。
 
-`stateDir/operation.lock` 互斥所有备份与恢复。应用服务必须使用同一个 `dataLock` 启动，例如 `ExecStart=/usr/bin/flock --nonblock /run/lock/daily-flow-data.lock /usr/local/bin/node .../build/server/main.js`，文件预先创建并归运行成员所有。维护路径必须让 Nginx worker 能遍历，并让所有业务入口返回 503 和 Retry-After；控制入口会核对真实代理响应后才停止应用。测试配置可见 `testing/backup.test.mjs`。
+`stateDir/operation.lock` 互斥所有备份与恢复。应用服务必须使用同一个 `dataLock` 启动，例如 `ExecStart=/usr/bin/flock --nonblock /run/lock/daily-flow-data.lock /usr/local/bin/node .../build/server/main.js`，文件通过 tmpfiles 预先创建为 `root:daily-flow`、`0660`（`ops/tmpfiles/daily-flow.conf`），使 root 控制器与应用组都可加锁；`/run/lock` 为 sticky 目录时不要把文件属主改成应用用户，否则 Ubuntu 的 `fs.protected_regular` 会拒绝 root 的 flock 打开。维护路径必须让 Nginx worker 能遍历，并让所有业务入口返回 503 和 Retry-After；控制入口会核对真实代理响应后才停止应用。测试配置可见 `testing/backup.test.mjs`。
 
 流程为：检查状态与恢复材料 → 维护 → systemd 停止并确认退出 → 独占数据文件锁 → 备份或恢复 → 启动及验收 → 开放。独立 `backup --kind pre-release` 只标记备份类型，仍恢复原服务；发布内部复用数据操作阶段并保持维护，不能用一个独立备份命令代替整个发布事务。
 
