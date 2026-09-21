@@ -2,7 +2,7 @@
 
 这是从现有单实例接入自动发布的操作手册。**单活接管、PR 自动发布、本地备份与真实副本恢复、外网巡检及手动失败邮件已通过。** 控制程序的安装与第一次切换属于基础设施维护，后续 PR 发布只更新普通应用。
 
-2026-09-20 首次自动发布后的生产版本为 `70b874312aafdc30cae52defb906bb3465348b7d`，运行于 green，blue 和旧服务停止。`DEPLOY_ENABLED`、`INSPECTION_ENABLED` 与主机自动发布已开启；自然 schedule 证据仍需单独核对。以下准备前快照用于说明接管过程，不能作为当前服务状态。
+2026-09-20 首次自动发布后的生产版本为 `70b874312aafdc30cae52defb906bb3465348b7d`，运行于 green，blue 和旧服务停止。当时 `DEPLOY_ENABLED`、`INSPECTION_ENABLED` 与主机自动发布均已开启。**2026-09-21 两项开关已关闭，两条 workflow 也已禁用，生产版本仍停留在 `70b8743`，此后合入 main 的提交不会自动上线**，见「2026-09-21 停用自动发布与巡检」。以下准备前快照用于说明接管过程，不能作为当前服务状态。
 
 ## 已核对的生产现场
 
@@ -40,7 +40,7 @@
 
 ## 2. GitHub 与部署身份
 
-首次设置时，在本机运行 `gh auth login --web`，完成有仓库管理权限的账号登录。2026-09-20 已验证 `baiqiuran` 具备仓库 admin 权限；随后建立 production Environment（仅 main）、main PR/必需检查保护、非秘密变量和部署 Secrets。准备时发布与巡检开关为 false；完成接管及首次发布后，两项现已开启。无需发送令牌。首次设置需要仓库/Environment/分支规则权限；普通 workflow token 只保留工作流中声明的只读权限。
+首次设置时，在本机运行 `gh auth login --web`，完成有仓库管理权限的账号登录。2026-09-20 已验证 `baiqiuran` 具备仓库 admin 权限；随后建立 production Environment（仅 main）、main PR/必需检查保护、非秘密变量和部署 Secrets。准备时发布与巡检开关为 false；完成接管及首次发布后两项曾开启，**2026-09-21 已再次关闭，同时解除了 main 的 PR、必需检查、提交签名与对管理员生效等限制，仅保留禁止强推和禁止删除分支**。无需发送令牌。首次设置需要仓库/Environment/分支规则权限；普通 workflow token 只保留工作流中声明的只读权限。
 
 | 位置 | 名称 | 值/来源 |
 | --- | --- | --- |
@@ -149,3 +149,32 @@ PR #2 经 run 35500627320 全部必需检查后，于 2026-09-20T09:01:13Z 合�
 [自动发布 35501559584](https://github.com/baiqiuran/Teamwork/actions/runs/35501559584) 验证真实生产基线升级与配套恢复后完成发布，操作 ID `ci-35501147947-8d08b2b959c7067e-70b874312aafdc30`。生产从旧版 blue 切到新版 green，维护 7207 ms；发布前一致快照同操作 ID，数据时间 09:11:06.079Z，完整校验通过。后续受限 baseline 复核相同版本与槽位，busy=false、frozen=false。
 
 重新开启 `INSPECTION_ENABLED=true` 后，[正常巡检 35501658596](https://github.com/baiqiuran/Teamwork/actions/runs/35501658596) 成功。09:12:37.164Z 主机诊断 healthy、issues=[]；外网 HTTPS readiness/version 与网页、MCP、OAuth 全部通过，备份新鲜、三项 timer 活动、恢复演练有效，09:12:45.785Z 登记巡检完成。以上不包含自然 schedule 或定时失败邮件收件证据。
+
+## 2026-09-21 停用自动发布与巡检
+
+改为手动推送合并，生产发布不再由 CI 触发。关闭前确认没有 `in_progress` 或 `queued` 的 run，因此没有把主机侧发布流程停在半路。
+
+| 对象 | 变更 | 时间 |
+| --- | --- | --- |
+| 仓库 Variable `DEPLOY_ENABLED` | `true` → `false` | 03:20:42Z |
+| 仓库 Variable `INSPECTION_ENABLED` | `true` → `false` | 03:22:48Z |
+| workflow `Production deployment`（362539584） | `disabled_manually` | 同上 |
+| workflow `Production inspection`（362539585） | `disabled_manually` | 同上 |
+| main 分支保护 | 解除必需状态检查、必须 PR、提交签名要求、讨论必须解决、对管理员生效 | 同上 |
+
+保留的约束：`allow_force_pushes=false`、`allow_deletions=false`，即仍不能强推或删除 main。`Application checks` 保持启用，push 到 main 仍跑 CI，只是不再有闸门作用。
+
+**未改动**：production Environment 及其 `DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_URL` 变量、`DEPLOY_SSH_KEY`/`DEPLOY_KNOWN_HOSTS` Secrets、主机上的控制程序与运行版本。生产仍运行 `70b874312aafdc30cae52defb906bb3465348b7d`，此后进 main 的提交都需手动发布。
+
+解除前的分支保护取值（恢复时按此还原）：`required_status_checks` 为 `strict: true` 且 contexts 为 `["Verified Linux artifact", "Linux release and recovery"]`；`required_pull_request_reviews` 为 `required_approving_review_count: 0`、`dismiss_stale_reviews: true`；`required_signatures`、`required_conversation_resolution`、`enforce_admins` 均为启用。
+
+恢复自动发布与巡检：
+
+```sh
+gh variable set DEPLOY_ENABLED --body true
+gh variable set INSPECTION_ENABLED --body true
+gh workflow enable "Production deployment"
+gh workflow enable "Production inspection"
+```
+
+分支保护需按上面的取值重新 PUT 回 `repos/baiqiuran/Teamwork/branches/main/protection`。注意 `required_conversation_resolution` 在该 API 版本接受布尔值而非对象。
