@@ -1,20 +1,8 @@
-import { execFile } from "node:child_process";
-import { createReadStream } from "node:fs";
-import { pipeline } from "node:stream/promises";
+import { execFile, execFileSync } from "node:child_process";
+import { basename, dirname } from "node:path";
 import { promisify } from "node:util";
-import { createGunzip } from "node:zlib";
 
 const run = promisify(execFile);
-
-/** Members an upload may carry: payload plus the metadata records tar writes. */
-const UPLOADABLE = new Set(["0", "\0", "7", "5", "x", "g", "L", "K"]);
-const SPECIAL = {
-  1: "hardlink",
-  2: "symlink",
-  3: "character device",
-  4: "block device",
-  6: "fifo",
-};
 
 async function git(repository, ...args) {
   const { stdout } = await run("git", args, {
@@ -83,6 +71,15 @@ export async function preflightRelease({ repository, baseline }) {
     throw new Error(
       "PRODUCTION_BASELINE_UNKNOWN: the version production is running has to come from the release record, or from the read-only survey for the first release; a commit quoted from documentation is not evidence",
     );
+  const malformed =
+    !/^[0-9a-f]{40}$/.test(running) ||
+    (
+      await git(repository, "cat-file", "-t", running).catch(() => "")
+    ).trim() !== "commit";
+  if (malformed)
+    throw new Error(
+      `PRODUCTION_BASELINE_INVALID: ${running} is not a full commit object in this repository; the release record stores a 40-character commit`,
+    );
   if (
     !(await gitSucceeds(
       repository,
@@ -98,48 +95,35 @@ export async function preflightRelease({ repository, baseline }) {
   return { commit: head, baseline: running };
 }
 
-function field(header, offset, length) {
-  const bytes = header.subarray(offset, offset + length);
-  const end = bytes.indexOf(0);
-  return (end < 0 ? bytes : bytes.subarray(0, end)).toString("utf8").trim();
+function listed(archive, ...flags) {
+  // GNU tar reads "C:\path" as "host:path", so it only ever sees a name.
+  return execFileSync("tar", [...flags, basename(archive)], {
+    cwd: dirname(archive),
+    encoding: "utf8",
+    windowsHide: true,
+  })
+    .split("\n")
+    .filter(Boolean);
 }
 
-/** Refuse an artifact the server would unpack into something other than files. */
+/**
+ * Refuse an artifact the server would not unpack. `ops/snapshots.mjs` applies
+ * the same two rules again before extraction, so catching them here is what
+ * keeps a laptop build from being rejected only after it has been uploaded.
+ */
 export async function assertArchiveUploadable({ archive }) {
-  const unsafe = [];
-  let pending = Buffer.alloc(0);
-  let skip = 0;
-  const consume = (chunk) => {
-    pending = Buffer.concat([pending, chunk]);
-    for (;;) {
-      if (skip) {
-        const used = Math.min(skip, pending.length);
-        pending = pending.subarray(used);
-        skip -= used;
-        if (skip) return;
-      }
-      if (pending.length < 512) return;
-      const header = pending.subarray(0, 512);
-      pending = pending.subarray(512);
-      if (!header.some((byte) => byte)) return;
-      const rawSize = header.subarray(124, 136);
-      const digits = field(header, 124, 12);
-      if (rawSize[0] & 0x80 || !/^[0-7]*$/.test(digits))
-        throw new Error(`ARTIFACT_UNREADABLE: ${archive} is not a tar stream`);
-      const name = [field(header, 345, 155), field(header, 0, 100)]
-        .filter(Boolean)
-        .join("/");
-      const typeflag = String.fromCharCode(header[156] || 0x30);
-      if (!UPLOADABLE.has(typeflag))
-        unsafe.push(`${name} (${SPECIAL[typeflag] ?? `type ${typeflag}`})`);
-      skip = Math.ceil(parseInt(digits || "0", 8) / 512) * 512;
-    }
-  };
-  await pipeline(createReadStream(archive), createGunzip(), async (source) => {
-    for await (const chunk of source) consume(chunk);
-  });
-  if (unsafe.length)
+  const escaping = listed(archive, "-tzf").filter(
+    (path) => path.startsWith("/") || path.split("/").includes(".."),
+  );
+  if (escaping.length)
     throw new Error(
-      `ARTIFACT_HAS_UNSAFE_ENTRIES: ${unsafe.join(", ")} — only plain files and directories may be uploaded`,
+      `UNSAFE_ARCHIVE_PATH: ${escaping.join(", ")} would be written outside the release directory`,
+    );
+  const special = listed(archive, "--numeric-owner", "-tvzf").filter(
+    (line) => !["-", "d"].includes(line[0]),
+  );
+  if (special.length)
+    throw new Error(
+      `UNSAFE_ARCHIVE_LINK: only plain files and directories may be uploaded, found ${special.join("; ")}`,
     );
 }

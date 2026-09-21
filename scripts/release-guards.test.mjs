@@ -85,6 +85,22 @@ test("a release without evidence of the running version is refused", async (t) =
   );
 });
 
+test("a baseline that is not a commit object is refused as malformed", async (t) => {
+  const { root, git, commit } = await fixture(t);
+  git("update-ref", "refs/remotes/origin/main", commit);
+  for (const value of ["not-a-sha", "f".repeat(40), `${commit}~1`]) {
+    await assert.rejects(
+      () => preflightRelease({ repository: root, baseline: value }),
+      (error) => {
+        assert.match(error.message, /^PRODUCTION_BASELINE_INVALID/);
+        assert.ok(error.message.includes(value), `must name ${value}`);
+        return true;
+      },
+      `${value} has to be refused as a malformed value, not as an unrelated commit`,
+    );
+  }
+});
+
 test("a baseline the release commit does not descend from is refused", async (t) => {
   const { root, git } = await fixture(t);
   await writeFile(resolve(root, "server.ts"), "// pushed work");
@@ -171,8 +187,8 @@ async function syntheticArtifact(t, entries) {
 }
 
 const SPECIAL_ENTRIES = [
-  ["2", "node_modules/some-package/current", "target.txt", "symlink"],
-  ["1", "node_modules/some-package/hard.txt", "target.txt", "hardlink"],
+  ["2", "node_modules/some-package/current", "target.txt", "symbolic link"],
+  ["1", "node_modules/some-package/hard.txt", "target.txt", "hard link"],
   ["3", "dev/null", "", "character device"],
   ["4", "dev/sda", "", "block device"],
   ["6", "run/service.fifo", "", "fifo"],
@@ -187,12 +203,29 @@ test("an artifact holding links or devices is refused before upload", async (t) 
     await assert.rejects(
       () => assertArchiveUploadable({ archive }),
       (error) => {
-        assert.match(error.message, /^ARTIFACT_HAS_UNSAFE_ENTRIES/);
+        assert.match(error.message, /^UNSAFE_ARCHIVE_LINK/);
         assert.ok(error.message.includes(name), `must name ${name}`);
-        assert.match(error.message, new RegExp(kind));
         return true;
       },
       `${kind} must not be uploadable`,
+    );
+  }
+});
+
+test("an artifact member that would land outside its directory is refused", async (t) => {
+  for (const name of ["/etc/passwd", "../../etc/shadow"]) {
+    const archive = await syntheticArtifact(t, [
+      member({ name: "package.json", body: '{"name":"release"}' }),
+      member({ name, body: "x" }),
+    ]);
+    await assert.rejects(
+      () => assertArchiveUploadable({ archive }),
+      (error) => {
+        assert.match(error.message, /^UNSAFE_ARCHIVE_PATH/);
+        assert.ok(error.message.includes(name), `must name ${name}`);
+        return true;
+      },
+      `${name} must not be uploadable`,
     );
   }
 });
