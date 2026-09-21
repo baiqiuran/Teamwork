@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, ApiError } from "../shared/api";
 import type { Identity } from "../shared/contracts";
 import { Brand } from "../shared/components/Brand";
+import { Icon } from "../shared/components/Icons";
 import { Message } from "../shared/components/Message";
 import { describeError } from "../shared/errors";
 import { AccessForm } from "../features/membership/AccessForm";
@@ -58,7 +59,7 @@ function Workspace({
       <aside className="sidebar">
         <Brand />
         <div className="team-badge">
-          <span aria-hidden="true">◈</span>
+          <Icon name="workspace" />
           <div>
             {identity.team.name}
             <small>团队工作空间</small>
@@ -68,15 +69,15 @@ function Workspace({
         <nav aria-label="团队导航">
           {(
             [
-              ["diaries", "我的日报"],
-              ["team", "团队日报"],
-              ["projects", "项目与任务"],
-              ["sharing", "公开分享"],
-              ["invitations", "成员邀请"],
-              ["account", "我的账号"],
-              ["ai", "AI 连接"],
+              ["diaries", "我的日报", "diary"],
+              ["team", "团队日报", "team"],
+              ["projects", "项目与任务", "tasks"],
+              ["sharing", "公开分享", "share"],
+              ["invitations", "成员邀请", "invite"],
+              ["account", "我的账号", "account"],
+              ["ai", "AI 连接", "ai"],
             ] as const
-          ).map(([key, label]) => (
+          ).map(([key, label, icon]) => (
             <button
               key={key}
               className={tab === key ? "selected" : ""}
@@ -90,6 +91,7 @@ function Workspace({
                 setTab(key);
               }}
             >
+              <Icon name={icon} />
               {label}
             </button>
           ))}
@@ -124,7 +126,7 @@ function Workspace({
             </strong>
           </span>
           <span className="private-label">
-            <span aria-hidden="true">◈</span> 团队内部
+            <Icon name="lock" /> 团队内部
           </span>
         </header>
         <main className={`content${tab === "team" ? " content--team" : ""}`}>

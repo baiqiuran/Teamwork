@@ -314,7 +314,10 @@ export function Diaries() {
             </button>
           ))}
         </aside>
-        <section className="diary-editor" aria-label="日报编辑器">
+        <section
+          className={`diary-editor${dirty ? " dirty" : ""}`}
+          aria-label="日报编辑器"
+        >
           {!current ? (
             <div className="empty">
               <h2>从一条工作开始</h2>
@@ -427,7 +430,9 @@ export function Diaries() {
                         id={`body-${entry.id}`}
                         value={entry.body}
                         disabled={busy}
-                        placeholder="完成了什么？有哪些进展？\n可以换行、分段，或用 - 编写列表。"
+                        placeholder={
+                          "完成了什么？有哪些进展？\n可以换行、分段，或用 - 编写列表。"
+                        }
                         onChange={(e) =>
                           edit({
                             ...content,
