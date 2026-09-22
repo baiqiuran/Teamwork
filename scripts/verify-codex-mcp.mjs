@@ -16,7 +16,6 @@ if (!binary)
 const directory = await mkdtemp(join(tmpdir(), "daily-codex-"));
 const appOptions = {
   databasePath: join(directory, "test.sqlite"),
-  setupKey: "codex-fixture",
   staticDirectory: resolve("dist"),
 };
 let app = await createApp(appOptions);
@@ -29,7 +28,6 @@ try {
     email: "codex@example.test",
     password: "CodexFixture2026!",
     teamName: "隔离验收团队",
-    setupKey: "codex-fixture",
   };
   const setup = await fetch(`${origin}/api/setup`, {
     method: "POST",
@@ -162,17 +160,20 @@ try {
     .getByRole("heading", { name: "允许 Codex 为你处理工作" })
     .waitFor();
   assert.equal(await page.getByLabel("查询团队工作进展").isChecked(), true);
-  assert.equal(await page.getByLabel("读写我的日报草稿").isChecked(), true);
-  assert.equal(await page.getByLabel("自动提交我的日报").isChecked(), false);
-  assert.equal(await page.getByLabel("创建任务和更新状态").isChecked(), false);
+  assert.equal(await page.getByLabel("读写本人日报草稿").isChecked(), true);
+  assert.equal(await page.getByLabel("提交本人日报").isChecked(), false);
   assert.equal(
-    await page.getByLabel("创建和关闭我的公开链接").isChecked(),
+    await page.getByLabel("创建任务和更新任务状态").isChecked(),
+    false,
+  );
+  assert.equal(
+    await page.getByLabel("创建和关闭本人公开链接").isChecked(),
     false,
   );
   for (const label of [
-    "自动提交我的日报",
-    "创建任务和更新状态",
-    "创建和关闭我的公开链接",
+    "提交本人日报",
+    "创建任务和更新任务状态",
+    "创建和关闭本人公开链接",
   ])
     await page.getByLabel(label).check();
   await page.getByRole("button", { name: "允许所选能力" }).click();

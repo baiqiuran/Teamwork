@@ -38,16 +38,16 @@ export class AiJournal {
       detailTool: "get_my_draft",
     };
   }
-  private associations(content: Content) {
+  private associations(content: Content, memberId: string) {
     for (const entry of content.entries) {
       assertEntryAssociation(entry);
       if (entry.statusChange && !entry.taskId)
         throw new DomainError("invalid", "状态意图必须关联现有任务。");
       if (!entry.projectId) continue;
-      const project = this.work.getProject(entry.projectId);
+      const project = this.work.getProject(entry.projectId, memberId);
       assertProjectAssociation(project);
       if (entry.taskId) {
-        const task = this.work.getTask(entry.taskId);
+        const task = this.work.getTask(entry.taskId, memberId);
         assertTaskAssociation(entry, task);
       }
     }
@@ -59,7 +59,7 @@ export class AiJournal {
       input,
       ["drafts:write"],
       (memberId) => {
-        this.associations(input);
+        this.associations(input, memberId);
         const diary = this.journal.create(memberId, input);
         return {
           result: { diary: this.summary(diary), webPath: "/diaries" },
@@ -79,7 +79,7 @@ export class AiJournal {
         const priorTasks = new Map(
           before.entries
             .filter((e) => e.taskId)
-            .map((e) => [e.taskId!, this.work.getTask(e.taskId!)]),
+            .map((e) => [e.taskId!, this.work.getTask(e.taskId!, memberId)]),
         );
         const diary = this.journal.submit(
           input.id,
@@ -100,7 +100,7 @@ export class AiJournal {
             ),
           ),
         ].flatMap((id) => {
-          const task = this.work.getTask(id),
+          const task = this.work.getTask(id, memberId),
             prior = priorTasks.get(id);
           const created = diary.published!.entries.some(
             (e) => e.taskId === id && createdIds.has(e.id),
@@ -228,7 +228,7 @@ export class AiJournal {
                   content.entries[index].statusChange),
           };
         }
-        this.associations(content);
+        this.associations(content, memberId);
         const diary = this.journal.save(
           input.id,
           memberId,
@@ -284,6 +284,7 @@ export class AiJournal {
           submitted: !!diary.published,
           ...this.reading.contentPage(diary.draft, input, {
             tool: "my-draft",
+            memberId: member.id,
             id: diary.id,
             version: diary.version,
           }),

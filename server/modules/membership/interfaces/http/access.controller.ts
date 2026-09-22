@@ -27,7 +27,6 @@ import { ZodPipe } from "../../../../interfaces/http/validation.pipe.ts";
 
 const setupInput = registration.extend({
   teamName: z.string().trim().min(1).max(60),
-  setupKey: z.string(),
 });
 
 @Controller("api")
@@ -36,24 +35,20 @@ export class AccessController {
   @Get("setup/status")
   @Anonymous()
   status() {
-    return { needsSetup: !this.membership.team() };
+    return { needsSetup: !this.membership.hasTeams() };
   }
   @Post("setup")
   @HttpCode(201)
   @Anonymous()
   async setup(
     @Body(new ZodPipe(setupInput)) input: z.infer<typeof setupInput>,
-    @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
   ) {
-    const local = ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(
-      request.ip ?? request.socket.remoteAddress ?? "",
-    );
-    return sessionResponse(response, await this.membership.setup(input, local));
+    return sessionResponse(response, await this.membership.setup(input));
   }
   @Get("me")
   me(@CurrentMember() member: Member) {
-    return { member, team: this.membership.team() };
+    return { member, team: this.membership.team(member.teamId) };
   }
   @Post("login")
   @HttpCode(200)

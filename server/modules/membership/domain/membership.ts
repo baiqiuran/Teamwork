@@ -2,12 +2,18 @@ import { DomainError } from "../../../shared/domain/errors.ts";
 export const WEEK = 7 * 24 * 60 * 60 * 1000;
 export interface Member {
   id: string;
+  teamId: number;
   name: string;
   email: string;
 }
 export interface Account extends Member {
   passwordHash: string;
   createdAt: number;
+}
+export interface MemberSummary {
+  id: string;
+  name: string;
+  joinedAt: number;
 }
 export interface Team {
   id: number;

@@ -60,15 +60,23 @@ export class AiReading {
       ),
     );
   }
-  members(input: SearchInput) {
-    return this.page(this.search(this.reading.members(), input), input, {
-      tool: "members",
-      query: input.query,
-    });
-  }
-  projects(input: SearchInput) {
+  members(memberId: string, input: SearchInput) {
     return this.page(
-      this.search(this.work.projects(), input).map((item) => ({
+      this.search(
+        this.reading.members(memberId).map(({ id, name }) => ({ id, name })),
+        input,
+      ),
+      input,
+      {
+        tool: "members",
+        memberId,
+        query: input.query,
+      },
+    );
+  }
+  projects(memberId: string, input: SearchInput) {
+    return this.page(
+      this.search(this.work.projects(memberId), input).map((item) => ({
         ...item,
         description: [...item.description].slice(0, 160).join(""),
         truncated: [...item.description].length > 160,
@@ -76,16 +84,26 @@ export class AiReading {
         detailTool: "get_project",
       })),
       input,
-      { tool: "projects", query: input.query, archived: input.archived },
+      {
+        tool: "projects",
+        memberId,
+        query: input.query,
+        archived: input.archived,
+      },
     );
   }
-  project(id: string) {
-    return this.work.getProject(id);
+  project(memberId: string, id: string) {
+    return this.work.getProject(id, memberId);
   }
-  tasks(input: SearchInput & { projectId?: string; status?: TaskStatus }) {
+  tasks(
+    memberId: string,
+    input: SearchInput & { projectId?: string; status?: TaskStatus },
+  ) {
     const items = input.projectId
-      ? this.work.tasks(input.projectId)
-      : this.work.projects().flatMap((project) => this.work.tasks(project.id));
+      ? this.work.tasks(input.projectId, memberId)
+      : this.work
+          .projects(memberId)
+          .flatMap((project) => this.work.tasks(project.id, memberId));
     return this.page(
       this.search(
         items.filter((item) => !input.status || item.status === input.status),
@@ -100,6 +118,7 @@ export class AiReading {
       input,
       {
         tool: "tasks",
+        memberId,
         query: input.query,
         projectId: input.projectId,
         status: input.status,
@@ -107,33 +126,33 @@ export class AiReading {
       },
     );
   }
-  task(id: string) {
-    return this.work.getTask(id);
+  task(memberId: string, id: string) {
+    return this.work.getTask(id, memberId);
   }
-  events(input: PageInput & { id: string }) {
+  events(memberId: string, input: PageInput & { id: string }) {
     return this.page(
       this.work
-        .events(input.id)
+        .events(input.id, memberId)
         .sort((a, b) => a.at - b.at || a.id.localeCompare(b.id)),
       input,
-      { tool: "events", id: input.id },
+      { tool: "events", memberId, id: input.id },
     );
   }
-  diaries(input: ProgressInput, complete: boolean) {
+  diaries(memberId: string, input: ProgressInput, complete: boolean) {
     const today = beijingDate(this.runtime.now());
     const range = dateRange({
       from: input.from ?? today,
       to: input.to ?? today,
     });
-    if (input.projectId) this.work.getProject(input.projectId);
-    if (input.memberId) this.reading.member(input.memberId);
+    if (input.projectId) this.work.getProject(input.projectId, memberId);
+    if (input.memberId) this.reading.member(input.memberId, memberId);
     if (input.taskId) {
-      const task = this.work.getTask(input.taskId);
+      const task = this.work.getTask(input.taskId, memberId);
       if (input.projectId && task.projectId !== input.projectId)
         throw new DomainError("invalid", "任务不属于所选项目。");
     }
     const rows = this.sorted(
-      this.reading.published(range, {
+      this.reading.published(memberId, range, {
         projectId: input.projectId,
         taskId: input.taskId,
         memberId: input.memberId,
@@ -160,23 +179,28 @@ export class AiReading {
     return {
       ...this.page(items, input, {
         tool: complete ? "diaries" : "progress",
+        memberId,
         range,
         projectId: input.projectId,
         taskId: input.taskId,
-        memberId: input.memberId,
+        filterMemberId: input.memberId,
       }),
       range,
     };
   }
-  diary(input: PageInput & { id: string }) {
-    const row = this.reading.diary(input.id);
+  diary(memberId: string, input: PageInput & { id: string }) {
+    const row = this.reading.diary(input.id, memberId);
     return {
       id: row.id,
       author: row.author,
       diaryDate: row.diaryDate,
       submittedAt: row.submittedAt,
       title: row.published.title,
-      ...this.contentPage(row.published, input, { tool: "diary", id: row.id }),
+      ...this.contentPage(row.published, input, {
+        tool: "diary",
+        memberId,
+        id: row.id,
+      }),
     };
   }
   contentPage(content: Content, input: PageInput, binding: unknown) {

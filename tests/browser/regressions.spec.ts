@@ -1,18 +1,26 @@
 import { test, expect, type Page } from "@playwright/test";
 const origin = "http://127.0.0.1:4311";
 async function login(page: Page) {
-  const status = await (await page.request.get("/api/setup/status")).json();
   const credentials = {
     name: "林晓",
     email: "lin@example.test",
     password: "QuietRiver2026!",
     teamName: "日序工作室",
-    setupKey: "browser-test-setup-key",
   };
-  await page.request.post(status.needsSetup ? "/api/setup" : "/api/login", {
+  const login = await page.request.post("/api/login", {
     headers: { Origin: origin },
     data: credentials,
   });
+  // An existing team does not imply that this fixture account exists.
+  if (login.status() === 401) {
+    const created = await page.request.post("/api/setup", {
+      headers: { Origin: origin },
+      data: credentials,
+    });
+    expect(created.status()).toBe(201);
+  } else {
+    expect(login.status()).toBe(200);
+  }
   await page.goto("/diaries");
 }
 
@@ -62,7 +70,7 @@ test("任务定义编辑不会串到另一任务", async ({ page }) => {
   await page.getByRole("button", { name: "项目与任务", exact: true }).click();
   await page.getByRole("button", { name: /任务切换验证/ }).click();
   await page.getByRole("button", { name: /任务甲 待开始/ }).click();
-  await page.getByRole("button", { name: "编辑任务定义" }).click();
+  await page.getByRole("button", { name: "编辑任务名称和说明" }).click();
   await page.getByLabel("任务名称", { exact: true }).fill("甲的未保存修改");
   await page.getByRole("button", { name: /任务乙 待开始/ }).click();
   await expect(page.getByLabel("任务名称", { exact: true })).toHaveCount(0);

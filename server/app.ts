@@ -39,7 +39,7 @@ export async function createApp(options: AppOptions) {
     await app.init();
     const application = app;
     return {
-      needsSetup: () => !resources.members.team(),
+      needsSetup: () => !resources.members.hasTeams(),
       listen: (port: number, host = "127.0.0.1"): Promise<Server> =>
         application.listen(port, host),
       close: () =>

@@ -16,11 +16,11 @@ type Connection = {
   name: string | null;
 };
 const labels: Record<string, string> = {
-  "progress:read": "查询进展",
-  "drafts:write": "本人草稿",
-  "diaries:submit": "提交日报",
-  "tasks:write": "任务变更",
-  "shares:manage": "公开分享",
+  "progress:read": "查询团队工作进展",
+  "drafts:write": "读写本人日报草稿",
+  "diaries:submit": "提交本人日报",
+  "tasks:write": "创建任务和更新任务状态",
+  "shares:manage": "创建和关闭本人公开链接",
 };
 export function AiConnections() {
   const [connections, setConnections] = useState<Connection[]>([]),

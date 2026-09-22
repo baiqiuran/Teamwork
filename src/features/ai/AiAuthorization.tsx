@@ -4,10 +4,10 @@ import { Message } from "../../shared/components/Message";
 import { describeError } from "../../shared/errors";
 const labels: Record<string, string> = {
   "progress:read": "查询团队工作进展",
-  "drafts:write": "读写我的日报草稿",
-  "diaries:submit": "自动提交我的日报",
-  "tasks:write": "创建任务和更新状态",
-  "shares:manage": "创建和关闭我的公开链接",
+  "drafts:write": "读写本人日报草稿",
+  "diaries:submit": "提交本人日报",
+  "tasks:write": "创建任务和更新任务状态",
+  "shares:manage": "创建和关闭本人公开链接",
 };
 export function AiAuthorization() {
   const [details, setDetails] = useState<{

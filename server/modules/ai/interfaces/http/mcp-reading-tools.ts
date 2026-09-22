@@ -17,8 +17,12 @@ export function registerReadingTools(
   token: string,
   resource: string,
 ) {
-  const execute = (work: () => object) =>
-    toolResult(() => auth.authorized(token, resource, ["progress:read"], work));
+  const execute = (work: (memberId: string) => object) =>
+    toolResult(() =>
+      auth.authorized(token, resource, ["progress:read"], ({ member }) =>
+        work(member.id),
+      ),
+    );
   if (
     !auth.authenticate(token, resource).grant.scopes.includes("progress:read")
   )
@@ -31,7 +35,7 @@ export function registerReadingTools(
       inputSchema: searchInput,
       annotations,
     },
-    (input) => execute(() => reading.members(input)),
+    (input) => execute((memberId) => reading.members(memberId, input)),
   );
   server.registerTool(
     "list_projects",
@@ -41,7 +45,7 @@ export function registerReadingTools(
       inputSchema: searchInput,
       annotations,
     },
-    (input) => execute(() => reading.projects(input)),
+    (input) => execute((memberId) => reading.projects(memberId, input)),
   );
   server.registerTool(
     "get_project",
@@ -50,7 +54,7 @@ export function registerReadingTools(
       inputSchema: idInput,
       annotations,
     },
-    (input) => execute(() => reading.project(input.id)),
+    (input) => execute((memberId) => reading.project(memberId, input.id)),
   );
   server.registerTool(
     "list_tasks",
@@ -59,7 +63,7 @@ export function registerReadingTools(
       inputSchema: taskListInput,
       annotations,
     },
-    (input) => execute(() => reading.tasks(input)),
+    (input) => execute((memberId) => reading.tasks(memberId, input)),
   );
   server.registerTool(
     "get_task",
@@ -68,7 +72,7 @@ export function registerReadingTools(
       inputSchema: idInput,
       annotations,
     },
-    (input) => execute(() => reading.task(input.id)),
+    (input) => execute((memberId) => reading.task(memberId, input.id)),
   );
   server.registerTool(
     "list_task_events",
@@ -77,7 +81,7 @@ export function registerReadingTools(
       inputSchema: detailInput,
       annotations,
     },
-    (input) => execute(() => reading.events(input)),
+    (input) => execute((memberId) => reading.events(memberId, input)),
   );
   server.registerTool(
     "list_diaries",
@@ -87,7 +91,7 @@ export function registerReadingTools(
       inputSchema: progressInput,
       annotations,
     },
-    (input) => execute(() => reading.diaries(input, true)),
+    (input) => execute((memberId) => reading.diaries(memberId, input, true)),
   );
   server.registerTool(
     "query_progress",
@@ -100,7 +104,7 @@ export function registerReadingTools(
       ),
       annotations,
     },
-    (input) => execute(() => reading.diaries(input, false)),
+    (input) => execute((memberId) => reading.diaries(memberId, input, false)),
   );
   server.registerTool(
     "get_diary",
@@ -110,6 +114,6 @@ export function registerReadingTools(
       inputSchema: detailInput,
       annotations,
     },
-    (input) => execute(() => reading.diary(input)),
+    (input) => execute((memberId) => reading.diary(memberId, input)),
   );
 }

@@ -48,9 +48,11 @@ export function Projects({ memberId }: { memberId: string }) {
     <>
       <div className="journal-heading">
         <div>
-          <p className="eyebrow">项目与任务</p>
-          <h1>按项目看进展</h1>
-          <p className="subtitle">项目汇集关联工作，完整日报仍保留在日报页。</p>
+          <p className="eyebrow">当前团队</p>
+          <h1>项目与任务</h1>
+          <p className="subtitle">
+            查看项目任务和已提交的进展，完整日报保留在日报页。
+          </p>
         </div>
         <button
           className="primary"
@@ -131,7 +133,9 @@ export function Projects({ memberId }: { memberId: string }) {
         ))}
       </div>
       {!projects.length && (
-        <div className="empty">创建第一个项目，即可在工作条目中 @ 关联。</div>
+        <div className="empty">
+          暂无项目。新建项目后，可在日报工作条目中通过 @ 关联。
+        </div>
       )}
       {selected && (
         <>
@@ -173,8 +177,8 @@ export function Projects({ memberId }: { memberId: string }) {
                     if (
                       !window.confirm(
                         selected.archived
-                          ? "恢复项目？旧公开链接不会自动重开。"
-                          : "归档项目并关闭其项目、任务专属链接？全团队日报中的历史条目仍保留。",
+                          ? "恢复项目？之前关闭的公开链接不会自动恢复。"
+                          : "归档项目并关闭此项目及其任务的专属公开链接？团队日报中的历史条目仍保留。",
                       )
                     )
                       return;

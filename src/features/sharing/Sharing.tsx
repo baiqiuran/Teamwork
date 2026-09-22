@@ -91,9 +91,9 @@ export function Sharing() {
     <>
       <div className="page-intro">
         <p className="eyebrow">公开分享</p>
-        <h1>把需要的进展分享出去</h1>
+        <h1>公开链接</h1>
         <p className="subtitle">
-          持链接者可免登录查看所选范围。提交后的合法更新会自动同步。
+          为选定范围生成只读链接，持链接者无需登录即可查看；关闭后原链接立即失效。
         </p>
       </div>
       <form
@@ -244,7 +244,7 @@ export function Sharing() {
             target="_blank"
             rel="noreferrer"
           >
-            打开访客页
+            打开公开页
           </a>
           <button
             className="secondary"
@@ -429,7 +429,7 @@ export function PublicShare() {
           )}
         </>
       )}
-      <footer>日序 · 让每一天的进展清楚可见</footer>
+      <footer>日序 · 公开只读页，内容由团队生成者按所选范围开放</footer>
     </main>
   );
 }

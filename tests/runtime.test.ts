@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { request as httpRequest } from "node:http";
 
-test("编译后的服务由 Node 启动，成员可初始化、退出并重新登录", async (t) => {
+test("编译后的服务由 Node 启动，成员可创建团队、退出并重新登录", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "daily-runtime-"));
   const reservation = createServer().listen(0, "127.0.0.1");
   await once(reservation, "listening");
@@ -24,7 +24,6 @@ test("编译后的服务由 Node 启动，成员可初始化、退出并重新�
       ...environment,
       PORT: String(address.port),
       DAILY_DATABASE_PATH: join(directory, "runtime.sqlite"),
-      DAILY_SETUP_KEY: "runtime-test-key",
     },
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -56,12 +55,17 @@ test("编译后的服务由 Node 启动，成员可初始化、退出并重新�
     });
     child.stdout.on("data", (chunk) => {
       output += chunk;
-      if (output.includes("日序已启动")) {
+      const lines = output.split(/\r?\n/);
+      if (
+        lines.includes(`日序已启动：${origin}`) &&
+        lines.includes(`创建团队：${origin}/setup`)
+      ) {
         clearTimeout(timer);
         ready();
       }
     });
   });
+  assert.doesNotMatch(output, /setup#key=|引导密钥|仅本机使用/);
   let cookie = "";
   async function request(path: string, body?: object) {
     const response = await fetch(`${origin}/api${path}`, {
@@ -90,7 +94,6 @@ test("编译后的服务由 Node 启动，成员可初始化、退出并重新�
     ...credentials,
     name: "编译用户",
     teamName: "编译团队",
-    setupKey: "runtime-test-key",
   });
   assert.equal(setup.status, 201);
   assert.match(setup.headers.get("set-cookie") ?? "", /HttpOnly/);

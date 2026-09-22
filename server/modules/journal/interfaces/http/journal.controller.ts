@@ -74,23 +74,29 @@ export class JournalController {
     return this.journal.submit(id, member.id, input);
   }
   @Get("diary-events")
-  events() {
-    return this.journal.events();
+  events(@CurrentMember() member: Member) {
+    return this.journal.events(member.id);
   }
   @Get("team-diaries")
-  team(@Query() query: Record<string, unknown>) {
-    return this.reading.published(dateRange(query), {
+  team(
+    @CurrentMember() member: Member,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.reading.published(member.id, dateRange(query), {
       memberId: query.memberId ? z.uuid().parse(query.memberId) : undefined,
       projectId: query.projectId ? z.uuid().parse(query.projectId) : undefined,
       complete: true,
     });
   }
   @Get("team-diaries/:id")
-  published(@Param("id", new ZodPipe(z.uuid())) id: string) {
-    return this.reading.diary(id);
+  published(
+    @Param("id", new ZodPipe(z.uuid())) id: string,
+    @CurrentMember() member: Member,
+  ) {
+    return this.reading.diary(id, member.id);
   }
   @Get("members")
-  members() {
-    return this.reading.members();
+  members(@CurrentMember() member: Member) {
+    return this.reading.members(member.id);
   }
 }

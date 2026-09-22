@@ -2,11 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "node:test";
+import { createServer } from "node:net";
 import { createApp } from "./application.ts";
 
-export async function fixture(
-  t: TestContext,
+export async function applicationFixture(
+  t: Pick<TestContext, "after">,
   options: Partial<Parameters<typeof createApp>[0]> = {},
+  prepare?: (databasePath: string, origin: string) => Promise<void> | void,
 ) {
   const directory = await mkdtemp(join(tmpdir(), "daily-journal-"));
   let time = Date.parse("2026-09-16T15:59:00Z");
@@ -18,7 +20,6 @@ export async function fixture(
     service = await createApp({
       ...options,
       databasePath,
-      setupKey: "test-key",
       now: () => time,
     });
     server = await service.listen(
@@ -30,15 +31,34 @@ export async function fixture(
     origin = `http://127.0.0.1:${address.port}`;
   }
   async function stop() {
-    await service.close();
+    await service?.close();
+  }
+  t.after(async () => {
+    try {
+      await stop();
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+  if (prepare) {
+    // Historical OAuth credentials are resource-bound before the first startup.
+    const reservation = createServer();
+    try {
+      await new Promise<void>((ready, reject) => {
+        reservation.once("error", reject);
+        reservation.listen(0, "127.0.0.1", ready);
+      });
+      const address = reservation.address();
+      if (!address || typeof address === "string")
+        throw new Error("No address");
+      origin = `http://127.0.0.1:${address.port}`;
+      await prepare(databasePath, origin);
+    } finally {
+      await new Promise<void>((done) => reservation.close(() => done()));
+    }
   }
   await start();
-  t.after(async () => {
-    await stop();
-    await rm(directory, { recursive: true, force: true });
-  });
-  function client() {
-    let cookie = "";
+  function client(cookie = "") {
     return async (
       path: string,
       body?: unknown,
@@ -65,13 +85,36 @@ export async function fixture(
       };
     };
   }
+  return {
+    databasePath,
+    get origin() {
+      return origin;
+    },
+    client,
+    stop,
+    start,
+    setTime: (value: string) => {
+      time = Date.parse(value);
+    },
+    restart: async () => {
+      await stop();
+      await start();
+    },
+  };
+}
+
+export async function fixture(
+  t: TestContext,
+  options: Partial<Parameters<typeof createApp>[0]> = {},
+) {
+  const f = await applicationFixture(t, options);
+  const { client } = f;
   const author = client();
   const credentials = {
     name: "林晓",
     email: "lin@example.test",
     password: "QuietRiver2026!",
     teamName: "团队",
-    setupKey: "test-key",
   };
   const identity = (await author("/setup", credentials)).data;
   const guest = client();
@@ -86,23 +129,15 @@ export async function fixture(
     })
   ).data;
   return {
-    databasePath,
+    ...f,
     get origin() {
-      return origin;
+      return f.origin;
     },
     author,
     colleague,
     guest,
     identity,
     other,
-    client,
-    setTime: (value: string) => {
-      time = Date.parse(value);
-    },
-    restart: async () => {
-      await stop();
-      await start();
-    },
     credentials,
   };
 }

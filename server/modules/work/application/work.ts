@@ -23,46 +23,48 @@ export class Work {
     private readonly reading: Reading,
     private readonly runtime: Runtime,
   ) {}
-  private project(id: string) {
-    const p = this.repo.project(id);
+  private project(id: string, memberId: string) {
+    const p = this.repo.project(id, memberId);
     if (!p) throw new DomainError("not-found", "未找到项目。");
     return p;
   }
-  private task(id: string) {
-    const t = this.repo.task(id);
+  private task(id: string, memberId: string) {
+    const t = this.repo.task(id, memberId);
     if (!t) throw new DomainError("not-found", "未找到任务。");
     return t;
   }
-  private view(p: ProjectState) {
+  private view(p: ProjectState, memberId: string) {
     return {
       id: p.id,
       name: p.name,
       description: p.description,
-      creator: this.reading.member(p.createdBy),
+      creator: this.reading.member(p.createdBy, memberId),
       createdAt: p.createdAt,
       archived: p.archived,
     };
   }
-  private taskView(t: TaskState) {
+  private taskView(t: TaskState, memberId: string) {
     return {
-      ...this.view(t),
+      ...this.view(t, memberId),
       projectId: t.projectId,
       status: t.status,
       version: t.version,
     };
   }
-  projects() {
-    return this.repo.projects().map((p) => this.view(p));
+  projects(memberId: string) {
+    return this.repo.projects(memberId).map((p) => this.view(p, memberId));
   }
-  getProject(id: string) {
-    return this.view(this.project(id));
+  getProject(id: string, memberId: string) {
+    return this.view(this.project(id, memberId), memberId);
   }
-  getTask(id: string) {
-    return this.taskView(this.task(id));
+  getTask(id: string, memberId: string) {
+    return this.taskView(this.task(id, memberId), memberId);
   }
-  tasks(projectId: string) {
-    this.project(projectId);
-    return this.repo.tasks(projectId).map((t) => this.taskView(t));
+  tasks(projectId: string, memberId: string) {
+    this.project(projectId, memberId);
+    return this.repo
+      .tasks(memberId, projectId)
+      .map((t) => this.taskView(t, memberId));
   }
   createProject(memberId: string, input: Definition) {
     const p: ProjectState = {
@@ -73,24 +75,29 @@ export class Work {
       archived: false,
     };
     this.repo.saveProject(p);
-    return this.view(p);
+    return this.view(p, memberId);
   }
   createTask(projectId: string, memberId: string, input: Definition) {
     return this.runtime.transaction(() => {
-      const t = createTask(this.project(projectId), input, {
+      const t = createTask(this.project(projectId, memberId), input, {
         id: this.runtime.id(),
         createdBy: memberId,
         createdAt: this.runtime.now(),
       });
       this.repo.saveTask(t);
-      return this.taskView(t);
+      return this.taskView(t, memberId);
     });
   }
   reviseProject(id: string, memberId: string, input: Definition) {
     return this.runtime.transaction(() => {
-      const p = reviseDefinition(this.project(id), memberId, input, "project");
+      const p = reviseDefinition(
+        this.project(id, memberId),
+        memberId,
+        input,
+        "project",
+      );
       this.repo.saveProject(p);
-      return this.view(p);
+      return this.view(p, memberId);
     });
   }
   updateStatus(
@@ -101,10 +108,10 @@ export class Work {
     channel: "web" | "mcp",
   ) {
     return this.runtime.transaction(() => {
-      const current = this.task(id),
+      const current = this.task(id, memberId),
         task = changeTaskStatus(
           current,
-          this.project(current.projectId),
+          this.project(current.projectId, memberId),
           status,
           expectedVersion,
         );
@@ -124,7 +131,7 @@ export class Work {
         });
       }
       return {
-        task: this.taskView(task),
+        task: this.taskView(task, memberId),
         changed,
         beforeStatus: current.status,
         afterStatus: task.status,
@@ -133,43 +140,58 @@ export class Work {
   }
   reviseTask(id: string, memberId: string, input: Definition) {
     return this.runtime.transaction(() => {
-      const t = reviseDefinition(this.task(id), memberId, input, "task");
+      const t = reviseDefinition(
+        this.task(id, memberId),
+        memberId,
+        input,
+        "task",
+      );
       this.repo.saveTask(t);
-      return this.taskView(t);
+      return this.taskView(t, memberId);
     });
   }
   archiveProject(id: string, memberId: string, archived: boolean) {
     return this.runtime.transaction(() => {
-      const p = archiveWork(this.project(id), memberId, archived, "project");
+      const p = archiveWork(
+        this.project(id, memberId),
+        memberId,
+        archived,
+        "project",
+      );
       this.repo.saveProject(p);
       if (archived) this.shares.closeForProject(id, this.runtime.now());
-      return this.view(p);
+      return this.view(p, memberId);
     });
   }
   archiveTask(id: string, memberId: string, archived: boolean) {
     return this.runtime.transaction(() => {
-      const t = archiveWork(this.task(id), memberId, archived, "task");
+      const t = archiveWork(
+        this.task(id, memberId),
+        memberId,
+        archived,
+        "task",
+      );
       this.repo.saveTask(t);
       if (archived) this.shares.closeForTask(id, this.runtime.now());
-      return this.taskView(t);
+      return this.taskView(t, memberId);
     });
   }
-  projectProgress(id: string, range: DateRange) {
-    this.project(id);
-    return this.reading.published(range, { projectId: id });
+  projectProgress(id: string, memberId: string, range: DateRange) {
+    this.project(id, memberId);
+    return this.reading.published(memberId, range, { projectId: id });
   }
-  taskProgress(id: string, range: DateRange) {
-    this.task(id);
-    return this.reading.published(range, { taskId: id });
+  taskProgress(id: string, memberId: string, range: DateRange) {
+    this.task(id, memberId);
+    return this.reading.published(memberId, range, { taskId: id });
   }
-  events(id: string) {
-    this.task(id);
-    return this.repo.events(id).map((e) => ({
+  events(id: string, memberId: string) {
+    this.task(id, memberId);
+    return this.repo.events(id, memberId).map((e) => ({
       id: e.id,
       diaryId: e.diaryId,
       kind: e.kind,
       channel: e.channel,
-      member: this.reading.member(e.memberId),
+      member: this.reading.member(e.memberId, memberId),
       before: e.before,
       after: e.after,
       at: e.at,

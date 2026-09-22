@@ -19,7 +19,7 @@ export function applicationModule(resources: Resources): DynamicModule {
   const work = workModule(infrastructure, reading);
   const journal = journalModule(infrastructure, reading);
   const sharing = sharingModule(infrastructure, reading);
-  const attachments = attachmentsModule(infrastructure, sharing);
+  const attachments = attachmentsModule(infrastructure, sharing, reading);
   const ai = aiModule(
     resources,
     infrastructure,

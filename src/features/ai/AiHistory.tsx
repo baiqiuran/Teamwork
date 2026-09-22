@@ -23,7 +23,11 @@ const tools: Record<string, string> = {
   create_share: "创建公开链接",
   close_share: "关闭公开链接",
 };
-const outcomes = { success: "成功", failure: "失败", replay: "重放回执" };
+const outcomes = {
+  success: "成功",
+  failure: "失败",
+  replay: "已处理，返回原结果",
+};
 export function AiHistory() {
   const requestVersion = useRef(0);
   const [page, setPage] = useState<Page>({ items: [], nextCursor: null }),
@@ -61,7 +65,7 @@ export function AiHistory() {
     <section aria-label="AI 操作记录">
       <h2>我的 AI 操作记录</h2>
       <p>
-        记录当时的执行结果；对象状态显示当前情况。重放回执不会再次修改业务数据。
+        记录当时的执行结果；对象状态显示当前情况。使用同一操作标识重试时只会返回原结果，不会再次修改业务数据。
       </p>
       <label>
         执行结果{" "}
@@ -69,7 +73,7 @@ export function AiHistory() {
           <option value="">全部结果</option>
           <option value="success">成功</option>
           <option value="failure">失败</option>
-          <option value="replay">重放回执</option>
+          <option value="replay">已处理，返回原结果</option>
         </select>
       </label>
       <button className="secondary" disabled={busy} onClick={() => void load()}>
@@ -87,7 +91,7 @@ export function AiHistory() {
             {tools[item.tool] ?? item.tool} · {outcomes[item.outcome]}
           </strong>
           <p>
-            {new Date(item.at).toLocaleString("zh-CN")} · Codex · 连接{" "}
+            {new Date(item.at).toLocaleString("zh-CN")} · 连接{" "}
             {item.grantId.slice(0, 8)}
           </p>
           <p>

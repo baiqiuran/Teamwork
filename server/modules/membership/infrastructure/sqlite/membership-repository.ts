@@ -1,57 +1,69 @@
 import type { DatabaseSync } from "node:sqlite";
+import { DomainError } from "../../../../shared/domain/errors.ts";
 import type { MembershipRepository } from "../../application/ports.ts";
+import { teamNameKey } from "../../../../shared/domain/team-name.ts";
 import type {
   Account,
   InvitationState,
   Member,
+  MemberSummary,
   Team,
 } from "../../domain/membership.ts";
 
 export function membershipRepository(db: DatabaseSync): MembershipRepository {
   const invitationSelect = `SELECT id, token_hash AS tokenHash, created_by AS createdBy, created_at AS createdAt, expires_at AS expiresAt, revoked_at AS revokedAt, used_by AS usedBy FROM invitations`;
   return {
-    team: () =>
-      db.prepare("SELECT id, name FROM team WHERE id = 1").get() as unknown as
-        Team | undefined,
+    hasTeams: () => Boolean(db.prepare("SELECT 1 FROM team LIMIT 1").get()),
+    team: (id) =>
+      db
+        .prepare("SELECT id, name FROM team WHERE id = ?")
+        .get(id) as unknown as Team | undefined,
     createTeam: (name) => {
-      db.prepare("INSERT INTO team VALUES (1, ?)").run(name);
+      const result = db
+        .prepare(
+          "INSERT INTO team (name, name_key) VALUES (?, ?) ON CONFLICT(name_key) DO NOTHING",
+        )
+        .run(name, teamNameKey(name));
+      if (!result.changes)
+        throw new DomainError("conflict", "团队名称已被使用，请更换名称。");
+      return { id: Number(result.lastInsertRowid), name };
     },
     member: (id) =>
       db
-        .prepare("SELECT id, name, email FROM members WHERE id = ?")
+        .prepare(
+          "SELECT id, name, email, team_id AS teamId FROM members WHERE id = ?",
+        )
         .get(id) as unknown as Member | undefined,
-    members: () =>
+    members: (memberId) =>
       db
-        .prepare("SELECT id, name FROM members ORDER BY name, id")
-        .all() as unknown as Pick<Member, "id" | "name">[],
+        .prepare(
+          `SELECT id, name, created_at AS joinedAt FROM members
+           WHERE team_id = (SELECT team_id FROM members WHERE id = ?)
+           ORDER BY name, id`,
+        )
+        .all(memberId) as unknown as MemberSummary[],
     account: (email) =>
       db
         .prepare(
-          "SELECT id, name, email, password_hash AS passwordHash, created_at AS createdAt FROM members WHERE email = ?",
+          "SELECT id, name, email, team_id AS teamId, password_hash AS passwordHash, created_at AS createdAt FROM members WHERE email = ?",
         )
         .get(email) as unknown as Account | undefined,
     addAccount: (a) => {
-      db.prepare("INSERT INTO members VALUES (?, ?, ?, ?, ?)").run(
-        a.id,
-        a.name,
-        a.email,
-        a.passwordHash,
-        a.createdAt,
-      );
+      db.prepare(
+        "INSERT INTO members (id, name, email, password_hash, created_at, team_id) VALUES (?, ?, ?, ?, ?, ?)",
+      ).run(a.id, a.name, a.email, a.passwordHash, a.createdAt, a.teamId);
     },
     session: (hash, now) =>
       db
         .prepare(
-          "SELECT m.id, m.name, m.email FROM members m JOIN sessions s ON s.member_id = m.id WHERE s.token_hash = ? AND s.expires_at > ?",
+          "SELECT m.id, m.name, m.email, m.team_id AS teamId FROM members m JOIN sessions s ON s.member_id = m.id WHERE s.token_hash = ? AND s.expires_at > ?",
         )
         .get(hash, now) as unknown as Member | undefined,
     addSession: (hash, id, expiresAt, now) => {
       db.prepare("DELETE FROM sessions WHERE expires_at <= ?").run(now);
-      db.prepare("INSERT INTO sessions VALUES (?, ?, ?)").run(
-        hash,
-        id,
-        expiresAt,
-      );
+      db.prepare(
+        "INSERT INTO sessions (token_hash, member_id, expires_at) VALUES (?, ?, ?)",
+      ).run(hash, id, expiresAt);
     },
     deleteSession: (hash) => {
       db.prepare("DELETE FROM sessions WHERE token_hash = ?").run(hash);

@@ -2,9 +2,13 @@ import { useEffect, useState } from "react";
 import { api } from "../../shared/api";
 import { DiaryRecords } from "../../shared/components/DiaryRecords";
 import { beijingToday } from "../../shared/time";
-import type { Project, PublishedDiary } from "../../shared/contracts";
+import type {
+  Project,
+  PublishedDiary,
+  TeamMember,
+} from "../../shared/contracts";
 export function TeamDiaries() {
-  const [members, setMembers] = useState<{ id: string; name: string }[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [memberId, setMemberId] = useState("");
   const [projectId, setProjectId] = useState("");
@@ -30,7 +34,7 @@ export function TeamDiaries() {
   }
   useEffect(() => {
     void load();
-    api<{ id: string; name: string }[]>("/members")
+    api<TeamMember[]>("/members")
       .then(setMembers)
       .catch((e) => setError(e.message));
     api<Project[]>("/projects")
@@ -42,7 +46,7 @@ export function TeamDiaries() {
       <header className="team-diary-heading">
         <div>
           <h1>团队日报</h1>
-          <p className="subtitle">每一份工作记录，都在这里。</p>
+          <p className="subtitle">按成员、项目和日期查看本团队已提交的日报。</p>
         </div>
         <span className="team-reading-note">已提交内容 · 北京时间</span>
       </header>

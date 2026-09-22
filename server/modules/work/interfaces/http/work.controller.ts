@@ -23,8 +23,8 @@ export class WorkController {
   constructor(@Inject(Work) private readonly work: Work) {}
 
   @Get("projects")
-  projects() {
-    return this.work.projects();
+  projects(@CurrentMember() member: Member) {
+    return this.work.projects(member.id);
   }
 
   @Post("projects")
@@ -37,8 +37,11 @@ export class WorkController {
   }
 
   @Get("projects/:id")
-  project(@Param("id", new ZodPipe(z.uuid())) id: string) {
-    return this.work.getProject(id);
+  project(
+    @Param("id", new ZodPipe(z.uuid())) id: string,
+    @CurrentMember() member: Member,
+  ) {
+    return this.work.getProject(id, member.id);
   }
 
   @Post("projects/:id/save")
@@ -64,14 +67,18 @@ export class WorkController {
   @Get("projects/:id/progress")
   projectProgress(
     @Param("id", new ZodPipe(z.uuid())) id: string,
+    @CurrentMember() member: Member,
     @Query() query: Record<string, unknown>,
   ) {
-    return this.work.projectProgress(id, dateRange(query));
+    return this.work.projectProgress(id, member.id, dateRange(query));
   }
 
   @Get("projects/:id/tasks")
-  tasks(@Param("id", new ZodPipe(z.uuid())) id: string) {
-    return this.work.tasks(id);
+  tasks(
+    @Param("id", new ZodPipe(z.uuid())) id: string,
+    @CurrentMember() member: Member,
+  ) {
+    return this.work.tasks(id, member.id);
   }
 
   @Post("projects/:id/tasks")
@@ -85,8 +92,11 @@ export class WorkController {
   }
 
   @Get("tasks/:id")
-  task(@Param("id", new ZodPipe(z.uuid())) id: string) {
-    return this.work.getTask(id);
+  task(
+    @Param("id", new ZodPipe(z.uuid())) id: string,
+    @CurrentMember() member: Member,
+  ) {
+    return this.work.getTask(id, member.id);
   }
 
   @Post("tasks/:id/save")
@@ -112,13 +122,17 @@ export class WorkController {
   @Get("tasks/:id/progress")
   taskProgress(
     @Param("id", new ZodPipe(z.uuid())) id: string,
+    @CurrentMember() member: Member,
     @Query() query: Record<string, unknown>,
   ) {
-    return this.work.taskProgress(id, dateRange(query));
+    return this.work.taskProgress(id, member.id, dateRange(query));
   }
 
   @Get("tasks/:id/events")
-  events(@Param("id", new ZodPipe(z.uuid())) id: string) {
-    return this.work.events(id);
+  events(
+    @Param("id", new ZodPipe(z.uuid())) id: string,
+    @CurrentMember() member: Member,
+  ) {
+    return this.work.events(id, member.id);
   }
 }

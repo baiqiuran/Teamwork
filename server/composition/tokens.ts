@@ -6,6 +6,5 @@ export const MEMBERS = Symbol("MembershipRepository"),
   RUNTIME = Symbol("Runtime"),
   SECURITY = Symbol("Security"),
   FILES = Symbol("FileStorage"),
-  SETUP_KEY = Symbol("SetupKey"),
   AI = Symbol("AiAuthorizationRepository"),
   AI_OPERATIONS = Symbol("AiOperationRepository");

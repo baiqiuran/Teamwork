@@ -171,7 +171,7 @@ export function Tasks({
                 });
               }}
             >
-              编辑任务定义
+              编辑任务名称和说明
             </button>
           )}
           <div>
@@ -184,8 +184,8 @@ export function Tasks({
                     if (
                       !window.confirm(
                         selected.archived
-                          ? "恢复任务？旧公开链接不会自动重开。"
-                          : "归档任务并关闭此任务的专属链接？历史进展继续保留。",
+                          ? "恢复任务？之前关闭的公开链接不会自动恢复。"
+                          : "归档任务并关闭此任务的专属公开链接？历史进展仍保留。",
                       )
                     )
                       return;
@@ -213,13 +213,15 @@ export function Tasks({
               · {statusLabels[e.before]} → {statusLabels[e.after]}
               <small>
                 {" "}
-                · {e.kind === "direct" ? "独立变更" : "日报提交"} /{" "}
+                · {e.kind === "direct" ? "单独更新状态" : "日报提交"} /{" "}
                 {e.channel === "mcp" ? "Codex" : "网页"}
               </small>
             </p>
           ))}
-          <h3>成员进展</h3>
-          <p className="muted">在我的日报中关联此任务，即可补充进展。</p>
+          <h3>任务进展</h3>
+          <p className="muted">
+            在“我的日报”中关联此任务并提交，进展会显示在这里。
+          </p>
           <DiaryRecords records={records} />
         </section>
       )}

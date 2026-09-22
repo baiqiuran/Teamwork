@@ -45,7 +45,7 @@ export async function fixture() {
   await symlink(`${root}/releases/initial`, `${root}/current`);
   await writeFile(
     `${root}/config.env`,
-    `PORT=${appPort}\nDAILY_DATABASE_PATH=${root}/data/daily.sqlite\nDAILY_SETUP_KEY=backup-test-key\n`,
+    `PORT=${appPort}\nDAILY_DATABASE_PATH=${root}/data/daily.sqlite\n`,
     { mode: 0o600 },
   );
   await writeFile(
@@ -106,7 +106,6 @@ export async function fixture() {
     return raw ? response.text() : response.json();
   };
   await request("/api/setup", {
-    setupKey: "backup-test-key",
     teamName: "备份团队",
     name: "备份成员",
     email: "backup@example.test",

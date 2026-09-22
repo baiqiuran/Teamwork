@@ -46,12 +46,11 @@ test("MCP 同时按成员和连接限流，过大请求明确拒绝", async (t) 
   assert.equal(oversized.status, 413);
 });
 
-test("可信 HTTPS 反向代理保留网页同源和本机初始化限制，协议路由不进入 SPA", async (t) => {
+test("可信 HTTPS 反向代理允许远程创建且保留网页同源限制，协议路由不进入 SPA", async (t) => {
   const directory = await mkdtemp(join(tmpdir(), "daily-mcp-proxy-"));
   await writeFile(join(directory, "index.html"), "<html>SPA</html>");
   const app = await createApp({
     databasePath: join(directory, "test.sqlite"),
-    setupKey: "proxy-key",
     staticDirectory: directory,
     publicUrl: "https://team.example.test",
   });
@@ -120,20 +119,23 @@ test("可信 HTTPS 反向代理保留网页同源和本机初始化限制，协�
     email: "proxy@example.test",
     password: "ProxyFixture2026!",
     teamName: "团队",
-    setupKey: "proxy-key",
   };
-  assert.equal(
-    (
-      await request("/api/setup", credentials, {
-        "X-Forwarded-For": "203.0.113.4",
-      })
-    ).status,
-    403,
-  );
   const setup = await request("/api/setup", credentials, {
-    "X-Forwarded-For": "127.0.0.1",
+    "X-Forwarded-For": "203.0.113.4",
   });
   assert.equal(setup.status, 201);
+  const second = await request(
+    "/api/setup",
+    { ...credentials, teamName: "代理第二团队", email: "proxy2@example.test" },
+    {
+      "X-Forwarded-For": "203.0.113.5",
+    },
+  );
+  assert.equal(second.status, 201);
+  assert.notEqual(
+    JSON.parse(setup.body).team.id,
+    JSON.parse(second.body).team.id,
+  );
   assert.match(setup.headers["set-cookie"]?.[0] ?? "", /Secure/);
   assert.equal(
     (await request("/api/logout", {}, { Origin: "https://evil.test" })).status,

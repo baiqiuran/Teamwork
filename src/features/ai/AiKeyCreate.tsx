@@ -5,10 +5,10 @@ import { Message } from "../../shared/components/Message";
 
 const options = [
   ["progress:read", "查询团队工作进展"],
-  ["drafts:write", "创建和修改本人草稿"],
-  ["diaries:submit", "自动提交我的日报"],
+  ["drafts:write", "读写本人日报草稿"],
+  ["diaries:submit", "提交本人日报"],
   ["tasks:write", "创建任务和更新任务状态"],
-  ["shares:manage", "创建和关闭本人的公开链接"],
+  ["shares:manage", "创建和关闭本人公开链接"],
 ] as const;
 
 export function AiKeyCreate({

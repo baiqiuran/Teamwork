@@ -227,7 +227,10 @@ export class AiAuthorization {
     )
       throw new AuthorizationError("invalid_token", "请重新连接并授权。", 401);
     this.repo.saveGrant({ ...grant, lastUsedAt: this.runtime.now() });
-    return { grant, member: { id: member.id, name: member.name } };
+    return {
+      grant,
+      member: { id: member.id, name: member.name },
+    };
   }
   context(token: string, resource: string) {
     const { grant, member } = this.authenticate(token, resource),

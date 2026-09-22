@@ -22,7 +22,6 @@ test("公网 MCP 自动补登 Codex 按服务地址生成的本机回调", async
   });
   app = await createApp({
     databasePath: join(directory, "test.sqlite"),
-    setupKey: "test-key",
     publicUrl: "https://8.148.245.224",
     codexRedirectUris: ["http://127.0.0.1/callback"],
   });

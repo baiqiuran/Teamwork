@@ -2,14 +2,16 @@ import type {
   Account,
   InvitationState,
   Member,
+  MemberSummary,
   Team,
 } from "../domain/membership.ts";
 
 export interface MembershipRepository {
-  team(): Team | undefined;
-  createTeam(name: string): void;
+  hasTeams(): boolean;
+  team(id: number): Team | undefined;
+  createTeam(name: string): Team;
   member(id: string): Member | undefined;
-  members(): Pick<Member, "id" | "name">[];
+  members(memberId: string): MemberSummary[];
   account(email: string): Account | undefined;
   addAccount(account: Account): void;
   session(tokenHash: string, now: number): Member | undefined;

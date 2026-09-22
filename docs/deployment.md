@@ -17,7 +17,7 @@
 | 数据   | `/var/lib/daily-flow/daily-flow.sqlite` 与同级 `attachments/`                                |
 | 备份   | `/var/backups/daily-flow/`；每日北京时间 04:00，保留超过 7 个完整日的备份会清理              |
 
-服务器原有宝塔面板及 Nginx 默认站点未被替换。以下命令以具备 `sudo` 权限的 SSH 用户执行；如果使用 `root` 登录，可省略 `sudo`。**不要把登录密码、初始化链接、授权令牌或备份提交到 Git。**
+服务器原有宝塔面板及 Nginx 默认站点未被替换。以下命令以具备 `sudo` 权限的 SSH 用户执行；如果使用 `root` 登录，可省略 `sudo`。**不要把登录密码、授权令牌或备份提交到 Git。**
 
 ## 1. 服务器与运行时
 
@@ -70,7 +70,7 @@ sudo npm prune --omit=dev
 sudo ln -s "/opt/daily-flow/releases/$DEPLOY_SHA" /opt/daily-flow/current
 ```
 
-首次创建团队前，先使用本机模式。配置文件 `/etc/daily-flow/daily-flow.env` 的内容为：
+应用的基础配置如下；公网访问还须完成第 4 节的 HTTPS 与 `DAILY_PUBLIC_URL` 配置，不需要先在本机创建团队。配置文件 `/etc/daily-flow/daily-flow.env` 的内容为：
 
 ```ini
 NODE_ENV=production
@@ -117,27 +117,19 @@ sudo systemctl status daily-flow --no-pager
 
 应用代码由 root 持有，`daily-flow` 用户只写数据目录。不要把数据库放在发布目录内；发布目录切换或删除时数据应保持不变。
 
-## 3. 首次创建团队
+## 3. 创建团队与登录
 
-**仅首次全新安装需要执行。** 未配置 `DAILY_PUBLIC_URL` 时，应用只接受本机地址。查看服务器日志中的一次性初始化链接：
+以下创建说明适用于持续开放创建的本地集成版本，不表示上文历史提交或现有生产已支持该行为，也不代表完整团队隔离已验收。`/setup` 在空站点、已有团队及重启后都保持开放，只填写团队名称、姓名、邮箱和密码；不需要引导密钥或 SSH 隧道。
 
-```bash
-sudo journalctl -u daily-flow -n 30 --no-pager
-```
+每次启动都会打印 `日序已启动：<origin>` 和 `创建团队：<origin>/setup`。公网访问先完成第 4 节的 HTTPS、可信 `DAILY_PUBLIC_URL` 和同机代理配置，再从该可信地址打开 `/setup`。未配置公网地址时，应用仍只接受本机地址；这属于 Host/Origin 的站点安全边界，不是创建权限。密码规则与频率限制保持不变。
 
-在自己的电脑建立 SSH 隧道：
-
-```bash
-ssh -L 14310:127.0.0.1:4310 root@8.148.245.224
-```
-
-将日志中 `http://127.0.0.1:4310/setup#key=...` 的端口改成 `14310`，在本机浏览器打开，创建团队和首位成员。初始化链接不要发给其他人，也不要通过公网代理开放 `/setup`。完成后可关闭 SSH 隧道。通过以下命令确认已有团队：
+已有账号从 `/login` 使用原邮箱密码登录；创建新团队不能代替恢复原数据，加入已有团队仍须邀请，不能凭团队名称加入，也不能用已有账号邮箱另建或加入其他团队。可查看站点状态：
 
 ```bash
 curl -fsS http://127.0.0.1:4310/api/setup/status
 ```
 
-预期返回 `{"needsSetup":false}`。若已有团队，**不要重新初始化**；应使用原数据库和已有成员登录。
+`needsSetup` 是布尔值：`true` 表示尚无团队，`false` 表示已有团队；它不是创建权限，两种状态下 `/setup` 都可创建新团队。
 
 ## 4. Nginx 与公网 IP 证书
 
@@ -207,9 +199,6 @@ server {
     ssl_protocols TLSv1.2 TLSv1.3;
     client_max_body_size 28m;
     client_body_timeout 60s;
-
-    location ~* ^/api/setup/?$ { return 404; }
-    location ~* ^/setup/?$ { return 404; }
 
     location / {
         proxy_pass http://127.0.0.1:4310;
@@ -367,7 +356,7 @@ curl -fsS https://8.148.245.224/api/setup/status
 curl -I https://8.148.245.224/mcp
 ```
 
-预期 HTTP 跳转 HTTPS，登录页 200，初始化状态为 `{"needsSetup":false}`。匿名 `/mcp` 返回 401 表示鉴权边界生效；实际 Codex 连接仍需各成员单独授权。最后用已创建的账号在浏览器登录、进入工作空间。本次公网 HTTPS、登录、匿名鉴权、证书续期演练及备份试读均已验收。
+预期 HTTP 跳转 HTTPS，登录页 200；已有团队时站点状态为 `{"needsSetup":false}`，这不是关闭创建入口的信号。匿名 `/mcp` 返回 401 表示鉴权边界生效；实际 Codex 连接仍需各成员单独授权。最后用已创建的账号在浏览器登录、进入工作空间。本次公网 HTTPS、登录、匿名鉴权、证书续期演练及备份试读均已验收。
 
 常用维护命令：
 

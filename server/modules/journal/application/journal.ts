@@ -39,6 +39,7 @@ export class Journal {
       input,
       this.runtime.now(),
     );
+    this.assertDraftScope(diary.state.draft, memberId);
     normalizeAttachments(
       this.attachments,
       diary.state.draft,
@@ -63,6 +64,7 @@ export class Journal {
       diary.assertWritable(at);
       diary.assertVersion(version);
       const content = contentSchema.parse(input);
+      this.assertDraftScope(content, memberId);
       normalizeAttachments(this.attachments, content, id, memberId);
       diary.revise(content, version, at);
       this.repo.save(diary.state);
@@ -81,12 +83,12 @@ export class Journal {
       this.repo.remove(id);
     });
   }
-  events() {
-    return this.repo.deletions().map((e) => ({
+  events(memberId: string) {
+    return this.repo.deletions(memberId).map((e) => ({
       diaryId: e.diaryId,
       action: e.action,
       at: e.at,
-      member: this.reading.member(e.memberId),
+      member: this.reading.member(e.memberId, memberId),
     }));
   }
   submit(
@@ -141,6 +143,14 @@ export class Journal {
       return result;
     });
   }
+  private assertDraftScope(content: Content, memberId: string) {
+    for (const entry of content.entries) {
+      if (entry.projectId && !this.work.project(entry.projectId, memberId))
+        throw new DomainError("not-found", "未找到项目。");
+      if (entry.taskId && !this.work.task(entry.taskId, memberId))
+        throw new DomainError("not-found", "未找到任务。");
+    }
+  }
   private associateEntries(content: Content, memberId: string, at: number) {
     const tasks = new Map<string, TaskState>();
     for (const entry of content.entries) {
@@ -149,7 +159,7 @@ export class Journal {
       delete entry.taskStatus;
       assertEntryAssociation(entry);
       if (!entry.projectId) continue;
-      const project = this.work.project(entry.projectId);
+      const project = this.work.project(entry.projectId, memberId);
       if (!project) throw new DomainError("not-found", "未找到项目。");
       associateProject(entry, project);
       if (entry.newTask) {
@@ -163,7 +173,7 @@ export class Journal {
         delete entry.newTask;
       }
       if (entry.taskId) {
-        const task = this.work.task(entry.taskId);
+        const task = this.work.task(entry.taskId, memberId);
         if (!task) throw new DomainError("not-found", "未找到任务。");
         associateTask(entry, task);
         tasks.set(task.id, task);

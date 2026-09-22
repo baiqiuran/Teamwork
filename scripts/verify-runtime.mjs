@@ -26,13 +26,9 @@ try {
     ...process.env,
     PORT: String(port),
     DAILY_DATABASE_PATH: resolve(directory, "test.sqlite"),
-    DAILY_SETUP_KEY: "production-fixture-key",
   };
   for (const key of Object.keys(environment))
-    if (
-      key.startsWith("DAILY_") &&
-      !["DAILY_DATABASE_PATH", "DAILY_SETUP_KEY"].includes(key)
-    )
+    if (key.startsWith("DAILY_") && key !== "DAILY_DATABASE_PATH")
       delete environment[key];
   environment.NODE_ENV = "production";
   delete environment.NODE_TEST_CONTEXT;
@@ -61,12 +57,17 @@ try {
     });
     child.stdout.on("data", (data) => {
       output += data;
-      if (output.includes("日序已启动")) {
+      const lines = output.split(/\r?\n/);
+      if (
+        lines.includes(`日序已启动：${origin}`) &&
+        lines.includes(`创建团队：${origin}/setup`)
+      ) {
         clearTimeout(timer);
         ready();
       }
     });
   });
+  assert.doesNotMatch(output, /setup#key=|引导密钥|仅本机使用/);
   let cookie = "";
   async function request(path, body, status = 200, anonymous = false) {
     const response = await fetch(origin + "/api" + path, {
@@ -97,7 +98,6 @@ try {
       ...credentials,
       name: "运行成员",
       teamName: "运行团队",
-      setupKey: environment.DAILY_SETUP_KEY,
     },
     201,
   );

@@ -72,14 +72,13 @@ export function Invitations({ onExpired }: { onExpired: () => void }) {
     <>
       <div className="page-intro">
         <p className="eyebrow">成员邀请</p>
-        <h1>邀请同事，一起开始。</h1>
-        <p className="subtitle">每位成员都可以邀请同事加入，协作从这里开始。</p>
+        <h1>成员邀请</h1>
+        <p className="subtitle">每位成员都可以邀请新成员加入本团队。</p>
       </div>
       <section className="invite-panel" aria-labelledby="new-invite-title">
         <div className="invite-main">
-          <span className="section-index">01 / 发出邀请</span>
-          <h2 id="new-invite-title">给同事一个加入入口</h2>
-          <p>生成专属邀请链接，复制后发送给同事。</p>
+          <h2 id="new-invite-title">生成邀请</h2>
+          <p>生成邀请链接，复制后发送给新成员。</p>
           <button
             className="primary"
             onClick={() => perform(create)}
@@ -93,11 +92,11 @@ export function Invitations({ onExpired }: { onExpired: () => void }) {
           <span className="note-symbol" aria-hidden="true">
             ↗
           </span>
-          <h3>一份邀请，一位新伙伴。</h3>
+          <h3>邀请规则</h3>
           <ul>
             <li>链接在 7 天内有效</li>
-            <li>成功加入后，链接自动失效</li>
-            <li>接受前，你可以随时撤销</li>
+            <li>仅可使用一次，成功加入后自动失效</li>
+            <li>仅生成者可以撤销尚未使用的邀请</li>
           </ul>
         </div>
       </section>
@@ -119,7 +118,7 @@ export function Invitations({ onExpired }: { onExpired: () => void }) {
               perform(async () => {
                 try {
                   await navigator.clipboard.writeText(fresh.url);
-                  setNotice("已复制，可以发送给同事了。");
+                  setNotice("邀请链接已复制。");
                 } catch {
                   setNotice("请选择链接文字并手动复制。");
                 }
@@ -157,7 +156,7 @@ export function Invitations({ onExpired }: { onExpired: () => void }) {
             <div className="empty-icon" aria-hidden="true">
               ＋
             </div>
-            <h3>第一位同事，等你邀请。</h3>
+            <h3>还没有发出的邀请</h3>
             <p>生成链接后，可以在这里查看状态或撤销邀请。</p>
           </div>
         ) : (

@@ -1,5 +1,6 @@
-export const beijingToday = () =>
-  new Date(Date.now() + 8 * 3600_000).toISOString().slice(0, 10);
+export const beijingDate = (time: number) =>
+  new Date(time + 8 * 3600_000).toISOString().slice(0, 10);
+export const beijingToday = () => beijingDate(Date.now());
 export const formatDate = (time: number) =>
   new Intl.DateTimeFormat("zh-CN", {
     month: "2-digit",

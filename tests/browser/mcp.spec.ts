@@ -11,7 +11,6 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
   const directory = await mkdtemp(join(tmpdir(), "daily-mcp-ui-")),
     app = await createApp({
       databasePath: join(directory, "test.sqlite"),
-      setupKey: "isolated-key",
       staticDirectory: join(process.cwd(), "dist"),
     });
   let client: Awaited<ReturnType<typeof mcpClient>> | undefined;
@@ -27,7 +26,6 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
         email: "ui@example.test",
         password: "BrowserFixture2026!",
         teamName: "隔离团队",
-        setupKey: "isolated-key",
       },
     });
     expect(setup.status()).toBe(201);
@@ -52,7 +50,7 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
       `${origin}/oauth/authorize?${new URLSearchParams(request)}`,
     );
     await expect(page.getByLabel("查询团队工作进展")).toBeChecked();
-    await expect(page.getByLabel("自动提交我的日报")).not.toBeChecked();
+    await expect(page.getByLabel("提交本人日报")).not.toBeChecked();
     await page.getByRole("button", { name: "取消授权" }).click();
     await expect(page).toHaveURL(/error=access_denied/);
     expect(
@@ -99,7 +97,7 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
       history.getByText("新建草稿 · 成功", { exact: true }),
     ).toBeVisible();
     await expect(
-      history.getByText("新建草稿 · 重放回执", { exact: true }),
+      history.getByText("新建草稿 · 已处理，返回原结果", { exact: true }),
     ).toBeVisible();
     await expect(
       history.getByText("新建草稿 · 失败", { exact: true }),

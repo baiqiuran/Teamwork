@@ -7,12 +7,31 @@ import { Message } from "../shared/components/Message";
 import { describeError } from "../shared/errors";
 import { AccessForm } from "../features/membership/AccessForm";
 import { Invitations } from "../features/membership/Invitations";
+import { Members } from "../features/membership/Members";
 import { AiAuthorization } from "../features/ai/AiAuthorization";
 import { AiConnections } from "../features/ai/AiConnections";
 import { Diaries } from "../features/diaries/Diaries";
 import { TeamDiaries } from "../features/diaries/TeamDiaries";
 import { Projects } from "../features/work/Projects";
 import { Sharing } from "../features/sharing/Sharing";
+type Tab =
+  | "diaries"
+  | "team"
+  | "projects"
+  | "sharing"
+  | "members"
+  | "invitations"
+  | "account"
+  | "ai";
+const tabByPath = {
+  "/members": "members",
+  "/invitations": "invitations",
+  "/team": "team",
+  "/projects": "projects",
+  "/sharing": "sharing",
+  "/account": "account",
+  "/ai": "ai",
+} as const;
 function Workspace({
   identity,
   onLogout,
@@ -20,26 +39,10 @@ function Workspace({
   identity: Identity;
   onLogout: () => void;
 }) {
-  const [tab, setTab] = useState<
-    | "diaries"
-    | "team"
-    | "projects"
-    | "sharing"
-    | "invitations"
-    | "account"
-    | "ai"
-  >(
+  const [tab, setTab] = useState<Tab>(
     () =>
-      (
-        ({
-          "/members": "invitations",
-          "/team": "team",
-          "/projects": "projects",
-          "/sharing": "sharing",
-          "/account": "account",
-          "/ai": "ai",
-        }) as const
-      )[window.location.pathname as "/members"] || "diaries",
+      tabByPath[window.location.pathname as keyof typeof tabByPath] ??
+      "diaries",
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -73,6 +76,7 @@ function Workspace({
               ["team", "团队日报", "team"],
               ["projects", "项目与任务", "tasks"],
               ["sharing", "公开分享", "share"],
+              ["members", "团队成员", "roster"],
               ["invitations", "成员邀请", "invite"],
               ["account", "我的账号", "account"],
               ["ai", "AI 连接", "ai"],
@@ -83,11 +87,7 @@ function Workspace({
               className={tab === key ? "selected" : ""}
               aria-current={tab === key ? "page" : undefined}
               onClick={() => {
-                window.history.replaceState(
-                  {},
-                  "",
-                  key === "invitations" ? "/members" : `/${key}`,
-                );
+                window.history.replaceState({}, "", `/${key}`);
                 setTab(key);
               }}
             >
@@ -118,6 +118,7 @@ function Workspace({
                   team: "团队日报",
                   projects: "项目与任务",
                   sharing: "公开分享",
+                  members: "团队成员",
                   invitations: "成员邀请",
                   account: "我的账号",
                   ai: "AI 连接",
@@ -141,14 +142,18 @@ function Workspace({
             <Projects memberId={identity.member.id} />
           ) : tab === "team" ? (
             <TeamDiaries />
-          ) : tab === "diaries" ? null : tab === "invitations" ? (
+          ) : tab === "diaries" ? null : tab === "members" ? (
+            <Members />
+          ) : tab === "invitations" ? (
             <Invitations onExpired={onLogout} />
           ) : (
             <>
               <div className="page-intro">
-                <p className="eyebrow">我的账号</p>
-                <h1>你的团队身份。</h1>
-                <p className="subtitle">你的工作记录和操作将归属于这个账号。</p>
+                <p className="eyebrow">账号信息</p>
+                <h1>我的账号</h1>
+                <p className="subtitle">
+                  查看姓名、邮箱和所属团队，或退出登录。
+                </p>
               </div>
               <section className="account-card">
                 <dl>
@@ -215,7 +220,7 @@ export function App() {
     return (
       <main className="loading-screen">
         <Brand />
-        <Message error={!!error}>{error || "正在打开你的工作空间…"}</Message>
+        <Message error={!!error}>{error || "正在加载…"}</Message>
         {error && (
           <button
             className="secondary"
@@ -232,12 +237,16 @@ export function App() {
     ) : (
       <Workspace identity={identity} onLogout={logout} />
     );
-  const mode = entry.path === "/join" ? "join" : needsSetup ? "setup" : "login";
+  const mode =
+    entry.path === "/join"
+      ? "join"
+      : entry.path === "/setup" || (entry.path === "/" && needsSetup)
+        ? "setup"
+        : "login";
   return (
     <AccessForm
       mode={mode}
       token={entry.params.get("invite") ?? ""}
-      setupKey={entry.params.get("key") ?? ""}
       onSuccess={enter}
     />
   );

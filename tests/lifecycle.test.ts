@@ -16,14 +16,13 @@ test("应用实例隔离身份与时钟，监听失败及重复关闭后仍能�
   const invalidDatabase = join(directory, "invalid.sqlite");
   await writeFile(invalidDatabase, "This is not a SQLite database");
   await assert.rejects(
-    createApp({ databasePath: invalidDatabase, setupKey: "lifecycle-key" }),
+    createApp({ databasePath: invalidDatabase }),
   );
   // A failed database initialization must release its file handle as well.
   await rm(invalidDatabase);
   async function start(name: string, now = time) {
     const service = await createApp({
       databasePath: join(directory, name + ".sqlite"),
-      setupKey: "lifecycle-key",
       now: () => now,
       staticDirectory: join(directory, "missing-site"),
     });
@@ -53,7 +52,6 @@ test("应用实例隔离身份与时钟，监听失败及重复关闭后仍能�
       email: "isolated@example.test",
       password: "IsolatedMember2026!",
       teamName: "独立团队",
-      setupKey: "lifecycle-key",
     }),
   });
   assert.equal(created.status, 201);
@@ -79,7 +77,6 @@ test("应用实例隔离身份与时钟，监听失败及重复关闭后仍能�
   assert.deepEqual(await uppercaseUnknown.json(), { error: "未找到该接口。" });
   const failed = await createApp({
     databasePath: join(directory, "failed.sqlite"),
-    setupKey: "lifecycle-key",
   });
   instances.push(failed);
   await assert.rejects(failed.listen(first.port), { code: "EADDRINUSE" });

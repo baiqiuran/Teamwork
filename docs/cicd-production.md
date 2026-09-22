@@ -67,7 +67,7 @@ production Environment 只接受 main。main 要求 PR、`Verified Linux artifac
 3. 将当前实际运行代码、生产依赖和 Node 制成匹配的只读恢复材料，登记真实版本和文件摘要。旧部署没有新版产物证明，不能给它伪造“CI 已通过”的候选回执。完成旧版归档/恢复演练后，才登记初始 runtime。
 4. 以 root 安装已审阅的 `ops/` 和独立锁定依赖到 `/opt/daily-flow/control/ops`；复制配置并填写真实路径。**数据库名必须改为 `daily-flow.sqlite`，不能照抄示例 `data.sqlite` 新建空团队。** 主机 `automationEnabled=false`。
 5. 准备 blue/green 路径、0700 控制与备份目录、0755 维护标记目录、root 随机健康凭证。数据锁需通过 systemd-tmpfiles 在每次开机创建，属主 `root:daily-flow`、权限 `0660`，应用通过组获得锁权限；仅手工 touch `/run/lock` 无法跨重启。
-6. 在原 TLS server 中加入维护入口、禁止 `/internal/`、移除外来健康凭证头，并把 upstream 指向单一活动端口；保留原证书/ACME、Host/转发头、关闭缓冲与缓存、300 秒 MCP 超时和 28 MB 请求限制。原 `/setup` 禁止公网访问的规则继续保留。
+6. 在原 TLS server 中加入维护入口、禁止 `/internal/`、移除外来健康凭证头，并把 upstream 指向单一活动端口；保留原证书/ACME、Host/转发头、关闭缓冲与缓存、300 秒 MCP 超时和 28 MB 请求限制。该次历史接入保留了 `/setup` 禁止公网访问规则；采用 ADR 0007 的常开创建版本时应移除针对 `/setup` 和 `/api/setup` 的禁止规则，保留其他来源与代理限制。此处仅更新说明，未操作生产配置。
 7. 进入维护并确认网页/API/公开/MCP 入口都返回 503 与 Retry-After；停止旧备份 timer，确认旧备份服务未运行；停止并禁用旧 `daily-flow.service`，确认进程退出后才启动 blue。两个槽均不单独 enable，启动通过 owner guard 与同一个数据 flock。
 8. 验证旧版在 blue 的网页/MCP/OAuth、原账号和历史内容，再执行新控制器的一致备份及本地材料校验，取得 24 小时内的有效副本。不要同时保留旧备份脚本和新控制器写库。
 9. 配置 boot reconcile 和新每日备份/清理 timer，进行受控重启验收，确认单活及启动所有者。续期 timer 保持原配置。

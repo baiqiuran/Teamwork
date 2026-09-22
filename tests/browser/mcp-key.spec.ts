@@ -9,7 +9,6 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
   const directory = await mkdtemp(join(tmpdir(), "daily-key-ui-"));
   const app = await createApp({
     databasePath: join(directory, "test.sqlite"),
-    setupKey: "isolated-key",
     staticDirectory: join(process.cwd(), "dist"),
   });
   let client: Awaited<ReturnType<typeof mcpClient>> | undefined;
@@ -25,7 +24,6 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
         email: "key-ui@example.test",
         password: "BrowserFixture2026!",
         teamName: "隔离团队",
-        setupKey: "isolated-key",
       },
     });
     expect(setup.status()).toBe(201);
@@ -35,12 +33,10 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
       .click();
     const panel = page.getByRole("region", { name: "Node 授权 Key" });
     await expect(panel.getByLabel("查询团队工作进展")).toBeChecked();
-    await expect(panel.getByLabel("创建和修改本人草稿")).toBeChecked();
-    await expect(panel.getByLabel("自动提交我的日报")).not.toBeChecked();
+    await expect(panel.getByLabel("读写本人日报草稿")).toBeChecked();
+    await expect(panel.getByLabel("提交本人日报")).not.toBeChecked();
     await expect(panel.getByLabel("创建任务和更新任务状态")).not.toBeChecked();
-    await expect(
-      panel.getByLabel("创建和关闭本人的公开链接"),
-    ).not.toBeChecked();
+    await expect(panel.getByLabel("创建和关闭本人公开链接")).not.toBeChecked();
     await panel.getByLabel("连接名称", { exact: true }).fill("我的桌面助手");
     await panel
       .getByRole("button", { name: "生成授权 Key", exact: true })

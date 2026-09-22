@@ -175,15 +175,15 @@ export function Diaries() {
     open(updated);
     setPendingUpload(null);
     await refresh();
-    setNotice("附件已保存到私人草稿，提交后才对团队可见。");
+    setNotice("附件已保存到草稿，提交后团队才可见。");
   }
   return (
     <>
       <div className="journal-heading">
         <div>
-          <p className="eyebrow">我的日报</p>
-          <h1>记下今天的进展</h1>
-          <p className="subtitle">一条工作，一段完整记录。</p>
+          <p className="eyebrow">日报</p>
+          <h1>我的日报</h1>
+          <p className="subtitle">保存草稿仅自己可见，提交后团队可见。</p>
         </div>
         <button
           className="primary"
@@ -286,9 +286,7 @@ export function Diaries() {
           <h2>
             最近记录 <span className="count">{items.length}</span>
           </h2>
-          {items.length === 0 && (
-            <p className="muted">还没有日报，开始第一份记录吧。</p>
-          )}
+          {items.length === 0 && <p className="muted">暂无日报。</p>}
           {items.map((item) => (
             <button
               key={item.id}
@@ -320,8 +318,8 @@ export function Diaries() {
         >
           {!current ? (
             <div className="empty">
-              <h2>从一条工作开始</h2>
-              <p>先写内容，随时保存；草稿仅自己可见。</p>
+              <h2>新建或选择日报</h2>
+              <p>草稿仅自己可见，提交后团队可见。</p>
               <button
                 className="secondary"
                 onClick={() => action(create)}
@@ -342,7 +340,7 @@ export function Diaries() {
               </div>
               {!current.editable && (
                 <p className="message">
-                  历史日报已锁定。此处保留的未重提修改仅你可见。
+                  只能在首次提交当天修改日报。未再次提交的修改仍仅你可见。
                 </p>
               )}
               {current.published && (
@@ -364,7 +362,7 @@ export function Diaries() {
                   日报标题 <span className="muted">选填</span>
                   <input
                     aria-label="日报标题"
-                    placeholder="为这份记录起个名字"
+                    placeholder="输入日报标题（选填）"
                     value={content.title}
                     disabled={busy}
                     onChange={(e) =>
@@ -431,7 +429,7 @@ export function Diaries() {
                         value={entry.body}
                         disabled={busy}
                         placeholder={
-                          "完成了什么？有哪些进展？\n可以换行、分段，或用 - 编写列表。"
+                          "输入工作内容，可换行、分段或用 - 编写列表。"
                         }
                         onChange={(e) =>
                           edit({
@@ -463,8 +461,8 @@ export function Diaries() {
                         </button>
                         <span className="muted">
                           {entry.projectId
-                            ? "整个条目提交后归入此项目"
-                            : "保留在完整日报中"}
+                            ? "提交后显示在此项目的进展中"
+                            : "未关联项目，仅保留在完整日报中"}
                         </span>
                         {associating === entry.id && (
                           <label>

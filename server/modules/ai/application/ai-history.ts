@@ -18,7 +18,7 @@ export class AiHistory {
     event: AiOperation,
     memberId: string,
   ): { state: string; url?: string } {
-    if (!event.objectId) return { state: "无已完成对象" };
+    if (!event.objectId) return { state: "未产生可跳转对象" };
     try {
       if (
         ["create_draft", "update_draft", "submit_diary"].includes(event.tool)
@@ -30,10 +30,11 @@ export class AiHistory {
         };
       }
       if (["create_task", "update_task_status"].includes(event.tool)) {
-        const task = this.work.getTask(event.objectId);
+        const task = this.work.getTask(event.objectId, memberId);
         return {
           state:
-            task.archived || this.work.getProject(task.projectId).archived
+            task.archived ||
+            this.work.getProject(task.projectId, memberId).archived
               ? "已归档"
               : "当前任务",
           url: `/projects?project=${task.projectId}&task=${task.id}`,

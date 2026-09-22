@@ -9,7 +9,6 @@ import {
   RUNTIME,
   SECURITY,
   FILES,
-  SETUP_KEY,
   AI,
   AI_OPERATIONS,
 } from "./tokens.ts";
@@ -31,7 +30,6 @@ export function infrastructureModule(resources: Resources): DynamicModule {
       { provide: RUNTIME, useValue: resources.runtime },
       { provide: SECURITY, useValue: resources.security },
       { provide: FILES, useValue: resources.files },
-      { provide: SETUP_KEY, useValue: resources.setupKey },
     ],
     exports: [
       AI,
@@ -44,7 +42,6 @@ export function infrastructureModule(resources: Resources): DynamicModule {
       RUNTIME,
       SECURITY,
       FILES,
-      SETUP_KEY,
     ],
   };
 }

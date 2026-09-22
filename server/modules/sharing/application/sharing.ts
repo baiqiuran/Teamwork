@@ -32,12 +32,12 @@ export class Sharing {
     share.assertAvailable();
     return share;
   }
-  private target(type: ShareType, id: string | null) {
+  private target(type: ShareType, id: string | null, memberId: string) {
     if (type === "diary") return null;
     const selected = id
       ? type === "project"
-        ? this.work.project(id)
-        : this.work.task(id)
+        ? this.work.project(id, memberId)
+        : this.work.task(id, memberId)
       : undefined;
     if (!selected) throw new DomainError("not-found", "未找到分享对象。");
     return selected;
@@ -48,7 +48,8 @@ export class Sharing {
       token: s.token,
       type: s.type,
       targetId: s.targetId,
-      targetName: this.target(s.type, s.targetId)?.name ?? "全团队日报",
+      targetName:
+        this.target(s.type, s.targetId, s.createdBy)?.name ?? "全团队日报",
       modules: s.modules,
       from: s.from,
       to: s.to,
@@ -62,12 +63,16 @@ export class Sharing {
       dateRange({ ...input });
       if (input.type !== "diary" && !input.targetId)
         throw new DomainError("invalid", "请选择分享对象。");
-      const selected = this.target(input.type, input.targetId ?? null);
+      const selected = this.target(
+        input.type,
+        input.targetId ?? null,
+        memberId,
+      );
       assertShareTarget(
         input.type,
         selected,
         selected && "projectId" in selected
-          ? this.work.project(String(selected.projectId))
+          ? this.work.project(String(selected.projectId), memberId)
           : undefined,
       );
       const state: ShareState = {
@@ -91,13 +96,18 @@ export class Sharing {
     this.runtime.transaction(() => {
       const state = this.repo.find(id);
       if (!state) throw new DomainError("not-found", "未找到分享。");
+      this.reading.member(state.createdBy, memberId);
       const share = new PublicShare(state);
       share.close(memberId, this.runtime.now());
       this.repo.save(share.state);
     });
   }
   progress(share: PublicShare) {
-    return this.reading.published(share.state, share.progressFilter());
+    return this.reading.published(
+      share.state.createdBy,
+      share.state,
+      share.progressFilter(),
+    );
   }
   read(token: string) {
     const share = this.available(token),
@@ -109,9 +119,9 @@ export class Sharing {
       ),
     );
     const tasks = this.work
-      .tasks()
+      .tasks(s.createdBy)
       .filter((t) => share.includesTask(t, referenced));
-    const selected = this.target(s.type, s.targetId);
+    const selected = this.target(s.type, s.targetId, s.createdBy);
     return {
       type: s.type,
       from: s.from,
@@ -124,7 +134,7 @@ export class Sharing {
               description:
                 selected?.description ?? "所选日期内全团队成员的完整已提交日报",
               creator: selected
-                ? this.reading.member(selected.createdBy)
+                ? this.reading.member(selected.createdBy, s.createdBy)
                 : undefined,
               diaryCount: records.length,
               entryCount: records.reduce(
@@ -142,7 +152,7 @@ export class Sharing {
               id: t.id,
               name: t.name,
               description: t.description,
-              creator: this.reading.member(t.createdBy),
+              creator: this.reading.member(t.createdBy, s.createdBy),
               status: t.status,
               archived: t.archived,
             })),

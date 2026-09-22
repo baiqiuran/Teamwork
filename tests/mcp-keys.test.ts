@@ -7,7 +7,8 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { Client } from "@modelcontextprotocol/client";
 import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
-import { fixture } from "./support.ts";
+import { applicationFixture, fixture } from "./support.ts";
+import { legacy, seedLegacyAuthorization } from "./legacy-team-fixture.ts";
 import { authorize, mcpClient } from "./mcp-support.ts";
 
 test("成员 Key 只显示一次、持久化摘要、跨重启有效，并沿用权限与撤销边界", async (t) => {
@@ -109,32 +110,36 @@ test("成员 Key 只显示一次、持久化摘要、跨重启有效，并沿用
 });
 
 test("版本 6 升级保留 OAuth 连接和凭证，并可创建 Key", async (t) => {
-  const f = await fixture(t);
-  const token = await authorize(f);
-  const before = (await f.author("/ai/connections")).data;
-  const db = new DatabaseSync(f.databasePath);
-  try {
-    db.exec(
-      "DROP TABLE ai_api_keys; ALTER TABLE ai_grants DROP COLUMN credential_type; ALTER TABLE ai_grants DROP COLUMN name; DELETE FROM schema_migrations WHERE version=7;",
-    );
-  } finally {
-    db.close();
-  }
-  await f.restart();
-  const after = (await f.author("/ai/connections")).data;
-  assert.equal(after[0].id, before[0].id);
-  assert.equal(after[0].credentialType, "oauth");
-  assert.equal(after[0].name, null);
-  const client = await mcpClient(f.origin, token.access_token);
+  const f = await applicationFixture(t, {}, (path, origin) => {
+    seedLegacyAuthorization(path, origin);
+    const db = new DatabaseSync(path);
+    try {
+      db.exec(
+        "DROP TABLE ai_api_keys; DELETE FROM ai_grants WHERE credential_type='api-key'; ALTER TABLE ai_grants DROP COLUMN credential_type; ALTER TABLE ai_grants DROP COLUMN name; DELETE FROM schema_migrations WHERE version>6;",
+      );
+    } finally {
+      db.close();
+    }
+  });
+  const author = f.client(`daily_session=${legacy.session}`);
+  const after = (await author("/ai/connections")).data;
+  const oauth = after.find(
+    (connection: { id: string }) => connection.id === "legacy-oauth",
+  );
+  assert.equal(oauth.credentialType, "oauth");
+  assert.equal(oauth.name, null);
+  const client = await mcpClient(f.origin, "legacy-oauth");
   t.after(() => client.close());
   assert.ok(
     !(await client.callTool({ name: "get_context", arguments: {} })).isError,
   );
   assert.equal(
-    (await f.author("/ai/keys", { name: "升级后", scopes: ["progress:read"] }))
+    (await author("/ai/keys", { name: "升级后", scopes: ["progress:read"] }))
       .status,
     201,
   );
+  await f.restart();
+  assert.equal((await author("/me")).data.member.id, legacy.member.id);
 });
 
 async function runPackage(env: Record<string, string>) {

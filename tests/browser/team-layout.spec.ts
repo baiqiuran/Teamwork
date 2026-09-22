@@ -4,20 +4,26 @@ import { randomUUID } from "node:crypto";
 const origin = "http://127.0.0.1:4311";
 
 async function seedReports(page: Page) {
-  const status = await (await page.request.get("/api/setup/status")).json();
-  const auth = await page.request.post(
-    status.needsSetup ? "/api/setup" : "/api/login",
-    {
+  const credentials = {
+    name: "林晓",
+    email: "lin@example.test",
+    password: "QuietRiver2026!",
+    teamName: "日序工作室",
+  };
+  let auth = await page.request.post("/api/login", {
+    headers: { Origin: origin },
+    data: credentials,
+  });
+  // Empty-site status is not permission to create this fixture's team.
+  if (auth.status() === 401) {
+    auth = await page.request.post("/api/setup", {
       headers: { Origin: origin },
-      data: {
-        name: "林晓",
-        email: "lin@example.test",
-        password: "QuietRiver2026!",
-        teamName: "日序工作室",
-        setupKey: "browser-test-setup-key",
-      },
-    },
-  );
+      data: credentials,
+    });
+    expect(auth.status()).toBe(201);
+  } else {
+    expect(auth.status()).toBe(200);
+  }
   expect(auth.ok()).toBeTruthy();
   const project = await (
     await page.request.post("/api/projects", {

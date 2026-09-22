@@ -1,4 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
+import { teamNameKey } from "../../shared/domain/team-name.ts";
+
+const latestVersion = 8;
 
 export function assertAiVersion(db: DatabaseSync) {
   const exists = db
@@ -14,7 +17,7 @@ export function assertAiVersion(db: DatabaseSync) {
           "SELECT COALESCE(MAX(version),0) AS version FROM schema_migrations",
         )
         .get()!.version,
-    ) > 7
+    ) > latestVersion
   )
     throw new Error("数据库版本高于当前程序，请使用匹配版本或恢复备份。");
 }
@@ -29,9 +32,11 @@ export function migrateAi(db: DatabaseSync) {
       )
       .get()!.version,
   );
-  if (current > 7)
+  if (current > latestVersion)
     throw new Error("数据库版本高于当前程序，请使用匹配版本或恢复备份。");
-  if (current === 7) return;
+  if (current === latestVersion) return;
+  // Table replacement requires disabling FK enforcement before BEGIN and checking it before COMMIT.
+  db.exec("PRAGMA foreign_keys = OFF");
   db.exec("BEGIN IMMEDIATE");
   try {
     if (current < 1)
@@ -78,9 +83,41 @@ export function migrateAi(db: DatabaseSync) {
         CREATE TABLE ai_api_keys (hash TEXT PRIMARY KEY, grant_id TEXT NOT NULL UNIQUE REFERENCES ai_grants(id));
         INSERT INTO schema_migrations (version) VALUES (7);
       `);
+    if (current < 8) {
+      const teams = db.prepare("SELECT id, name FROM team").all();
+      const hasMembers = db.prepare("SELECT 1 FROM members LIMIT 1").get();
+      if (teams.length > 1 || (hasMembers && teams.length !== 1))
+        throw new Error("原账号缺少唯一团队归属，迁移已取消。");
+      db.exec(`
+        CREATE TABLE team_next (id INTEGER PRIMARY KEY, name TEXT NOT NULL, name_key TEXT NOT NULL UNIQUE);
+        CREATE TABLE members_next (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at INTEGER NOT NULL, team_id INTEGER NOT NULL REFERENCES team(id));
+      `);
+      for (const team of teams)
+        db.prepare(
+          "INSERT INTO team_next (id, name, name_key) VALUES (?, ?, ?)",
+        ).run(team.id, team.name, teamNameKey(String(team.name)));
+      if (teams.length === 1)
+        db.prepare(
+          `INSERT INTO members_next (rowid, id, name, email, password_hash, created_at, team_id)
+          SELECT rowid, id, name, email, password_hash, created_at, ? FROM members`,
+        ).run(teams[0].id);
+      // Do not rename the old tables: that would rewrite dependent FK targets.
+      db.exec(`
+        DROP TABLE members;
+        DROP TABLE team;
+        ALTER TABLE team_next RENAME TO team;
+        ALTER TABLE members_next RENAME TO members;
+        CREATE INDEX members_team ON members(team_id);
+        INSERT INTO schema_migrations (version) VALUES (8);
+      `);
+    }
+    if (db.prepare("PRAGMA foreign_key_check").get())
+      throw new Error("数据库关联检查失败，迁移已取消。");
     db.exec("COMMIT");
   } catch (error) {
     db.exec("ROLLBACK");
     throw error;
+  } finally {
+    db.exec("PRAGMA foreign_keys = ON");
   }
 }

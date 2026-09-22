@@ -51,7 +51,7 @@ export function reviseDefinition<T extends ProjectState>(
     memberId,
     kind === "project"
       ? "只有创建者可修改项目资料。"
-      : "只有创建者可修改任务定义。",
+      : "只有创建者可修改任务名称和说明。",
   );
   return { ...record, ...definitionSchema.parse(input) };
 }

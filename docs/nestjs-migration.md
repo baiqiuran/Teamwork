@@ -15,7 +15,7 @@ npm run test:upgrade
 npm run test:production
 ```
 
-开发使用 `npm run dev` 监听后端编译产物；修改前端后仍需构建前端。后端产物位于 `build/server`，前端位于 `dist`。PORT、DAILY_DATABASE_PATH、DAILY_SETUP_KEY 的语义及默认本机监听保持不变。
+开发使用 `npm run dev` 监听后端编译产物；修改前端后仍需构建前端。后端产物位于 `build/server`，前端位于 `dist`。该次迁移保留了 PORT、DAILY_DATABASE_PATH、DAILY_SETUP_KEY 及默认本机监听；后续 ADR 0007 对应的常开创建已取消 DAILY_SETUP_KEY，当前创建与登录步骤以 README 为准。
 
 应用创建变为异步，返回异步 `listen` 与幂等 `close`。每个应用实例有独立的资源所有者，所有仓储共享一条 SQLite 连接，正常关闭与初始化失败均由所有者释放连接。领域和应用类通过工厂 Provider 接入 Nest，不需要框架装饰器。
 

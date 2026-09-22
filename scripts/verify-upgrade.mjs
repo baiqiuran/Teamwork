@@ -40,12 +40,13 @@ let accessToken;
 let refreshToken;
 const options = {
   databasePath: resolve(directory, "test.sqlite"),
-  setupKey: "upgrade-test-key",
   now: () => Date.parse("2026-09-16T03:00:00Z"),
 };
+// Historical runtimes still require a bootstrap key; the candidate does not.
+const legacyOptions = { ...options, setupKey: "upgrade-test-key" };
 
-async function start(factory) {
-  const service = await factory(options);
+async function start(factory, appOptions = options) {
+  const service = await factory(appOptions);
   let server;
   if (service.listen) server = await service.listen(port);
   else {
@@ -152,7 +153,7 @@ try {
         : resolve(build, "server/app.js"),
     ).href
   );
-  running = await start(old.createApp);
+  running = await start(old.createApp, legacyOptions);
   const credentials = {
     name: "兼容成员",
     email: "upgrade@example.test",
@@ -160,7 +161,7 @@ try {
   };
   const identity = await running.request(
     "/setup",
-    { ...credentials, teamName: "兼容团队", setupKey: options.setupKey },
+    { ...credentials, teamName: "兼容团队", setupKey: legacyOptions.setupKey },
     201,
   );
   if (oldRuntime) {
@@ -322,7 +323,13 @@ try {
   }
   assert.deepEqual(
     await running.request("/me"),
-    identity,
+    // ADR 0007 起会话身份带明确团队归属；旧版本响应保持原结构不变。
+    oldRuntime
+      ? identity
+      : {
+          member: { ...identity.member, teamId: identity.team.id },
+          team: identity.team,
+        },
     "old session survives without logging in again",
   );
   for (let i = 0; i < paths.length; i++) {
@@ -395,7 +402,7 @@ try {
   await cp(resolve(backup, "attachments"), resolve(directory, "attachments"), {
     recursive: true,
   });
-  running = await start(old.createApp);
+  running = await start(old.createApp, legacyOptions);
   if (accessToken) {
     const result = await running.protocol(
       "/mcp",

@@ -29,7 +29,6 @@ import type {
 
 export interface AppOptions {
   databasePath: string;
-  setupKey: string;
   now?: () => number;
   staticDirectory?: string;
   publicUrl?: string;
@@ -53,7 +52,6 @@ export interface Resources {
   runtime: Runtime;
   security: Security;
   files: FileStorage;
-  setupKey: string;
   publicUrl?: string;
   mcpMemberLimit?: number;
   mcpGrantLimit?: number;
@@ -127,7 +125,6 @@ export function createResources(options: AppOptions): Resources {
       },
       security,
       files: localFiles(resolve(dirname(options.databasePath), "attachments")),
-      setupKey: options.setupKey,
       close,
       inspect: (deep) => {
         const status = database.inspect(deep);
@@ -137,7 +134,7 @@ export function createResources(options: AppOptions): Resources {
         );
         return {
           ...status,
-          initialized: Boolean(membershipRepository(database.db).team()),
+          initialized: membershipRepository(database.db).hasTeams(),
           attachmentsAccessible: true,
         };
       },

@@ -9,12 +9,10 @@ function Arrow() {
 }
 export function AccessForm({
   mode,
-  setupKey,
   token,
   onSuccess,
 }: {
   mode: "setup" | "join" | "login";
-  setupKey: string;
   token: string;
   onSuccess: (identity: Identity) => void;
 }) {
@@ -50,7 +48,7 @@ export function AccessForm({
       onSuccess(
         await api<Identity>(
           mode === "setup" ? "/setup" : mode === "join" ? "/join" : "/login",
-          { ...fields, token },
+          mode === "join" ? { ...fields, token } : fields,
         ),
       );
     } catch (error) {
@@ -61,28 +59,20 @@ export function AccessForm({
   }
   const title =
     mode === "setup"
-      ? "从一个团队开始。"
+      ? "创建团队"
       : mode === "join"
         ? preview
           ? `加入${preview.team.name}`
-          : "你收到一份团队邀请。"
-        : "欢迎回来。";
+          : "加入团队"
+        : "登录";
   return (
     <div className="access-layout">
       <aside className="access-story">
         <Brand />
         <div className="story-content">
-          <p className="eyebrow">让工作进展，有迹可循</p>
-          <h2>
-            写下今天，
-            <br />
-            一起向前。
-          </h2>
-          <p>
-            连接团队的每一份工作记录，
-            <br />
-            让每一个人的进展被看见。
-          </p>
+          <p className="eyebrow">团队工作记录</p>
+          <h2>日报、项目与任务</h2>
+          <p>团队成员在这里记录日报、查看项目和任务进展。</p>
           <div className="story-lines" aria-hidden="true">
             <span />
             <span />
@@ -96,7 +86,7 @@ export function AccessForm({
         <div className="access-card">
           <p className="eyebrow">
             {mode === "setup"
-              ? "建立团队 / 01"
+              ? "新团队"
               : mode === "join"
                 ? "团队邀请"
                 : "成员登录"}
@@ -104,12 +94,12 @@ export function AccessForm({
           <h1>{title}</h1>
           <p className="subtitle">
             {mode === "setup"
-              ? "创建你的账号，然后邀请同事加入。"
+              ? "创建新团队并注册账号，成为首位成员。"
               : mode === "join"
                 ? preview
-                  ? `${preview.invitedBy} 邀请你一起记录工作。`
+                  ? `${preview.invitedBy} 邀请你加入此团队。`
                   : "正在确认邀请…"
-                : "登录你的账号，继续团队中的工作。"}
+                : "使用邮箱和密码登录所属团队。"}
           </p>
           <Message error>{inviteError}</Message>
           {!inviteError && (mode !== "join" || preview) && (
@@ -172,16 +162,6 @@ export function AccessForm({
                   </small>
                 )}
               </label>
-              {mode === "setup" &&
-                (setupKey ? (
-                  <input type="hidden" name="setupKey" value={setupKey} />
-                ) : (
-                  <label>
-                    引导密钥
-                    <input name="setupKey" required autoComplete="off" />
-                    <small>在本机启动日序的终端中获取首次创建链接。</small>
-                  </label>
-                ))}
               <Message error>{error}</Message>
               <button className="primary full" disabled={busy}>
                 {busy
@@ -197,13 +177,17 @@ export function AccessForm({
           )}
           <p className="access-note">
             {mode === "login" ? (
-              "还没有账号？请向团队成员获取邀请链接。"
+              <>
+                <a href="/setup">创建新团队 →</a>
+                <br />
+                加入已有团队需获取成员发出的邀请链接。
+              </>
             ) : (
               <a href="/login">已有账号？前往登录 →</a>
             )}
           </p>
         </div>
-        <footer>每份记录都有归属，每次协作都更清楚。</footer>
+        <footer>每个账号只属于一个团队，邮箱不能重复注册。</footer>
       </main>
     </div>
   );

@@ -2,6 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import type {
   DiaryDeletion,
   DiaryRepository,
+  MemberSubmissionDate,
   SubmissionReceipt,
 } from "../../application/ports.ts";
 import type { DiaryState } from "../../domain/diary.ts";
@@ -32,14 +33,23 @@ export function diaryRepository(db: DatabaseSync): DiaryRepository {
           )
           .all(id) as unknown as DiaryRow[]
       ).map(hydrate),
-    published: (range) =>
+    published: (memberId, range) =>
       (
         db
           .prepare(
-            `${select} WHERE published IS NOT NULL AND diary_date BETWEEN ? AND ? ORDER BY diary_date DESC, submitted_at DESC, id`,
+            `${select} WHERE author_id IN (SELECT id FROM members WHERE team_id = (SELECT team_id FROM members WHERE id = ?)) AND published IS NOT NULL AND diary_date BETWEEN ? AND ? ORDER BY diary_date DESC, submitted_at DESC, id`,
           )
-          .all(range.from, range.to) as unknown as DiaryRow[]
+          .all(memberId, range.from, range.to) as unknown as DiaryRow[]
       ).map(hydrate),
+    latestSubmitted: (memberId) =>
+      db
+        .prepare(
+          `SELECT author_id AS memberId, MAX(diary_date) AS diaryDate FROM diaries
+           WHERE published IS NOT NULL
+             AND author_id IN (SELECT id FROM members WHERE team_id = (SELECT team_id FROM members WHERE id = ?))
+           GROUP BY author_id`,
+        )
+        .all(memberId) as unknown as MemberSubmissionDate[],
     save(s) {
       db.prepare(
         `INSERT INTO diaries (id, author_id, draft, version, created_at, updated_at, published, first_at, submitted_at, diary_date) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET draft = excluded.draft, version = excluded.version, updated_at = excluded.updated_at, published = excluded.published, first_at = excluded.first_at, submitted_at = excluded.submitted_at, diary_date = excluded.diary_date`,
@@ -63,10 +73,12 @@ export function diaryRepository(db: DatabaseSync): DiaryRepository {
       db
         .prepare(`${deletionSelect} WHERE diary_id = ? AND member_id = ?`)
         .get(id, memberId) as unknown as DiaryDeletion | undefined,
-    deletions: () =>
+    deletions: (memberId) =>
       db
-        .prepare(`${deletionSelect} ORDER BY created_at DESC`)
-        .all() as unknown as DiaryDeletion[],
+        .prepare(
+          `${deletionSelect} WHERE member_id IN (SELECT id FROM members WHERE team_id = (SELECT team_id FROM members WHERE id = ?)) ORDER BY created_at DESC`,
+        )
+        .all(memberId) as unknown as DiaryDeletion[],
     addDeletion: (e) => {
       db.prepare("INSERT INTO diary_events VALUES (?, ?, ?, ?)").run(
         e.diaryId,

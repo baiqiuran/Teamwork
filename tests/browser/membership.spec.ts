@@ -1,18 +1,24 @@
 import { expect, test } from "@playwright/test";
 
-test("从本机引导建立团队，再通过邀请加入、管理邀请并重新登录", async ({
+test("公开创建团队，再通过邀请加入、管理邀请并重新登录", async ({
   page,
   browser,
 }) => {
-  await page.goto("/setup#key=browser-test-setup-key");
+  await page.goto("/setup");
   await page.getByLabel("团队名称").fill("日序工作室");
   await page.getByLabel("姓名", { exact: true }).fill("林晓");
   await page.getByLabel("邮箱", { exact: true }).fill("lin@example.test");
   await page.getByLabel("密码", { exact: true }).fill("QuietRiver2026!");
   await page.getByRole("button", { name: "创建团队并进入" }).click();
   await expect(
-    page.getByRole("heading", { name: "邀请同事，一起开始。" }),
+    page.getByRole("heading", { name: "团队成员", exact: true }),
   ).toBeVisible();
+  await expect(page.locator(".invitation-row")).toContainText("林晓");
+  await page.getByRole("button", { name: "成员邀请", exact: true }).click();
+  await expect(
+    page.getByRole("heading", { name: "成员邀请", exact: true }),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/\/invitations$/);
   await page.getByRole("button", { name: "生成邀请链接" }).click();
   const joinUrl = await page.getByLabel("新邀请链接").inputValue();
   const secondContext = await browser.newContext({
@@ -28,11 +34,21 @@ test("从本机引导建立团队，再通过邀请加入、管理邀请并重�
   await second.getByLabel("密码", { exact: true }).fill("SecondMember2026!");
   await second.getByRole("button", { name: "加入团队" }).click();
   await expect(
-    second.getByRole("heading", { name: "邀请同事，一起开始。" }),
+    second.getByRole("heading", { name: "团队成员", exact: true }),
   ).toBeVisible();
-  await expect(second.getByText("周宁", { exact: true })).toBeVisible();
+  for (const name of ["周宁", "林晓"])
+    await expect(
+      second.locator(".invitation-row").filter({ hasText: name }),
+    ).toBeVisible();
   await second.reload();
-  await expect(second.getByText("周宁", { exact: true })).toBeVisible();
+  for (const name of ["周宁", "林晓"])
+    await expect(
+      second.locator(".invitation-row").filter({ hasText: name }),
+    ).toBeVisible();
+  await second.getByRole("button", { name: "成员邀请", exact: true }).click();
+  await expect(
+    second.getByRole("heading", { name: "成员邀请", exact: true }),
+  ).toBeVisible();
   await second.getByRole("button", { name: "生成邀请链接" }).click();
   await expect(second.getByLabel("新邀请链接")).toBeVisible();
   await second.getByRole("button", { name: "撤销", exact: true }).click();
@@ -55,7 +71,12 @@ test("从本机引导建立团队，再通过邀请加入、管理邀请并重�
   await second.getByLabel("邮箱", { exact: true }).fill("zhou@example.test");
   await second.getByLabel("密码", { exact: true }).fill("SecondMember2026!");
   await second.getByLabel("密码", { exact: true }).press("Enter");
-  await expect(second.getByText("周宁", { exact: true })).toBeVisible();
+  await expect(
+    second.getByRole("heading", { name: "团队成员", exact: true }),
+  ).toBeVisible();
+  await expect(
+    second.locator(".invitation-row").filter({ hasText: "周宁" }),
+  ).toBeVisible();
   await page.reload();
   await expect(page.getByText("已接受", { exact: true })).toBeVisible();
   await page.screenshot({

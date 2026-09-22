@@ -25,7 +25,6 @@ export default defineConfig({
     env: {
       PORT: "4311",
       DAILY_DATABASE_PATH: `data/e2e-${randomUUID()}.sqlite`,
-      DAILY_SETUP_KEY: "browser-test-setup-key",
     },
   },
 });

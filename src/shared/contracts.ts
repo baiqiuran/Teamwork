@@ -1,6 +1,12 @@
 export interface Identity {
-  member: { id: string; name: string; email: string };
+  member: { id: string; teamId: number; name: string; email: string };
   team: { id: number; name: string };
+}
+export interface TeamMember {
+  id: string;
+  name: string;
+  joinedAt: number;
+  lastDiaryDate: string | null;
 }
 export interface Invitation {
   id: string;

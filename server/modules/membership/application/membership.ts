@@ -15,10 +15,12 @@ export class Membership {
     private readonly repo: MembershipRepository,
     private readonly runtime: Runtime,
     private readonly security: Security,
-    private readonly setupKey: string,
   ) {}
-  team() {
-    return this.repo.team();
+  hasTeams() {
+    return this.repo.hasTeams();
+  }
+  team(id: number) {
+    return this.repo.team(id);
   }
   authenticate(token: string) {
     const member = this.repo.session(
@@ -34,31 +36,27 @@ export class Membership {
     this.repo.addSession(this.security.digest(token), member.id, at + WEEK, at);
     return {
       token,
-      member: { id: member.id, name: member.name, email: member.email },
-      team: this.team(),
+      member: {
+        id: member.id,
+        teamId: member.teamId,
+        name: member.name,
+        email: member.email,
+      },
+      team: this.team(member.teamId),
     };
   }
-  async setup(
-    input: Registration & { teamName: string; setupKey: string },
-    local: boolean,
-  ) {
-    if (this.team())
-      throw new DomainError("conflict", "团队已经建立，请登录或使用邀请加入。");
-    if (
-      !local ||
-      this.security.digest(input.setupKey) !==
-        this.security.digest(this.setupKey)
-    )
-      throw new DomainError("forbidden", "请使用本机启动时提供的引导密钥。");
+  async setup(input: Registration & { teamName: string }) {
     const passwordHash = await this.security.hashPassword(input.password);
     return this.runtime.transaction(() => {
-      if (this.team()) throw new DomainError("conflict", "团队已经建立。");
+      if (this.repo.account(input.email))
+        throw new DomainError("conflict", "此邮箱已注册，请直接登录。");
+      const team = this.repo.createTeam(input.teamName);
       const member = {
         id: this.runtime.id(),
+        teamId: team.id,
         name: input.name,
         email: input.email,
       };
-      this.repo.createTeam(input.teamName);
       this.repo.addAccount({
         ...member,
         passwordHash,
@@ -125,9 +123,10 @@ export class Membership {
   }
   previewInvitation(token: string) {
     const { state } = this.availableInvitation(token);
+    const creator = this.repo.member(state.createdBy)!;
     return {
-      team: this.team(),
-      invitedBy: this.repo.member(state.createdBy)!.name,
+      team: this.team(creator.teamId),
+      invitedBy: creator.name,
       expiresAt: state.expiresAt,
     };
   }
@@ -135,6 +134,9 @@ export class Membership {
     this.runtime.transaction(() => {
       const state = this.repo.invitation(id);
       if (!state) throw new DomainError("not-found", "未找到邀请。");
+      const owner = this.repo.member(state.createdBy);
+      if (owner?.teamId !== this.repo.member(memberId)?.teamId)
+        throw new DomainError("not-found", "未找到邀请。");
       const invitation = new Invitation(state);
       invitation.revoke(memberId, this.runtime.now());
       this.repo.saveInvitation(invitation.state);
@@ -149,6 +151,7 @@ export class Membership {
         throw new DomainError("conflict", "此邮箱已注册，请直接登录。");
       const member = {
         id: this.runtime.id(),
+        teamId: this.repo.member(invitation.state.createdBy)!.teamId,
         name: input.name,
         email: input.email,
       };

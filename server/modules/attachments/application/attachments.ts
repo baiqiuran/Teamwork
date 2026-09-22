@@ -9,6 +9,7 @@ import type { DiaryRepository } from "../../journal/application/ports.ts";
 import type { Runtime, Security } from "../../../shared/application/ports.ts";
 import { ownedDiary } from "../../journal/application/journal.ts";
 import type { Sharing } from "../../sharing/application/sharing.ts";
+import type { Reading } from "../../journal/application/reading.ts";
 
 export class Attachments {
   constructor(
@@ -18,6 +19,7 @@ export class Attachments {
     private readonly files: FileStorage,
     private readonly runtime: Runtime,
     private readonly security: Pick<Security, "digest">,
+    private readonly reading: Reading,
   ) {}
   upload(
     id: string,
@@ -95,11 +97,12 @@ export class Attachments {
   read(id: string, memberId: string) {
     const file = this.file(id),
       diary = this.diaries.find(file.diaryId);
-    if (
-      !diary ||
-      (!(diary.authorId === memberId && hasAttachment(diary.draft, id)) &&
-        !(diary.published && hasAttachment(diary.published, id)))
-    )
+    if (!diary) throw new DomainError("not-found", "未找到附件。");
+    const content =
+      diary.authorId === memberId && hasAttachment(diary.draft, id)
+        ? diary.draft
+        : this.reading.diary(file.diaryId, memberId).published;
+    if (!hasAttachment(content, id))
       throw new DomainError("not-found", "未找到附件。");
     return { name: file.name, bytes: this.files.read(id) };
   }

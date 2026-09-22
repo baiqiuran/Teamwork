@@ -7,7 +7,6 @@ import { mkdtemp, rm, chown } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "node:net";
-import { randomBytes } from "node:crypto";
 
 const runtime = resolve(process.argv[2]),
   commit = process.argv[3];
@@ -39,7 +38,6 @@ const child = spawn(process.execPath, ["build/server/main.js"], {
     NODE_ENV: "production",
     PORT: String(port),
     DAILY_DATABASE_PATH: resolve(directory, "preflight.sqlite"),
-    DAILY_SETUP_KEY: randomBytes(32).toString("hex"),
   },
   stdio: "ignore",
 });

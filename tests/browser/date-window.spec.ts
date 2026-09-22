@@ -12,7 +12,6 @@ test("页面在北京时间跨日后显示私有未重提内容并禁用修改�
   let time = Date.parse("2026-09-16T15:59:00Z");
   const service = await createApp({
     databasePath: join(directory, "test.sqlite"),
-    setupKey: "clock-ui-key",
     staticDirectory: resolve("dist"),
     now: () => time,
   });
@@ -30,7 +29,6 @@ test("页面在北京时间跨日后显示私有未重提内容并禁用修改�
         email: "midnight@example.test",
         password: "QuietRiver2026!",
         teamName: "午夜团队",
-        setupKey: "clock-ui-key",
         staticDirectory: resolve("dist"),
       },
     });
