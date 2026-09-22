@@ -24,3 +24,7 @@ Date: 2026-09-21
 - 单实例意味着发布窗口内网页与 MCP 同时不可用，且不再有"另一槽待预检"的能力；版本预检改在本机与服务器临时目录完成，见 [ADR 0006](0006-no-automated-gates-in-release-path.md)。
 
 完整流程与逐项决策见工作区 `.scratch/daily-flow-manual-deploy/spec.md`。
+
+## 2026-09-22 实施核对
+
+上文"代价是它的停服目标从活动槽改为单实例，需要相应修改"经隔离环境实测**不需要改代码**：`ops/host.mjs` 的停服与启动本来就打 `config.unit` 这一个字段，槽位专属动作（owner 许可、`release.json` 取自哪个链接、代理 upstream）都在 `if (config.slots)` 之后，因此一份不含 `slots` 的配置就是单实例形态。真正缺的是两样，本次补上：单实例的应用单元此前只以正文形式躺在 `docs/deployment.md`，现在落成 `ops/systemd/daily-flow.service`；以及没有验收覆盖"无槽配置下每日备份、保留判定与配套恢复仍然成立"，现在由 `ops/testing/single-instance.test.mjs` 覆盖。附带确认：无槽配置下快照后写入的 `stateDir/runtime.json` 不含 `slot`，也不会生成 `owner.json`。

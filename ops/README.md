@@ -71,6 +71,8 @@ node ops/reconcile.mjs --config /etc/daily-flow/deploy.json
 
 `systemd/daily-flow-backup.timer` 安排北京时间每日 04:00，调用相同控制入口，服务使用无限启动时间以免在处理数据时被固定作业超时杀死。实际替换现有生产备份脚本与定时器留到首次接入阶段，避免两套备份流程交错启停应用。
 
+应用单元有两种：`systemd/daily-flow@.service` 是双槽时期的模板（带 `%i`、`ExecStartPre` 的 owner 守卫、不可独立 enable），`systemd/daily-flow.service` 是当前生产形态的单个实例（可 enable，仍用同一条 `flock` 数据锁）。控制器只按配置的 `unit` 字段停启，不含 `slots` 的配置即单实例，不需要改动代码；覆盖该形态的验收见 `testing/single-instance.test.mjs`。
+
 ## 隔离 Linux 验收
 
 `testing/Dockerfile` 仅用于本地/CI 验证主机，不改变生产打包方式。测试需要独立 systemd 容器、真实 Nginx、已验证的 Linux 运行包；不要对正式服务器运行测试。

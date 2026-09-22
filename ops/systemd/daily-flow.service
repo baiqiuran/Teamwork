@@ -1,0 +1,26 @@
+[Unit]
+Description=Daily Flow team workspace
+After=network.target
+
+[Service]
+Type=simple
+User=daily-flow
+Group=daily-flow
+WorkingDirectory=/opt/daily-flow/current
+EnvironmentFile=/etc/daily-flow/daily-flow.env
+# The same lock the backup and release entries take: the application must not
+# hold the database open while a snapshot or a paired restore runs.
+ExecStart=/usr/bin/flock --nonblock /run/lock/daily-flow-data.lock /usr/local/bin/node build/server/main.js
+KillMode=control-group
+TimeoutStopSec=35
+Restart=on-failure
+RestartSec=5
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/daily-flow /run/lock/daily-flow-data.lock
+
+[Install]
+WantedBy=multi-user.target
