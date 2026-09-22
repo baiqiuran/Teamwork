@@ -3,6 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { createHash } from "node:crypto";
 import {
   cp,
+  lstat,
   mkdir,
   mkdtemp,
   readFile,
@@ -107,6 +108,34 @@ export function extract(archive, directory) {
     directory,
   );
 }
+/**
+ * The application code that serving depends on. `node_modules` is left out on
+ * purpose: it is pinned by `package-lock.json`, which is in the list, so a
+ * dependency tree that drifted without the lockfile changing is its own bug.
+ */
+const CODE_PARTS = ["build", "dist", "package.json", "package-lock.json"];
+
+async function codeInventory(base) {
+  const listed = [];
+  for (const name of CODE_PARTS) {
+    const path = resolve(base, name);
+    if ((await lstat(path)).isDirectory())
+      listed.push(
+        ...(await inventory(path)).map((file) => ({
+          ...file,
+          path: `${name}/${file.path}`,
+        })),
+      );
+    else
+      listed.push({
+        path: name,
+        bytes: (await stat(path)).size,
+        sha256: await sha256(path),
+      });
+  }
+  return listed.sort((a, b) => a.path.localeCompare(b.path));
+}
+
 export async function backup(config, operation) {
   const initialFiles = await inventory(config.dataDir);
   const bytes = initialFiles.reduce((sum, file) => sum + file.bytes, 0);
@@ -124,6 +153,28 @@ export async function backup(config, operation) {
   );
   assert.deepEqual(archiveManifest, manifest, "ACTIVE_ARTIFACT_MISMATCH");
   assert.equal(manifest.node, process.version, "RUNTIME_MISMATCH");
+  // The two manifests matching only proves the labels agree. Compare the bytes
+  // the application actually runs, or an in-place patch of the serving tree
+  // would let the snapshot carry code that never served.
+  const check = resolve(partial, "served-code");
+  await mkdir(check, { mode: 0o700 });
+  try {
+    command(
+      "/usr/bin/tar",
+      "-xzf",
+      config.artifact,
+      "-C",
+      check,
+      ...CODE_PARTS,
+    );
+    assert.deepEqual(
+      await codeInventory(check),
+      await codeInventory(config.current),
+      "SERVED_CODE_MISMATCH",
+    );
+  } finally {
+    await rm(check, { recursive: true, force: true });
+  }
   command(
     "/usr/bin/tar",
     "-czf",
