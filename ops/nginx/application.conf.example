@@ -1,5 +1,7 @@
 # Included inside the existing TLS server. Preserve its certificate settings.
+# In http {}: log_format daily_manual escape=json '{"status":$status,"upstream":"$upstream_status","retryAfter":"$sent_http_retry_after"}';
 # upstream daily_flow { include /etc/daily-flow/upstream.conf; } belongs in http {}.
+access_log /var/log/nginx/daily-flow-manual.log daily_manual;
 error_page 503 = @daily_maintenance;
 location @daily_maintenance {
     default_type application/json;

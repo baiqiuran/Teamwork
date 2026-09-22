@@ -8,6 +8,7 @@ import { json, sha256, syncPath, durable } from "./io.mjs";
 import { archiveSize, extract } from "./snapshots.mjs";
 import { status as backupStatus } from "./offsite.mjs";
 import { externalProbe } from "./release.mjs";
+import { manualGateway } from "./manual-gateway.mjs";
 async function main() {
   const [flag, path, commandFlag, original] = process.argv.slice(2);
   assert.equal(flag, "--config");
@@ -42,6 +43,10 @@ async function main() {
       maintenanceMilliseconds: result.maintenanceMilliseconds,
       failed: result.phase === "failed",
     };
+  }
+  if (action.startsWith("manual-")) {
+    await manualGateway(config, action, id, value, run);
+    return;
   }
   if (action === "baseline") {
     assert.ok(!id && !value);

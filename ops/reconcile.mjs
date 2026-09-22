@@ -13,6 +13,7 @@ import {
 } from "./host.mjs";
 import { json, durable, syncPath } from "./io.mjs";
 import { alive, processIdentity } from "./process-identity.mjs";
+import { recoverManual } from "./manual-release.mjs";
 import {
   freeze,
   recoverBeforeOpen,
@@ -107,11 +108,44 @@ if (!process.env.DAILY_RECONCILE_LOCKED) {
       await stop({ ...config, unit: settings.unit });
     if (await exists(resolve(config.stateDir, "incident.json")))
       throw new Error("INCIDENT_REQUIRES_MANUAL_RESOLUTION");
+    // A request whose worker never wrote an operation record cannot have
+    // touched data, but it must not keep the host pending without evidence.
+    const requestDirectory = resolve(config.stateDir, "requests");
+    if (await exists(requestDirectory)) {
+      for (const name of await readdir(requestDirectory)) {
+        if (!name.endsWith(".json") || name.endsWith(".result.json")) continue;
+        const requestId = name.slice(0, -5);
+        if (
+          (await exists(
+            resolve(config.stateDir, "operations", `${requestId}.json`),
+          )) ||
+          (await exists(resolve(requestDirectory, `${requestId}.result.json`)))
+        )
+          continue;
+        const active = command(
+          "/bin/systemctl",
+          "show",
+          `daily-flow-operation-${requestId}.service`,
+          "--property=ActiveState",
+          "--value",
+        ).trim();
+        if (["active", "activating"].includes(active)) continue;
+        await freeze(config, { id: requestId }, "WORKER_NEVER_STARTED", false);
+        await durable(resolve(requestDirectory, `${requestId}.result.json`), {
+          id: requestId,
+          phase: "failed",
+          failure: "WORKER_NEVER_STARTED",
+          reconciledAt: new Date().toISOString(),
+          finishedAt: new Date().toISOString(),
+        });
+      }
+    }
     if (operation) {
       assert.ok(
         [
           "backup",
           "release",
+          "manual-release",
           "restore",
           "resolve-incident",
           "inspect",
@@ -122,7 +156,10 @@ if (!process.env.DAILY_RECONCILE_LOCKED) {
         !operation.mayHaveOpenedAt && !operation.recoveryOpeningAt,
         "OPEN_BOUNDARY_REQUIRES_MANUAL_RESOLUTION",
       );
-      if (
+      if (operation.command === "manual-release") {
+        operation = await recoverManual(configPath, config, operation);
+        await freeze(config, operation, "WORKER_INTERRUPTED", false);
+      } else if (
         operation.command === "release" &&
         ["data-ready", "activating"].includes(operation.phase)
       ) {

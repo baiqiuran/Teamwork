@@ -17,6 +17,7 @@ import {
 } from "./host.mjs";
 import { validate } from "./snapshots.mjs";
 import { prepare, activate, externalProbe } from "./release.mjs";
+import { manualRelease } from "./manual-release.mjs";
 import {
   freeze,
   recoverBeforeOpen,
@@ -34,6 +35,7 @@ assert.ok(
     "backup",
     "restore",
     "release",
+    "manual-release",
     "status",
     "inspect",
     "resolve-incident",
@@ -101,12 +103,13 @@ if (action === "status") {
     );
   }
 } else {
-  const kind =
-    action === "release" ? "pre-release" : (input["--kind"] ?? "manual");
+  const kind = ["release", "manual-release"].includes(action)
+    ? "pre-release"
+    : (input["--kind"] ?? "manual");
   assert.ok(["daily", "pre-release", "manual"].includes(kind));
   if (action === "restore")
     assert.ok(input["--snapshot"], "Restore requires a snapshot id");
-  if (action === "release") {
+  if (["release", "manual-release"].includes(action)) {
     assert.match(input["--baseline"] ?? "", /^[a-f0-9]{40}$/);
     assert.ok(input["--candidate"], "Candidate directory required");
     input["--candidate"] = resolve(input["--candidate"]);
@@ -196,6 +199,12 @@ if (action === "status") {
           );
         ownsRecord = true;
         await durable(statePath, operation);
+        if (action === "manual-release") {
+          operation = await manualRelease(configPath, config, operation);
+          console.log(JSON.stringify(operation));
+          if (operation.phase === "failed") process.exitCode = 1;
+          break execution;
+        }
         if (action === "inspect" || action === "resolve-incident") {
           if (action === "inspect") {
             const current = await json(

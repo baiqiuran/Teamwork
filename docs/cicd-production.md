@@ -1,8 +1,10 @@
 # 日序 CI/CD：生产接入与运维手册
 
-这是从现有单实例接入自动发布的操作手册。**单活接管、PR 自动发布、本地备份与真实副本恢复、外网巡检及手动失败邮件已通过。** 控制程序的安装与第一次切换属于基础设施维护，后续 PR 发布只更新普通应用。
+**以下是历史接管记录，不是当前发布操作顺序。** 自动发布与双槽切换链路已不再使用；受管备份与保留链路仍在使用，不可整套删除。2026-09-22 只读实测生产仍在 blue 槽运行 `547affeec2107ea23f52f5210310f5323eb9ed96`，不等于新的单实例代码已安装。新流程及人工恢复见 [手工发布手册](manual-release.md)。
 
-2026-09-20 首次自动发布后的生产版本为 `70b874312aafdc30cae52defb906bb3465348b7d`，运行于 green，blue 和旧服务停止。当时 `DEPLOY_ENABLED`、`INSPECTION_ENABLED` 与主机自动发布均已开启。**2026-09-21 两项开关已关闭，两条 workflow 也已禁用，生产版本仍停留在 `70b8743`，此后合入 main 的提交不会自动上线**，见「2026-09-21 停用自动发布与巡检」。**2026-09-22 最后一条 `Application checks` 也已禁用，仓库不再有会在推送时运行的 GitHub workflow**，见「2026-09-22 停用最后一条 GitHub workflow」。以下准备前快照用于说明接管过程，不能作为当前服务状态。
+旧控制程序安装和单活接管曾完成验证；下文保留该历史证据，不授权重新启用自动化或按旧步骤覆盖当前配置。
+
+2026-09-20 首次自动发布后的生产版本为 `70b874312aafdc30cae52defb906bb3465348b7d`，运行于 green，blue 和旧服务停止。当时 `DEPLOY_ENABLED`、`INSPECTION_ENABLED` 与主机自动发布均已开启。**2026-09-21 两项开关已关闭，两条 workflow 也已禁用，生产版本当时停留在 `70b8743`，此后合入 main 的提交不会自动上线（2026-09-22 只读实测：生产已在 blue 槽运行 `547affeec2107ea23f52f5210310f5323eb9ed96`，见本文开头）**，见「2026-09-21 停用自动发布与巡检」。**2026-09-22 最后一条 `Application checks` 也已禁用，仓库不再有会在推送时运行的 GitHub workflow**，见「2026-09-22 停用最后一条 GitHub workflow」。以下准备前快照用于说明接管过程，不能作为当前服务状态。
 
 ## 已核对的生产现场
 
@@ -163,7 +165,7 @@ PR #2 经 run 35500627320 全部必需检查后，于 2026-09-20T09:01:13Z 合�
 
 保留的约束：`allow_force_pushes=false`、`allow_deletions=false`，即仍不能强推或删除 main。`Application checks` 保持启用，push 到 main 仍跑 CI，只是不再有闸门作用。（该条到 2026-09-22 也停用，见文末。）
 
-**未改动**：production Environment 及其 `DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_URL` 变量、`DEPLOY_SSH_KEY`/`DEPLOY_KNOWN_HOSTS` Secrets、主机上的控制程序与运行版本。生产仍运行 `70b874312aafdc30cae52defb906bb3465348b7d`，此后进 main 的提交都需手动发布。
+**未改动**：production Environment 及其 `DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_URL` 变量、`DEPLOY_SSH_KEY`/`DEPLOY_KNOWN_HOSTS` Secrets、主机上的控制程序与运行版本。生产当时仍运行 `70b874312aafdc30cae52defb906bb3465348b7d`，此后进 main 的提交都需手动发布（2026-09-22 只读实测已改为 blue 槽 `547affe…`）。
 
 解除前的分支保护取值（恢复时按此还原）：`required_status_checks` 为 `strict: true` 且 contexts 为 `["Verified Linux artifact", "Linux release and recovery"]`；`required_pull_request_reviews` 为 `required_approving_review_count: 0`、`dismiss_stale_reviews: true`；`required_signatures`、`required_conversation_resolution`、`enforce_admins` 均为启用。
 

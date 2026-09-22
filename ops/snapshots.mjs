@@ -109,17 +109,28 @@ export function extract(archive, directory) {
   );
 }
 /**
- * The application code that serving depends on. `node_modules` is left out on
- * purpose: it is pinned by `package-lock.json`, which is in the list, so a
- * dependency tree that drifted without the lockfile changing is its own bug.
+ * Compare installed dependency bytes as well as application code: the lockfile
+ * describes the intended dependency tree, not the bytes currently installed.
  */
-const CODE_PARTS = ["build", "dist", "package.json", "package-lock.json"];
+const CODE_PARTS = [
+  "build",
+  "dist",
+  "node_modules",
+  "package.json",
+  "package-lock.json",
+  "release.json",
+];
 
 async function codeInventory(base) {
   const listed = [];
   for (const name of CODE_PARTS) {
     const path = resolve(base, name);
-    if ((await lstat(path)).isDirectory())
+    const item = await lstat(path);
+    assert.ok(
+      item.isDirectory() || item.isFile(),
+      `UNSAFE_SERVED_CODE_TYPE: ${name}`,
+    );
+    if (item.isDirectory())
       listed.push(
         ...(await inventory(path)).map((file) => ({
           ...file,
@@ -129,7 +140,7 @@ async function codeInventory(base) {
     else
       listed.push({
         path: name,
-        bytes: (await stat(path)).size,
+        bytes: item.size,
         sha256: await sha256(path),
       });
   }
@@ -137,16 +148,19 @@ async function codeInventory(base) {
 }
 
 export async function backup(config, operation) {
+  // Validate every archive member before even reading release.json via tar.
+  const expandedCodeBytes = archiveSize(config.artifact);
   const initialFiles = await inventory(config.dataDir);
   const bytes = initialFiles.reduce((sum, file) => sum + file.bytes, 0);
   const runtimeBytes =
     (await stat(config.artifact)).size + (await stat(process.execPath)).size;
-  await capacity(config, bytes * 3 + runtimeBytes * 2);
+  await capacity(config, bytes * 3 + runtimeBytes * 2 + expandedCodeBytes);
   const partial = resolve(config.backupDir, `.${operation.id}.partial`);
   await mkdir(partial, { mode: 0o700 });
   await cp(config.dataDir, resolve(partial, "data"), { recursive: true });
   const state = await databaseState(config, resolve(partial, "data"));
   const files = await inventory(resolve(partial, "data"));
+  const servedCode = await codeInventory(config.current);
   const manifest = await json(resolve(config.current, "release.json"));
   const archiveManifest = JSON.parse(
     command("/usr/bin/tar", "-xOzf", config.artifact, "release.json"),
@@ -169,7 +183,7 @@ export async function backup(config, operation) {
     );
     assert.deepEqual(
       await codeInventory(check),
-      await codeInventory(config.current),
+      servedCode,
       "SERVED_CODE_MISMATCH",
     );
   } finally {

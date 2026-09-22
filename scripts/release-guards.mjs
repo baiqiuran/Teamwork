@@ -3,11 +3,30 @@ import { basename, dirname } from "node:path";
 import { promisify } from "node:util";
 
 const run = promisify(execFile);
+// Neither TAR_OPTIONS/GIT_DIR nor application secrets may alter these guards.
+const toolEnvironment = () =>
+  Object.fromEntries(
+    Object.entries(process.env).filter(([key]) =>
+      [
+        "path",
+        "systemroot",
+        "windir",
+        "comspec",
+        "pathext",
+        "temp",
+        "tmp",
+        "home",
+        "userprofile",
+      ].includes(key.toLowerCase()),
+    ),
+  );
 
 async function git(repository, ...args) {
   const { stdout } = await run("git", args, {
     cwd: repository,
+    env: toolEnvironment(),
     encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
     windowsHide: true,
   });
   return stdout;
@@ -32,7 +51,7 @@ export async function preflightRelease({ repository, baseline }) {
     repository,
     "status",
     "--porcelain=v1",
-    "--untracked-files=all",
+    "--untracked-files=normal",
   );
   if (status.trim()) {
     const paths = status
@@ -95,11 +114,76 @@ export async function preflightRelease({ repository, baseline }) {
   return { commit: head, baseline: running };
 }
 
+/** Walk every commit (and merge parent), not just the endpoint diff. Disabling
+ * rename detection exposes both names, including paths moved OUT of SQLite. */
+export async function migrationPaths({ repository, baseline, commit }) {
+  if (![baseline, commit].every((value) => /^[0-9a-f]{40}$/.test(value)))
+    throw new Error("MIGRATION_RANGE_INVALID");
+  const names = await git(
+    repository,
+    "log",
+    "--full-history",
+    "-m",
+    "--format=",
+    "--name-only",
+    "--no-renames",
+    "-z",
+    `${baseline}..${commit}`,
+    "--",
+  );
+  return [
+    ...new Set(
+      names
+        .split("\0")
+        .filter((name) => name.startsWith("server/infrastructure/sqlite/")),
+    ),
+  ].sort();
+}
+
+export async function migrationSummary({ repository, baseline, commit }) {
+  if (![baseline, commit].every((value) => /^[0-9a-f]{40}$/.test(value)))
+    throw new Error("MIGRATION_RANGE_INVALID");
+  return git(
+    repository,
+    "log",
+    "--full-history",
+    "-m",
+    "--format=commit %H%n%s",
+    "--stat",
+    "--patch",
+    "--no-ext-diff",
+    "--no-textconv",
+    "--no-renames",
+    "--no-color",
+    `${baseline}..${commit}`,
+    "--",
+    "server/infrastructure/sqlite/",
+  );
+}
+
+/** Public confirmation policy; the CLI obtains the response from a TTY only. */
+export function confirmMigration({
+  baseline,
+  commit,
+  paths,
+  interactive,
+  response,
+}) {
+  if (!paths.length) return { paths: [], confirmed: false };
+  if (!interactive || response !== `MIGRATE ${baseline} ${commit}`)
+    throw new Error(
+      "MIGRATION_CONFIRMATION_REQUIRED: cancelled; no build or upload performed",
+    );
+  return { paths, confirmed: true };
+}
+
 function listed(archive, ...flags) {
   // GNU tar reads "C:\path" as "host:path", so it only ever sees a name.
   return execFileSync("tar", [...flags, basename(archive)], {
     cwd: dirname(archive),
+    env: toolEnvironment(),
     encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
     windowsHide: true,
   })
     .split("\n")
@@ -113,7 +197,11 @@ function listed(archive, ...flags) {
  */
 export async function assertArchiveUploadable({ archive }) {
   const escaping = listed(archive, "-tzf").filter(
-    (path) => path.startsWith("/") || path.split("/").includes(".."),
+    (path) =>
+      path.startsWith("/") ||
+      /^[a-zA-Z]:/.test(path) ||
+      path.includes("\\") ||
+      path.split("/").includes(".."),
   );
   if (escaping.length)
     throw new Error(

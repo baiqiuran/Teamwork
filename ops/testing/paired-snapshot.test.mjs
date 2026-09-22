@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { once } from "node:events";
+import { createServer } from "node:net";
 import {
   access,
   mkdir,
@@ -11,10 +13,23 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { fixture, run } from "./fixture.mjs";
+import { fixture as createFixture, run } from "./fixture.mjs";
 
 const V2 = "b".repeat(40),
   V3 = "c".repeat(40);
+
+async function fixture(t) {
+  const f = await createFixture();
+  t.diagnostic(`fixture root: ${f.root}`);
+  t.after(async () => {
+    run("systemctl", "stop", f.config.unit);
+    await rm(`/etc/systemd/system/${f.id}.service`, { force: true });
+    await rm(`/etc/nginx/conf.d/${f.id}.conf`, { force: true });
+    await rm(f.root, { recursive: true, force: true });
+    await assert.rejects(access(f.root), { code: "ENOENT" });
+  });
+  return f;
+}
 
 /**
  * Stands in for the release step ticket 05 has to build: put another version on
@@ -70,8 +85,7 @@ const servingCommit = async (f) =>
   (await (await fetch(`${f.origin}/health/ready`)).json()).version;
 
 test("each pre-release snapshot carries the code and the data of its own instant", async (t) => {
-  const f = await fixture();
-  t.after(() => run("systemctl", "stop", `${f.id}.service`));
+  const f = await fixture(t);
   const v1 = JSON.parse(
     await readFile(`${f.root}/current/release.json`, "utf8"),
   ).commit;
@@ -165,9 +179,35 @@ test("each pre-release snapshot carries the code and the data of its own instant
   );
 });
 
+test("installed dependency bytes drifting with an unchanged lockfile are refused as a recovery point", async (t) => {
+  const f = await fixture(t);
+  const lockfile = await readFile(`${f.config.current}/package-lock.json`);
+  const dependency = `${f.config.current}/node_modules/express/index.js`;
+  await writeFile(
+    dependency,
+    (await readFile(dependency, "utf8")) + "\n// installed dependency hotfix\n",
+  );
+  assert.deepEqual(
+    await readFile(`${f.config.current}/package-lock.json`),
+    lockfile,
+  );
+  const result = await f.control(
+    "backup",
+    "--id",
+    "dependency-drift",
+    "--kind",
+    "pre-release",
+  );
+  assert.notEqual(result.code, 0, result.output + result.error);
+  assert.match(result.output + result.error, /SERVED_CODE_MISMATCH/);
+  assert.ok(
+    !(await readdir(f.config.backupDir)).includes("dependency-drift"),
+    "a refused backup must not remain as a recovery point",
+  );
+});
+
 test("code patched in place without a new artifact is refused as a recovery point", async (t) => {
-  const f = await fixture();
-  t.after(() => run("systemctl", "stop", `${f.id}.service`));
+  const f = await fixture(t);
   // The label still matches its archive; only the served bytes moved. A
   // snapshot taken now would carry code that never served.
   const entry = `${f.root}/current/build/server/main.js`;
@@ -187,9 +227,76 @@ test("code patched in place without a new artifact is refused as a recovery poin
   );
 });
 
+test("a served file root cannot be a symlink even when its target bytes match", async (t) => {
+  const f = await fixture(t);
+  const path = `${f.config.current}/package-lock.json`;
+  const target = `${f.root}/external-lockfile.json`;
+  await rename(path, target);
+  await symlink(target, path);
+  const result = await f.control("backup", "--id", "root-link", "--kind", "daily");
+  assert.notEqual(result.code, 0, result.output + result.error);
+  assert.match(result.output + result.error, /UNSAFE_SERVED_CODE_TYPE/);
+  assert.ok(!(await readdir(f.config.backupDir)).includes("root-link"));
+});
+
+test("a special release metadata root is rejected before attempting to read it", async (t) => {
+  const f = await fixture(t);
+  const path = `${f.config.current}/release.json`;
+  await unlink(path);
+  const socket = createServer().listen(path);
+  t.after(() => new Promise((done) => socket.close(done)));
+  await once(socket, "listening");
+  const result = await f.control("backup", "--id", "special-root", "--kind", "daily");
+  assert.notEqual(result.code, 0, result.output + result.error);
+  assert.match(result.output + result.error, /UNSAFE_SERVED_CODE_TYPE: release.json/);
+  assert.ok(!(await readdir(f.config.backupDir)).includes("special-root"));
+});
+
+test("release metadata bytes must match even when the parsed identity is unchanged", async (t) => {
+  const f = await fixture(t);
+  const path = `${f.config.current}/release.json`;
+  const original = await readFile(path, "utf8");
+  await writeFile(path, original + "\n");
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), JSON.parse(original));
+  const result = await f.control("backup", "--id", "metadata-drift", "--kind", "daily");
+  assert.notEqual(result.code, 0, result.output + result.error);
+  assert.match(result.output + result.error, /SERVED_CODE_MISMATCH/);
+  assert.ok(!(await readdir(f.config.backupDir)).includes("metadata-drift"));
+});
+
+test("an archive link is rejected before its release metadata can be read", async (t) => {
+  const f = await fixture(t);
+  const input = `${f.root}/unsafe-archive-input`;
+  const artifact = `${f.root}/unsafe-application.tar.gz`;
+  await mkdir(input);
+  await symlink(`${f.config.current}/release.json`, `${input}/release.json`);
+  run(
+    "tar",
+    "-czf",
+    artifact,
+    "-C",
+    f.config.current,
+    "build",
+    "dist",
+    "node_modules",
+    "package.json",
+    "package-lock.json",
+    "-C",
+    input,
+    "release.json",
+  );
+  await writeFile(
+    `${f.root}/deploy.json`,
+    JSON.stringify({ ...f.config, artifact }),
+  );
+  const result = await f.control("backup", "--id", "archive-link", "--kind", "daily");
+  assert.notEqual(result.code, 0, result.output + result.error);
+  assert.match(result.output + result.error, /UNSAFE_ARCHIVE_LINK/);
+  assert.ok(!(await readdir(f.config.backupDir)).includes("archive-link"));
+});
+
 test("a served identity its archive cannot confirm is refused as a recovery point", async (t) => {
-  const f = await fixture();
-  t.after(() => run("systemctl", "stop", `${f.id}.service`));
+  const f = await fixture(t);
   const manifest = JSON.parse(
     await readFile(`${f.root}/current/release.json`, "utf8"),
   );
@@ -207,8 +314,7 @@ test("a served identity its archive cannot confirm is refused as a recovery poin
 });
 
 test("two pre-release points coexist, and only the newest is retained by name", async (t) => {
-  const f = await fixture();
-  t.after(() => run("systemctl", "stop", `${f.id}.service`));
+  const f = await fixture(t);
   const one = await f.control(
     "backup",
     "--id",

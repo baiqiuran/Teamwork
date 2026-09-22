@@ -10,21 +10,31 @@ const path = resolve(config.stateDir, "operations", `${process.argv[3]}.json`);
 const operation = await json(path);
 const rollback = process.argv[4] === "rollback";
 const result = rollback
-  ? await restore(slotConfig(config, operation.target.oldSlot), {
-      ...operation,
-      command: "restore",
-      id: operation.recoveryId,
-      snapshot: operation.snapshotId,
-    })
-  : ["backup", "release"].includes(operation.command)
+  ? await restore(
+      operation.command === "manual-release"
+        ? config
+        : slotConfig(config, operation.target.oldSlot),
+      {
+        ...operation,
+        command: "restore",
+        id: operation.recoveryId,
+        snapshot: operation.snapshotId,
+      },
+    )
+  : ["backup", "release", "manual-release"].includes(operation.command)
     ? await backup(config, operation)
     : await restore(config, operation);
-if (!rollback && ["backup", "release"].includes(operation.command))
+if (
+  !rollback &&
+  ["backup", "release", "manual-release"].includes(operation.command)
+)
   await enqueue(config, result.id);
 await durable(path, {
   ...operation,
   snapshotId: result.id,
-  commit: result.commit,
+  ...(operation.command === "manual-release"
+    ? { snapshotCommit: result.commit }
+    : { commit: result.commit }),
   localBackup: "verified",
   phase: rollback ? "rollback-data-ready" : "data-ready",
 });

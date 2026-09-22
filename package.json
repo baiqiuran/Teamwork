@@ -19,7 +19,8 @@
     "build:server": "node scripts/build-server.mjs",
     "test:upgrade": "node --import tsx scripts/verify-upgrade.mjs",
     "test:production": "node scripts/verify-production.mjs",
-    "test:ci": "npm run build && tsx --test tests/*.test.ts && playwright test && node --test scripts/release-artifact.test.mjs scripts/verify-candidate.test.mjs scripts/deploy-selection.test.mjs scripts/release-guards.test.mjs",
+    "test:ci": "npm run build && tsx --test tests/*.test.ts && playwright test && node --test scripts/release-artifact.test.mjs scripts/verify-candidate.test.mjs scripts/deploy-selection.test.mjs scripts/release-guards.test.mjs scripts/manual-artifact.test.mjs scripts/manual-release.test.mjs",
+    "release:manual": "node scripts/manual-release.mjs",
     "release:build": "node scripts/release-artifact.mjs build",
     "release:verify": "node scripts/verify-candidate.mjs"
   },

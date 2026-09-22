@@ -6,14 +6,11 @@ export async function intent(action, options) {
     ? resolve(options["--candidate"])
     : undefined;
   let materials;
-  if (action === "release") {
+  if (["release", "manual-release"].includes(action)) {
     materials = {};
-    for (const name of [
-      "application.tar.gz",
-      "receipt.json",
-      "upgrade.json",
-      "plan.json",
-    ])
+    for (const name of action === "manual-release"
+      ? ["application.tar.gz", "receipt.json"]
+      : ["application.tar.gz", "receipt.json", "upgrade.json", "plan.json"])
       materials[name] = await sha256(resolve(candidate, name));
   }
   const value = {

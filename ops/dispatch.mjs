@@ -8,6 +8,7 @@ import { intent } from "./intent.mjs";
 import { report } from "./offsite.mjs";
 import { configuration, command, exists } from "./host.mjs";
 import { json, durable } from "./io.mjs";
+import { freeze } from "./recovery.mjs";
 
 const args = process.argv.slice(2);
 assert.equal(args.shift(), "--config");
@@ -15,9 +16,14 @@ const configPath = resolve(args.shift());
 const config = await configuration(configPath);
 const action = args.shift();
 assert.ok(
-  ["release", "backup", "restore", "inspect", "resolve-incident"].includes(
-    action,
-  ),
+  [
+    "release",
+    "manual-release",
+    "backup",
+    "restore",
+    "inspect",
+    "resolve-incident",
+  ].includes(action),
 );
 const options = {};
 while (args.length) {
@@ -42,7 +48,7 @@ while (args.length) {
 const id = options["--id"] ?? randomUUID();
 assert.match(id, /^[a-zA-Z0-9_-]{1,80}$/);
 options["--id"] = id;
-if (action === "release") {
+if (["release", "manual-release"].includes(action)) {
   assert.match(options["--baseline"] ?? "", /^[a-f0-9]{40}$/);
   assert.ok(options["--candidate"]);
   options["--candidate"] = resolve(options["--candidate"]);
@@ -79,7 +85,8 @@ if (!process.env.DAILY_DISPATCH_LOCKED) {
     process.exitCode = error.status ?? 1;
   }
 } else {
-  if (await exists(path)) {
+  const existingRequest = await exists(path);
+  if (existingRequest) {
     const prior = await json(path);
     assert.equal(prior.fingerprint, fingerprint, "OPERATION_ID_CONFLICT");
   } else {
@@ -116,23 +123,42 @@ if (!process.env.DAILY_DISPATCH_LOCKED) {
       "--property=ActiveState",
       "--value",
     ).trim();
-    if (!["active", "activating"].includes(active)) {
-      command(
-        "/usr/bin/systemd-run",
-        "--quiet",
-        "--no-block",
-        `--unit=${unit}`,
-        "--property=Type=exec",
-        "--property=KillMode=control-group",
-        "--property=Restart=no",
-        "--property=UMask=0077",
-        "--property=TimeoutStopSec=35",
-        process.execPath,
-        fileURLToPath(new URL("./run-request.mjs", import.meta.url)),
-        configPath,
+    if (
+      action === "manual-release" &&
+      existingRequest &&
+      !["active", "activating"].includes(active)
+    ) {
+      const result = {
         id,
+        phase: "unknown",
+        reason: "WORKER_STATE_REQUIRES_RECONCILIATION",
+      };
+      await freeze(config, { id }, result.reason, false);
+      await durable(
+        resolve(config.stateDir, "requests", `${id}.result.json`),
+        result,
       );
+      console.log(JSON.stringify(result));
+      process.exitCode = 1;
+    } else {
+      if (!["active", "activating"].includes(active)) {
+        command(
+          "/usr/bin/systemd-run",
+          "--quiet",
+          "--no-block",
+          `--unit=${unit}`,
+          "--property=Type=exec",
+          "--property=KillMode=control-group",
+          "--property=Restart=no",
+          "--property=UMask=0077",
+          "--property=TimeoutStopSec=35",
+          process.execPath,
+          fileURLToPath(new URL("./run-request.mjs", import.meta.url)),
+          configPath,
+          id,
+        );
+      }
+      console.log(JSON.stringify({ id, phase: "accepted", unit }));
     }
-    console.log(JSON.stringify({ id, phase: "accepted", unit }));
   }
 }

@@ -7,6 +7,7 @@ import { mkdtemp, rm, chown } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { createServer } from "node:net";
+import { randomBytes } from "node:crypto";
 
 const runtime = resolve(process.argv[2]),
   commit = process.argv[3];
@@ -28,6 +29,7 @@ const reservation = createServer().listen(0, "127.0.0.1");
 await once(reservation, "listening");
 const port = reservation.address().port;
 await new Promise((done) => reservation.close(done));
+const token = randomBytes(32).toString("hex");
 const child = spawn(process.execPath, ["build/server/main.js"], {
   cwd: runtime,
   uid,
@@ -38,6 +40,7 @@ const child = spawn(process.execPath, ["build/server/main.js"], {
     NODE_ENV: "production",
     PORT: String(port),
     DAILY_DATABASE_PATH: resolve(directory, "preflight.sqlite"),
+    DAILY_HEALTH_TOKEN: token,
   },
   stdio: "ignore",
 });
@@ -70,6 +73,20 @@ try {
     await new Promise((done) => setTimeout(done, 100));
   }
   assert.ok(ready, "ISOLATED_PREFLIGHT_FAILED");
+  if (process.argv[5] !== undefined) {
+    const health = await read("/internal/health", {
+      headers: { "X-Daily-Health": token },
+    });
+    assert.equal(health.status, 200, "ISOLATED_HEALTH_FAILED");
+    const detail = await health.json();
+    assert.equal(
+      detail.schema,
+      Number(process.argv[5]),
+      "ISOLATED_SCHEMA_MISMATCH",
+    );
+    assert.equal(detail.integrity, "ok", "ISOLATED_INTEGRITY_FAILED");
+    assert.equal(detail.initialized, false, "PREFLIGHT_DATABASE_NOT_EMPTY");
+  }
   assert.equal(
     (await read("/api/setup/status").then((r) => r.json())).needsSetup,
     true,

@@ -6,15 +6,13 @@ After=network.target
 Type=simple
 User=daily-flow
 Group=daily-flow
-WorkingDirectory=/opt/daily-flow/current
+WorkingDirectory=/opt/daily-flow/managed-current
 EnvironmentFile=/etc/daily-flow/daily-flow.env
-# The same lock the backup and release entries take: the application must not
-# hold the database open while a snapshot or a paired restore runs.
+# Snapshot and application processes must hold the same exclusive data lock.
 ExecStart=/usr/bin/flock --nonblock /run/lock/daily-flow-data.lock /usr/local/bin/node build/server/main.js
 KillMode=control-group
 TimeoutStopSec=35
-Restart=on-failure
-RestartSec=5
+Restart=no
 UMask=0027
 NoNewPrivileges=true
 PrivateTmp=true

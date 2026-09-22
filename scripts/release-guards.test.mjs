@@ -8,7 +8,99 @@ import { gzipSync } from "node:zlib";
 import {
   preflightRelease,
   assertArchiveUploadable,
+  migrationPaths,
+  migrationSummary,
+  confirmMigration,
 } from "./release-guards.mjs";
+
+test("migration summary shows actual SQL and reverted history before confirmation", async (t) => {
+  const { root, git, commit: baseline } = await fixture(t);
+  await mkdir(resolve(root, "server/infrastructure/sqlite"), {
+    recursive: true,
+  });
+  await writeFile(
+    resolve(root, "server/infrastructure/sqlite/schema.ts"),
+    'db.exec("ALTER TABLE teams ADD COLUMN archived INTEGER DEFAULT 0");\n',
+  );
+  git("add", "server/infrastructure/sqlite/schema.ts");
+  git("commit", "-m", "add team archive state");
+  git("revert", "--no-edit", "HEAD");
+  const summary = await migrationSummary({
+    repository: root,
+    baseline,
+    commit: git("rev-parse", "HEAD"),
+  });
+  assert.match(summary, /add team archive state/);
+  assert.match(summary, /Revert/);
+  assert.match(
+    summary,
+    /\+db\.exec\("ALTER TABLE teams ADD COLUMN archived INTEGER DEFAULT 0"\)/,
+  );
+  assert.match(
+    summary,
+    /-db\.exec\("ALTER TABLE teams ADD COLUMN archived INTEGER DEFAULT 0"\)/,
+  );
+});
+
+test("migration confirmation covers reverted changes and paths renamed out of SQLite", async (t) => {
+  const { root, git, commit: baseline } = await fixture(t);
+  await mkdir(resolve(root, "server/infrastructure/sqlite"), {
+    recursive: true,
+  });
+  await writeFile(
+    resolve(root, "server/infrastructure/sqlite/schema.ts"),
+    "original",
+  );
+  git("add", ".");
+  git("commit", "-m", "add schema");
+  git("mv", "server/infrastructure/sqlite/schema.ts", "moved.ts");
+  git("commit", "-m", "move schema out");
+  await writeFile(
+    resolve(root, "server/infrastructure/sqlite/reverted.ts"),
+    "temporary",
+  );
+  git("add", ".");
+  git("commit", "-m", "temporary migration");
+  git("revert", "--no-edit", "HEAD");
+  const commit = git("rev-parse", "HEAD");
+  const paths = await migrationPaths({ repository: root, baseline, commit });
+  assert.deepEqual(paths, [
+    "server/infrastructure/sqlite/reverted.ts",
+    "server/infrastructure/sqlite/schema.ts",
+  ]);
+  const confirmation = { baseline, commit, paths };
+  for (const response of ["", "yes", `MIGRATE ${commit} ${baseline}`]) {
+    assert.throws(
+      () => confirmMigration({ ...confirmation, interactive: true, response }),
+      /MIGRATION_CONFIRMATION_REQUIRED/,
+    );
+  }
+  assert.throws(
+    () =>
+      confirmMigration({
+        ...confirmation,
+        interactive: false,
+        response: `MIGRATE ${baseline} ${commit}`,
+      }),
+    /MIGRATION_CONFIRMATION_REQUIRED/,
+  );
+  assert.deepEqual(
+    confirmMigration({
+      ...confirmation,
+      interactive: true,
+      response: `MIGRATE ${baseline} ${commit}`,
+    }),
+    { paths, confirmed: true },
+  );
+  assert.deepEqual(
+    await migrationPaths({ repository: root, baseline: commit, commit }),
+    [],
+  );
+  assert.deepEqual(confirmMigration({ baseline, commit, paths: [] }), {
+    paths: [],
+    confirmed: false,
+  });
+});
 
 /** Committed fixture repository; returns its root, git runner and only commit. */
 async function fixture(t) {
@@ -213,7 +305,13 @@ test("an artifact holding links or devices is refused before upload", async (t) 
 });
 
 test("an artifact member that would land outside its directory is refused", async (t) => {
-  for (const name of ["/etc/passwd", "../../etc/shadow"]) {
+  for (const name of [
+    "/etc/passwd",
+    "../../etc/shadow",
+    "C:/outside.txt",
+    "..\\outside.txt",
+    "\\\\host\\share\\file",
+  ]) {
     const archive = await syntheticArtifact(t, [
       member({ name: "package.json", body: '{"name":"release"}' }),
       member({ name, body: "x" }),
@@ -222,7 +320,11 @@ test("an artifact member that would land outside its directory is refused", asyn
       () => assertArchiveUploadable({ archive }),
       (error) => {
         assert.match(error.message, /^UNSAFE_ARCHIVE_PATH/);
-        assert.ok(error.message.includes(name), `must name ${name}`);
+        assert.ok(
+          error.message.includes(name) ||
+            error.message.includes(name.replaceAll("\\", "\\\\")),
+          `must name ${name}, possibly escaped by tar`,
+        );
         return true;
       },
       `${name} must not be uploadable`,
