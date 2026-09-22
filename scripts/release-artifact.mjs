@@ -13,6 +13,7 @@ import { tmpdir, release } from "node:os";
 import { resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { npmCli } from "./npm-cli.mjs";
+import { tarOperand } from "./tar-operand.mjs";
 
 const args = process.argv.slice(2);
 assert.equal(
@@ -72,7 +73,12 @@ try {
     `--output=${resolve(directory, "source.tar")}`,
     commit,
   );
-  run(source, "tar", "-xf", resolve(directory, "source.tar"));
+  run(
+    source,
+    "tar",
+    "-xf",
+    tarOperand(source, resolve(directory, "source.tar")),
+  );
   run(source, process.execPath, npmCli, "ci");
   run(source, process.execPath, npmCli, "run", "test:ci");
   await mkdir(runtime);
@@ -122,7 +128,7 @@ try {
     runtime,
     "tar",
     "-czf",
-    archive,
+    tarOperand(runtime, archive),
     "build",
     "dist",
     "node_modules",

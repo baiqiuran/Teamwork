@@ -2,10 +2,11 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import { npmCli } from "./npm-cli.mjs";
+import { tarOperand } from "./tar-operand.mjs";
 import { fileBlob, verifyMove } from "./migration-moves.mjs";
 
 const args = process.argv.slice(2);
@@ -223,11 +224,17 @@ try {
     `--output=${resolve(directory, "source.tar")}`,
     from,
   );
-  run(source, "tar", "-xf", resolve(directory, "source.tar"));
+  run(
+    source,
+    "tar",
+    "-xf",
+    tarOperand(source, resolve(directory, "source.tar")),
+  );
   run(source, process.execPath, npmCli, "ci");
   run(source, process.execPath, npmCli, "run", "build:server");
   // Runtime archives are trusted CI outputs; reject unexpected top-level paths before extraction.
-  const paths = execFileSync("tar", ["-tzf", archive], {
+  const paths = execFileSync("tar", ["-tzf", basename(archive)], {
+    cwd: dirname(archive),
     encoding: "utf8",
     windowsHide: true,
   })
@@ -244,7 +251,7 @@ try {
     ),
     "Invalid runtime archive paths",
   );
-  run(runtime, "tar", "-xzf", archive);
+  run(runtime, "tar", "-xzf", tarOperand(runtime, archive));
   const manifest = JSON.parse(
     await readFile(resolve(runtime, "release.json"), "utf8"),
   );
