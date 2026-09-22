@@ -2,25 +2,25 @@
 
 这是从现有单实例接入自动发布的操作手册。**单活接管、PR 自动发布、本地备份与真实副本恢复、外网巡检及手动失败邮件已通过。** 控制程序的安装与第一次切换属于基础设施维护，后续 PR 发布只更新普通应用。
 
-2026-09-20 首次自动发布后的生产版本为 `70b874312aafdc30cae52defb906bb3465348b7d`，运行于 green，blue 和旧服务停止。当时 `DEPLOY_ENABLED`、`INSPECTION_ENABLED` 与主机自动发布均已开启。**2026-09-21 两项开关已关闭，两条 workflow 也已禁用，生产版本仍停留在 `70b8743`，此后合入 main 的提交不会自动上线**，见「2026-09-21 停用自动发布与巡检」。以下准备前快照用于说明接管过程，不能作为当前服务状态。
+2026-09-20 首次自动发布后的生产版本为 `70b874312aafdc30cae52defb906bb3465348b7d`，运行于 green，blue 和旧服务停止。当时 `DEPLOY_ENABLED`、`INSPECTION_ENABLED` 与主机自动发布均已开启。**2026-09-21 两项开关已关闭，两条 workflow 也已禁用，生产版本仍停留在 `70b8743`，此后合入 main 的提交不会自动上线**，见「2026-09-21 停用自动发布与巡检」。**2026-09-22 最后一条 `Application checks` 也已禁用，仓库不再有会在推送时运行的 GitHub workflow**，见「2026-09-22 停用最后一条 GitHub workflow」。以下准备前快照用于说明接管过程，不能作为当前服务状态。
 
 ## 已核对的生产现场
 
 2026-09-20 首次通过已验证 SSH 主机身份只读检查（下表是准备前快照）：
 
-| 项目 | 实测结果 |
-| --- | --- |
-| 地址 | `https://8.148.245.224`，仍使用公网 IP |
-| 当前代码 | `8d08b2b959c7067e2125b7446681fb730a8c45a6`；已跟踪源码无修改 |
-| 当前服务 | `daily-flow.service` active，普通用户 `daily-flow`，端口 4310 |
-| Node | `v24.15.0` |
-| 数据库 | `/var/lib/daily-flow/daily-flow.sqlite`，附件在同目录下 |
-| 数据与空间 | 数据目录约 236 KB；原备份约 52 KB；根盘可用约 32 GB |
-| 内存 | 约 1.7 GB，另有 1 GB swap；构建放 GitHub runner |
-| 旧备份 | 每日 04:00，`/etc/daily-flow/backup.sh`；最近任务成功 |
-| 证书 | 当前证书到期 `2026-09-24 18:39:44 UTC`；`snap.certbot.renew.timer` 正常、最近续期任务成功 |
-| 新控制程序 | `/opt/daily-flow/control`、新控制状态及 `deploy.json` 尚未安装 |
-| 备份方案 | 2026-09-20 用户取消云备份，采用服务器本地备份；无需 OSS/RAM |
+| 项目       | 实测结果                                                                                  |
+| ---------- | ----------------------------------------------------------------------------------------- |
+| 地址       | `https://8.148.245.224`，仍使用公网 IP                                                    |
+| 当前代码   | `8d08b2b959c7067e2125b7446681fb730a8c45a6`；已跟踪源码无修改                              |
+| 当前服务   | `daily-flow.service` active，普通用户 `daily-flow`，端口 4310                             |
+| Node       | `v24.15.0`                                                                                |
+| 数据库     | `/var/lib/daily-flow/daily-flow.sqlite`，附件在同目录下                                   |
+| 数据与空间 | 数据目录约 236 KB；原备份约 52 KB；根盘可用约 32 GB                                       |
+| 内存       | 约 1.7 GB，另有 1 GB swap；构建放 GitHub runner                                           |
+| 旧备份     | 每日 04:00，`/etc/daily-flow/backup.sh`；最近任务成功                                     |
+| 证书       | 当前证书到期 `2026-09-24 18:39:44 UTC`；`snap.certbot.renew.timer` 正常、最近续期任务成功 |
+| 新控制程序 | `/opt/daily-flow/control`、新控制状态及 `deploy.json` 尚未安装                            |
+| 备份方案   | 2026-09-20 用户取消云备份，采用服务器本地备份；无需 OSS/RAM                               |
 
 这些是首次检查时的快照，实施切换前必须再核对。
 
@@ -42,15 +42,15 @@
 
 首次设置时，在本机运行 `gh auth login --web`，完成有仓库管理权限的账号登录。2026-09-20 已验证 `baiqiuran` 具备仓库 admin 权限；随后建立 production Environment（仅 main）、main PR/必需检查保护、非秘密变量和部署 Secrets。准备时发布与巡检开关为 false；完成接管及首次发布后两项曾开启，**2026-09-21 已再次关闭，同时解除了 main 的 PR、必需检查、提交签名与对管理员生效等限制，仅保留禁止强推和禁止删除分支**。无需发送令牌。首次设置需要仓库/Environment/分支规则权限；普通 workflow token 只保留工作流中声明的只读权限。
 
-| 位置 | 名称 | 值/来源 |
-| --- | --- | --- |
-| 仓库 Variable | `DEPLOY_ENABLED` | 先 `false`，验收后才开启 |
-| 仓库 Variable | `INSPECTION_ENABLED` | 先 `false`，接入诊断后开启 |
-| production Variable | `DEPLOY_HOST` | `8.148.245.224` |
-| production Variable | `DEPLOY_USER` | 专用 `daily-deploy` |
-| production Variable | `DEPLOY_URL` | `https://8.148.245.224` |
-| production Secret | `DEPLOY_SSH_KEY` | 新生成的专用部署私钥 |
-| production Secret | `DEPLOY_KNOWN_HOSTS` | 从可信 SSH/控制台核验的主机公钥 |
+| 位置                | 名称                 | 值/来源                         |
+| ------------------- | -------------------- | ------------------------------- |
+| 仓库 Variable       | `DEPLOY_ENABLED`     | 先 `false`，验收后才开启        |
+| 仓库 Variable       | `INSPECTION_ENABLED` | 先 `false`，接入诊断后开启      |
+| production Variable | `DEPLOY_HOST`        | `8.148.245.224`                 |
+| production Variable | `DEPLOY_USER`        | 专用 `daily-deploy`             |
+| production Variable | `DEPLOY_URL`         | `https://8.148.245.224`         |
+| production Secret   | `DEPLOY_SSH_KEY`     | 新生成的专用部署私钥            |
+| production Secret   | `DEPLOY_KNOWN_HOSTS` | 从可信 SSH/控制台核验的主机公钥 |
 
 2026-09-20 实测 ED25519 主机指纹：`SHA256:oJatmlAzkijPP2Z/o28Hpy6y8qxmUkkK4ByUXSc9Hgc`。实施时再比较服务器 `/etc/ssh/ssh_host_ed25519_key.pub`，不要仅凭网络扫描信任新的主机密钥。
 
@@ -73,14 +73,14 @@ production Environment 只接受 main。main 要求 PR、`Verified Linux artifac
 9. 配置 boot reconcile 和新每日备份/清理 timer，进行受控重启验收，确认单活及启动所有者。续期 timer 保持原配置。
 10. 初始恢复点、实际升级证明、双槽及只读检查通过后再开启主机自动发布。随后启用 GitHub 变量，完成一次真正的 PR 合并驱动发布，记录下表；故障演练只在隔离环境进行。
 
-| 首次真实验收证据 | 实测结果 |
-| --- | --- |
-| PR / Actions run | PR #2；main 检查 35501147947；自动发布 35501559584，全通过 |
-| 实际前后 SHA、候选 SHA256 | `8d08b2b` → `70b8743`；`4aefde985a73033321d8daab6c28d049233f5a01a56cf1a1bca80df5b2639877` |
-| blue/green 前后槽位、维护毫秒数 | blue → green；7207 ms |
-| 本地快照 ID、数据时间、回读校验 | `ci-35501147947-8d08b2b959c7067e-70b874312aafdc30`；2026-09-20T09:11:06.079Z；verified |
-| 原成员登录（成员确认） | 用户回复“登录上去了”；未让自动检查使用成员凭证 |
-| 外网巡检、失败邮件 | 手动正常巡检 35501658596 成功；通知测试 35499946329 用户确认收件；自然 schedule 待核对 |
+| 首次真实验收证据                  | 实测结果                                                                                                             |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| PR / Actions run                  | PR #2；main 检查 35501147947；自动发布 35501559584，全通过                                                           |
+| 实际前后 SHA、候选 SHA256         | `8d08b2b` → `70b8743`；`4aefde985a73033321d8daab6c28d049233f5a01a56cf1a1bca80df5b2639877`                            |
+| blue/green 前后槽位、维护毫秒数   | blue → green；7207 ms                                                                                                |
+| 本地快照 ID、数据时间、回读校验   | `ci-35501147947-8d08b2b959c7067e-70b874312aafdc30`；2026-09-20T09:11:06.079Z；verified                               |
+| 原成员登录（成员确认）            | 用户回复“登录上去了”；未让自动检查使用成员凭证                                                                       |
+| 外网巡检、失败邮件                | 手动正常巡检 35501658596 成功；通知测试 35499946329 用户确认收件；自然 schedule 待核对                               |
 | 隔离环境本地副本恢复报告、RPO/RTO | `production-local-recovery-report.json`；全部业务/附件/协议通过，withinRpo/withinRto 为 true；完整耗时范围见实测说明 |
 
 ## 4. 日常操作
@@ -133,7 +133,6 @@ PR 合并驱动发布、正常外网巡检和手动失败邮件收件已验证�
 - 实际备份复制到本机约 10 秒；隔离环境首次因环境文件覆盖端口而超时，修正隔离服务的最后一层环境覆盖后通过。从首次启动演练到第二次验证完成约 3 分钟。失败实例均已停止；这没有改动生产数据库。
 - 当前 PR #1 的迁移审阅修复已通过 5 项边界回归及双轴复核；最终 main 产物仍由发布工作流再次执行实际生产基线升级/配套恢复验证。
 
-
 ## 首次自动发布的基线修正
 
 PR #1 已合并为 `e0fb371131efab3b240465ea557775fa67bb8715`，main 构建及 Linux 发布恢复门槛全部通过（run 35499934914）。原样包 SHA256 为 `97c09037d9f1ab1a9320ec590880c2d8add578606fbc4bdab811652510aa187b`。
@@ -154,15 +153,15 @@ PR #2 经 run 35500627320 全部必需检查后，于 2026-09-20T09:01:13Z 合�
 
 改为手动推送合并，生产发布不再由 CI 触发。关闭前确认没有 `in_progress` 或 `queued` 的 run，因此没有把主机侧发布流程停在半路。
 
-| 对象 | 变更 | 时间 |
-| --- | --- | --- |
-| 仓库 Variable `DEPLOY_ENABLED` | `true` → `false` | 03:20:42Z |
-| 仓库 Variable `INSPECTION_ENABLED` | `true` → `false` | 03:22:48Z |
-| workflow `Production deployment`（362539584） | `disabled_manually` | 同上 |
-| workflow `Production inspection`（362539585） | `disabled_manually` | 同上 |
-| main 分支保护 | 解除必需状态检查、必须 PR、提交签名要求、讨论必须解决、对管理员生效 | 同上 |
+| 对象                                          | 变更                                                                | 时间      |
+| --------------------------------------------- | ------------------------------------------------------------------- | --------- |
+| 仓库 Variable `DEPLOY_ENABLED`                | `true` → `false`                                                    | 03:20:42Z |
+| 仓库 Variable `INSPECTION_ENABLED`            | `true` → `false`                                                    | 03:22:48Z |
+| workflow `Production deployment`（362539584） | `disabled_manually`                                                 | 同上      |
+| workflow `Production inspection`（362539585） | `disabled_manually`                                                 | 同上      |
+| main 分支保护                                 | 解除必需状态检查、必须 PR、提交签名要求、讨论必须解决、对管理员生效 | 同上      |
 
-保留的约束：`allow_force_pushes=false`、`allow_deletions=false`，即仍不能强推或删除 main。`Application checks` 保持启用，push 到 main 仍跑 CI，只是不再有闸门作用。
+保留的约束：`allow_force_pushes=false`、`allow_deletions=false`，即仍不能强推或删除 main。`Application checks` 保持启用，push 到 main 仍跑 CI，只是不再有闸门作用。（该条到 2026-09-22 也停用，见文末。）
 
 **未改动**：production Environment 及其 `DEPLOY_HOST`/`DEPLOY_USER`/`DEPLOY_URL` 变量、`DEPLOY_SSH_KEY`/`DEPLOY_KNOWN_HOSTS` Secrets、主机上的控制程序与运行版本。生产仍运行 `70b874312aafdc30cae52defb906bb3465348b7d`，此后进 main 的提交都需手动发布。
 
@@ -178,3 +177,24 @@ gh workflow enable "Production inspection"
 ```
 
 分支保护需按上面的取值重新 PUT 回 `repos/baiqiuran/Teamwork/branches/main/protection`。注意 `required_conversation_resolution` 在该 API 版本接受布尔值而非对象。
+
+## 2026-09-22 停用最后一条 GitHub workflow
+
+| 对象                                       | 变更                | 时间      |
+| ------------------------------------------ | ------------------- | --------- |
+| workflow `Application checks`（362507018） | `disabled_manually` | 02:26:23Z |
+
+`.github/workflows/` 下 `ci.yml`、`deploy.yml`、`inspection.yml` 三个文件全部保留，作为恢复依据；文件从未删除过。此后 push 到 main 不触发任何 GitHub 校验，构建与验证由本机与服务器承担：
+
+```sh
+npm run test:ci                       # 构建、架构检查、完整 API/MCP、完整浏览器、发布守卫
+npm run release:build                 # 产出候选产物；Linux 产物须在 Linux 上构建
+npm run release:verify                # 候选材料与迁移说明校验
+node scripts/verify-host-control.mjs <candidate> <host-proof>
+```
+
+停用前 `163d159` 的最后一次 push 已跑完两条作业，结果是本次记录的直接依据：`Verified Linux artifact` 成功（它执行 `npm run test:ci`，含 82 项 API/MCP 与 35 项浏览器用例）；`Linux release and recovery` 在 `scripts/create-plan.mjs` 停止，报 `MIGRATION_NOTES_MISSING: e6dc0bb:server/composition/resources.ts:ab23d762`。原因是多团队改造改动了装配 `resources.ts`、`server/infrastructure/sqlite/ai-migrations.ts` 与日报、成员、项目任务三处模块仓储 SQL，却没在 `docs/migrations/automatic.json` 按内容哈希登记说明。**这条守卫不只在 CI 里：手工发布链路的 `scripts/verify-candidate.mjs` 同样逐版本要求登记，缺说明的候选无法进入发布**，因此属发布前必补项。已按既有格式补五条说明，并在本机以生产基线 `4fddcd67` 为起点验证 `create-plan` 可生成完整升级跨度计划、发布链节点测试 10/10 通过。
+
+未验证项要记清：`verify-host-control.mjs` 首行断言 `process.platform === "linux"`，Windows 本机执行不了，所以自 `163d159` 之后该作业的后续步骤（双槽切换、崩溃恢复、异地副本、受限 SSH）没有任何自动执行者，首次手工发布前须在 Linux 环境补做一遍。
+
+恢复：`gh workflow enable "Application checks"`（362507018）。若还要恢复门禁，需同时按上一节的取值重开两条 workflow、两个 Variable 与 main 分支保护。
