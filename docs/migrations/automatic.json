@@ -139,5 +139,30 @@
     "automatic": true,
     "kind": "additive",
     "description": "合并时保留 DDD 装配并暂时移除推导回调；后续 73ab191 恢复回调，完整跨度需验证授权兼容，不改变业务历史数据。"
+  },
+  "ab23d7624861d75c8e97c68208214943a64f6aab": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "装配层取消引导密钥选项，站点是否已初始化改为按是否存在任一团队判定；表结构与既有数据不变。"
+  },
+  "bc1fb3f35c8fce5bcec16ef54ed26edcb63a09f7": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "v8 迁移：团队表新增唯一 name_key，成员表重建并补 team_id，保留全部成员账号、邮箱、密码哈希与创建时间；迁移前要求旧库恰有一个团队，否则整体回滚且不删除业务数据。"
+  },
+  "6b8d64fa8990de3bc11c00ffd3f403afd3fa5afb": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "已提交日报与删除记录按作者所属团队限定范围读取，新增按成员聚合的最近提交日期查询；不改表结构，历史数据保持原样。"
+  },
+  "ea0b2f0f3fea32466c288b690aac37a6f3f38e6b": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "成员名单按会话成员所在团队查询并返回加入时间，团队名等价键改用共享内核函数；不改表结构与账号数据。"
+  },
+  "02adfd5cd49059a15efbcaa28ffc835a9b172895": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "项目、任务与任务状态事件的读取按创建者或操作者所属团队限定，已提交日报删除后仍保留同团队状态记录；不改表结构。"
   }
 }
