@@ -279,7 +279,7 @@ export async function restore(config, operation) {
   await durable(resolve(config.stateDir, "runtime.json"), {
     commit: manifest.commit,
     artifact,
-    ...(config.activeSlot ? { slot: config.activeSlot } : {}),
+    ...(config.slots && config.activeSlot ? { slot: config.activeSlot } : {}),
   });
   return manifest;
 }

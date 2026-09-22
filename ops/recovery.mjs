@@ -17,6 +17,12 @@ import {
 } from "./host.mjs";
 import { slotConfig, probe, externalProbe, reloadProxy } from "./release.mjs";
 
+/** The port the served version listens on: one per slot, or the one instance. */
+const servedPort = (config) =>
+  config.slots && config.activeSlot
+    ? config.slots[config.activeSlot].port
+    : Number(new URL(config.probeUrl).port);
+
 export async function freeze(config, operation, reason, closeTraffic) {
   const path = resolve(config.stateDir, "incident.json");
   const prior = (await exists(path)) ? await json(path) : {};
@@ -71,7 +77,7 @@ export async function verifyBaseline(config, commit) {
       resolve(config.current, "build/server/interfaces/http/readiness.js"),
     )
   ) {
-    await probe(config, commit, config.slots[config.activeSlot].port);
+    await probe(config, commit, servedPort(config));
   } else {
     // First adoption may restore the verified pre-readiness application.
     // Bind that process to its archived code, then check its existing contracts.
@@ -105,11 +111,12 @@ export async function verifyPublicBaseline(config, commit) {
     )
   )
     return externalProbe(config, commit);
-  assert.equal(
-    (await readFile(config.upstreamFile, "utf8")).trim(),
-    `server 127.0.0.1:${config.slots[config.activeSlot].port};`,
-    "LEGACY_UPSTREAM_MISMATCH",
-  );
+  if (config.upstreamFile)
+    assert.equal(
+      (await readFile(config.upstreamFile, "utf8")).trim(),
+      `server 127.0.0.1:${servedPort(config)};`,
+      "LEGACY_UPSTREAM_MISMATCH",
+    );
   for (const [path, expected, method] of [
     ["/login", 200, "GET"],
     ["/.well-known/oauth-authorization-server", 200, "GET"],
@@ -307,7 +314,8 @@ export async function resolveIncident(config, operation) {
   assert.equal(incident.id, operation.incident, "INCIDENT_CHANGED");
   assert.match(operation.expectedCommit, /^[a-f0-9]{40}$/);
   assert.ok(operation.note?.trim(), "MANUAL_RESOLUTION_NOTE_REQUIRED");
-  for (const [slot, settings] of Object.entries(config.slots))
+  // Only the dual-slot form has a second unit that must be proven stopped.
+  for (const [slot, settings] of Object.entries(config.slots ?? {}))
     if (slot !== config.activeSlot) assertStopped(settings.unit);
   await maintenance(config, true);
   await start(config);
@@ -319,11 +327,12 @@ export async function resolveIncident(config, operation) {
     operation.expectedCommit,
     "ACTIVE_ARTIFACT_MISMATCH",
   );
-  await durable(
-    config.upstreamFile,
-    `server 127.0.0.1:${config.slots[config.activeSlot].port};\n`,
-    0o644,
-  );
+  if (config.upstreamFile)
+    await durable(
+      config.upstreamFile,
+      `server 127.0.0.1:${servedPort(config)};\n`,
+      0o644,
+    );
   await reloadProxy();
   // No data restore here: the operator repairs the current version/data first.
   operation = {

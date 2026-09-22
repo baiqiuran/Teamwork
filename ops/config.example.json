@@ -5,30 +5,14 @@
   "incoming": "/opt/daily-flow/incoming",
   "repository": "/var/lib/daily-flow-git/repository.git",
   "dataDir": "/var/lib/daily-flow",
-  "database": "data.sqlite",
+  "database": "daily-flow.sqlite",
   "stateDir": "/var/lib/daily-flow-control",
   "backupDir": "/var/backups/daily-flow-managed",
   "current": "/opt/daily-flow/current",
   "releases": "/opt/daily-flow/releases",
   "envFile": "/etc/daily-flow/daily-flow.env",
   "artifact": "/opt/daily-flow/artifacts/REPLACE_WITH_VERIFIED_RELEASE/application.tar.gz",
-  "unit": "daily-flow@blue.service",
-  "activeSlot": "blue",
-  "slots": {
-    "blue": {
-      "unit": "daily-flow@blue.service",
-      "port": 4310,
-      "link": "/opt/daily-flow/slots/blue/current",
-      "envFile": "/etc/daily-flow/slot-blue.env"
-    },
-    "green": {
-      "unit": "daily-flow@green.service",
-      "port": 4312,
-      "link": "/opt/daily-flow/slots/green/current",
-      "envFile": "/etc/daily-flow/slot-green.env"
-    }
-  },
-  "upstreamFile": "/etc/daily-flow/upstream.conf",
+  "unit": "daily-flow.service",
   "healthTokenFile": "/etc/daily-flow/health-token",
   "maintenance": "/var/lib/daily-flow-ingress/maintenance",
   "dataLock": "/run/lock/daily-flow-data.lock",

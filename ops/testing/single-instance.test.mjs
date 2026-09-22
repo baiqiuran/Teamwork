@@ -1,17 +1,29 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { access, cp, readFile, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import { fixture, run } from "./fixture.mjs";
 import { sha256 } from "../io.mjs";
 
 const UNIT = "daily-flow.service";
 
-test("the single instance unit is a repository file systemd can load and it shares the data lock", async () => {
-  const unit = await readFile(`/repository/ops/systemd/${UNIT}`, "utf8");
-  await cp(`/repository/ops/systemd/${UNIT}`, `/etc/systemd/system/${UNIT}`);
-  run("systemctl", "daemon-reload");
+const invoke = (entry, configPath, ...args) =>
+  spawnSync(
+    "node",
+    [`/repository/ops/${entry}.mjs`, "--config", configPath, ...args],
+    { encoding: "utf8" },
+  );
+
+test("the single instance unit is a repository file systemd can load and it shares the data lock", async (t) => {
+  t.after(() => {
+    run("rm", "-f", `/etc/systemd/system/${UNIT}`);
+    run("systemctl", "daemon-reload");
+  });
   const shows = (property) =>
     run("systemctl", "show", UNIT, `--property=${property}`, "--value").trim();
+  run("cp", `/repository/ops/systemd/${UNIT}`, `/etc/systemd/system/${UNIT}`);
+  run("systemctl", "daemon-reload");
   assert.equal(shows("LoadState"), "loaded");
   assert.equal(
     shows("UnitFileState"),
@@ -23,9 +35,23 @@ test("the single instance unit is a repository file systemd can load and it shar
   const execStart = shows("ExecStart");
   assert.match(execStart, /\/usr\/bin\/flock --nonblock /, execStart);
   assert.match(execStart, /build\/server\/main\.js(?= ;)/, execStart);
-  // Slots are started by a controller and never enabled; one instance is.
-  assert.match(unit, /^\[Install\]\nWantedBy=multi-user\.target$/m);
-  assert.doesNotMatch(unit, /owner-guard|%i/, "must not carry slot ownership");
+  // The lock the unit takes has to be the lock the controller takes, or a
+  // snapshot and the application open the database at the same time.
+  const configured = JSON.parse(
+    await readFile("/repository/ops/config.example.json", "utf8"),
+  );
+  assert.equal(
+    shows("ReadWritePaths"),
+    `/var/lib/daily-flow ${configured.dataLock}`,
+  );
+  assert.ok(execStart.includes(configured.dataLock), execStart);
+  assert.equal(configured.unit, UNIT);
+  assert.ok(!("slots" in configured) && !("activeSlot" in configured));
+  assert.doesNotMatch(
+    execStart,
+    /owner-guard/,
+    "must not carry slot ownership",
+  );
 });
 
 const mainPid = (unit) =>
@@ -115,6 +141,91 @@ test("backup and paired restore stop and start the one instance, never slot mach
     ),
     "the recorded runtime identity names no slot",
   );
+});
+
+/** The production single instance carries a deep-health credential; so do we. */
+async function servingInstance(t) {
+  const f = await fixture();
+  t.after(() => run("systemctl", "stop", `${f.id}.service`));
+  const token = `single_instance_health_token_${randomUUID().replaceAll("-", "")}`;
+  await writeFile(`${f.root}/health-token`, token);
+  const environment = await readFile(`${f.root}/config.env`, "utf8");
+  await writeFile(
+    `${f.root}/config.env`,
+    `${environment}DAILY_HEALTH_TOKEN=${token}\n`,
+    { mode: 0o600 },
+  );
+  f.config.healthTokenFile = `${f.root}/health-token`;
+  await writeFile(`${f.root}/deploy.json`, JSON.stringify(f.config));
+  run("systemctl", "restart", f.config.unit);
+  for (let attempt = 0; attempt < 200; attempt++) {
+    const ready = await fetch(new URL("/health/ready", f.origin));
+    if (ready.status === 200) return f;
+    await new Promise((done) => setTimeout(done, 50));
+  }
+  assert.fail("the single instance did not come back with a health credential");
+}
+
+test("reconciling after a reboot serves the single instance without naming a slot", async (t) => {
+  const f = await servingInstance(t);
+  // A host has a recorded identity from its first paired restore onward.
+  const seed = await f.control("backup", "--id", "seed", "--kind", "daily");
+  assert.equal(seed.code, 0, seed.output + seed.error);
+  const adopted = await f.control(
+    "restore",
+    "--id",
+    "adopt",
+    "--snapshot",
+    "seed",
+  );
+  assert.equal(adopted.code, 0, adopted.output + adopted.error);
+  const commit = JSON.parse(
+    await readFile(`${f.root}/current/release.json`, "utf8"),
+  ).commit;
+  const reconciled = invoke("reconcile", `${f.root}/deploy.json`);
+  assert.equal(reconciled.status, 0, reconciled.stdout + reconciled.stderr);
+  const boot = JSON.parse(reconciled.stdout);
+  assert.equal(boot.actualCommit, commit, reconciled.stdout);
+  assert.ok(!("slot" in boot), reconciled.stdout);
+  assert.equal((await fetch(`${f.origin}/login`)).status, 200);
+  const backup = await f.control(
+    "backup",
+    "--id",
+    "after-reboot",
+    "--kind",
+    "daily",
+  );
+  assert.equal(backup.code, 0, backup.output + backup.error);
+});
+
+test("an incident left by a failed backup is resolved on a single instance", async (t) => {
+  const f = await servingInstance(t);
+  const commit = JSON.parse(
+    await readFile(`${f.root}/current/release.json`, "utf8"),
+  ).commit;
+  // The shape control writes when a data operation failed to reopen the site.
+  await writeFile(
+    `${f.root}/control/incident.json`,
+    JSON.stringify({
+      id: "crashed-backup",
+      at: new Date().toISOString(),
+      reason: "Operation failed while data was controlled",
+    }),
+  );
+  const resolved = await f.control(
+    "resolve-incident",
+    "--id",
+    "resolve-single",
+    "--incident",
+    "crashed-backup",
+    "--expected-commit",
+    commit,
+    "--note",
+    "已核对单实例数据与版本",
+  );
+  assert.equal(resolved.code, 0, resolved.output + resolved.error);
+  assert.equal((await fetch(`${f.origin}/login`)).status, 200);
+  await assert.rejects(access(`${f.root}/control/incident.json`));
 });
 
 test("local retention prunes the day beyond seven and keeps the latest pre-release point for one instance", async (t) => {

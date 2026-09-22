@@ -81,33 +81,15 @@ DAILY_CODEX_REDIRECT_URIS='["http://127.0.0.1/callback","http://127.0.0.1/callba
 
 保存后执行 `sudo chmod 600 /etc/daily-flow/daily-flow.env`。`DAILY_CODEX_REDIRECT_URIS` 是 JSON 数组。当前公网 IP MCP 地址 `https://8.148.245.224/mcp` 对应的 Codex 回调路径为 `/callback/UmO3e8VUyNbu`；尾段由**服务 URL** 派生，并不是连接名 `daily_flow`。本次服务器上的固定提交需要如上手动登记；包含后续本地修复的版本会在配置 `DAILY_PUBLIC_URL` 时自动补登该精确路径，显式数组仍可用于其他客户端。切换域名或 MCP 地址后尾段会变化，须重新核对授权请求中的 `redirect_uri`。无端口登记允许该本机路径使用动态端口；仅有基础 `/callback` 不会授权带尾段的路径。不要把整条包含 `state` 或 PKCE 参数的授权 URL 写入配置。
 
-建立 `/etc/systemd/system/daily-flow.service`：
+建立 `/etc/systemd/system/daily-flow.service`：**安装仓库里的 `ops/systemd/daily-flow.service`，不要另抄一份**。
 
-```ini
-[Unit]
-Description=Daily Flow team workspace
-After=network.target
-
-[Service]
-Type=simple
-User=daily-flow
-Group=daily-flow
-WorkingDirectory=/opt/daily-flow/current
-EnvironmentFile=/etc/daily-flow/daily-flow.env
-ExecStart=/usr/local/bin/node /opt/daily-flow/current/build/server/main.js
-Restart=on-failure
-RestartSec=5
-TimeoutStopSec=30
-UMask=0027
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectHome=true
-ProtectSystem=strict
-ReadWritePaths=/var/lib/daily-flow
-
-[Install]
-WantedBy=multi-user.target
+```bash
+sudo install -o root -g root -m 644 \
+  /opt/daily-flow/control/ops/systemd/daily-flow.service \
+  /etc/systemd/system/daily-flow.service
 ```
+
+该文件与 2026-09-18 首次建站时手写的版本有一处关键差异：`ExecStart` 用 `flock --nonblock /run/lock/daily-flow-data.lock` 包住应用进程，并把该锁文件加进 `ReadWritePaths`，停止预算 35 秒。没有这把锁时，每日备份或发布可以在应用仍持有 SQLite 句柄时打包数据目录，得到的就不是可用恢复点（见 `ops/README.md` 与 ADR 0005）。
 
 ```bash
 sudo systemctl daemon-reload

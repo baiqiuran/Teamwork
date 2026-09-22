@@ -71,7 +71,7 @@ node ops/reconcile.mjs --config /etc/daily-flow/deploy.json
 
 `systemd/daily-flow-backup.timer` 安排北京时间每日 04:00，调用相同控制入口，服务使用无限启动时间以免在处理数据时被固定作业超时杀死。实际替换现有生产备份脚本与定时器留到首次接入阶段，避免两套备份流程交错启停应用。
 
-应用单元有两种：`systemd/daily-flow@.service` 是双槽时期的模板（带 `%i`、`ExecStartPre` 的 owner 守卫、不可独立 enable），`systemd/daily-flow.service` 是当前生产形态的单个实例（可 enable，仍用同一条 `flock` 数据锁）。控制器只按配置的 `unit` 字段停启，不含 `slots` 的配置即单实例，不需要改动代码；覆盖该形态的验收见 `testing/single-instance.test.mjs`。
+应用单元有两种：`systemd/daily-flow@.service` 是双槽时期的模板（带 `%i`、`ExecStartPre` 的 owner 守卫、不可独立 enable），`systemd/daily-flow.service` 是当前生产形态的单个实例（可 enable，仍用同一条 `flock` 数据锁）。控制器只按配置的 `unit` 字段停启，`slots`/`activeSlot`/`upstreamFile` 只服务双槽形态；不含这些键的配置即单实例，主路径无需改代码，善后路径（`reconcile.mjs`、`resolve-incident`）已按此收紧。覆盖该形态的验收见 `testing/single-instance.test.mjs`。`config.example.json` 描述的是单实例形态。
 
 ## 隔离 Linux 验收
 

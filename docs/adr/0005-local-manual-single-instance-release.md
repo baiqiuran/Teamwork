@@ -27,4 +27,6 @@ Date: 2026-09-21
 
 ## 2026-09-22 实施核对
 
-上文"代价是它的停服目标从活动槽改为单实例，需要相应修改"经隔离环境实测**不需要改代码**：`ops/host.mjs` 的停服与启动本来就打 `config.unit` 这一个字段，槽位专属动作（owner 许可、`release.json` 取自哪个链接、代理 upstream）都在 `if (config.slots)` 之后，因此一份不含 `slots` 的配置就是单实例形态。真正缺的是两样，本次补上：单实例的应用单元此前只以正文形式躺在 `docs/deployment.md`，现在落成 `ops/systemd/daily-flow.service`；以及没有验收覆盖"无槽配置下每日备份、保留判定与配套恢复仍然成立"，现在由 `ops/testing/single-instance.test.mjs` 覆盖。附带确认：无槽配置下快照后写入的 `stateDir/runtime.json` 不含 `slot`，也不会生成 `owner.json`。
+上文"代价是它的停服目标从活动槽改为单实例，需要相应修改"经隔离环境实测**部分成立**：主路径不用改——`ops/host.mjs` 的停服与启动本来就只打 `config.unit` 一个字段，槽位专属动作（owner 许可、版本槽链接切换）都在 `if (config.slots)` 之后，所以一份不含 `slots` 的配置就是单实例形态，每日备份、保留判定与配套恢复在改造前已经可用（`backup.test.mjs` 用的基础夹具本来就没有槽位）。需要改的是**善后路径**，它们无条件解引用槽位，因而单实例下每次都会抛 `TypeError`：核对入口 `reconcile.mjs` 因此无法解除"上次操作被打断"的冻结（`control.mjs` 只接受经它处理），人工解除事故冻结的 `resolve-incident` 同样进不去。这两处已修，并由 `ops/testing/single-instance.test.mjs` 覆盖。
+
+同次补上的还有两件：单实例的应用单元此前只以正文形式躺在 `docs/deployment.md` 且**不带数据锁**，现在落成 `ops/systemd/daily-flow.service` 并让该文档改为安装这个文件；`ops/config.example.json` 原先只描述双槽形态，现在描述当前生产形态（不含 `slots`/`activeSlot`/`upstreamFile`）。另外收紧 `snapshots.mjs` 写入 `runtime.json` 的条件为 `config.slots && config.activeSlot`，避免"删掉 slots 但留着 activeSlot"时记下一个并不存在的槽位。
