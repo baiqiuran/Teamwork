@@ -169,16 +169,17 @@ for (const viewport of [
       await expect(
         page.getByText("查询团队工作进展 · 读写本人日报草稿 · 提交本人日报"),
       ).toBeVisible();
+      // 列表是异步读取：先等到自己的 Key 行出现，再对同一份快照做隐私断言。
+      await expect(page.locator(".content")).toContainText("Node · 授权 Key");
       const listText = await page.locator(".content").innerText();
-      expect(listText).toContain("Node · 授权 Key");
       expect(listText).not.toContain(ownKey.key);
       expect(listText).not.toContain("蓝海桌面助手");
       expect(listText).not.toContain("mcp-blue@example.test");
 
       await other.reload();
       await other.goto(`${origin}/ai`);
+      await expect(other.locator(".content")).toContainText("蓝海桌面助手");
       const otherList = await other.locator(".content").innerText();
-      expect(otherList).toContain("蓝海桌面助手");
       expect(otherList).not.toContain("青山桌面助手");
       expect(otherList).not.toContain(ownKey.key);
 
