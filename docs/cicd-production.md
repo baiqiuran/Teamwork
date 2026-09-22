@@ -186,7 +186,7 @@ gh workflow enable "Production inspection"
 | ------------------------------------------ | ------------------- | --------- |
 | workflow `Application checks`（362507018） | `disabled_manually` | 02:26:23Z |
 
-`.github/workflows/` 下 `ci.yml`、`deploy.yml`、`inspection.yml` 三个文件全部保留，作为恢复依据；文件从未删除过。此后 push 到 main 不触发任何 GitHub 校验，构建与验证由本机与服务器承担：
+`.github/workflows/` 下 `ci.yml`、`deploy.yml`、`inspection.yml` 三个文件当时全部保留。此后 push 到 main 不触发任何 GitHub 校验，构建与验证由本机与服务器承担：
 
 ```sh
 npm run test:ci                       # 构建、架构检查、完整 API/MCP、完整浏览器、发布守卫
@@ -199,4 +199,34 @@ node scripts/verify-host-control.mjs <candidate> <host-proof>
 
 未验证项要记清：`verify-host-control.mjs` 首行断言 `process.platform === "linux"`，Windows 本机执行不了，所以自 `163d159` 之后该作业的后续步骤（双槽切换、崩溃恢复、异地副本、受限 SSH）没有任何自动执行者，首次手工发布前须在 Linux 环境补做一遍。
 
-恢复：`gh workflow enable "Application checks"`（362507018）。若还要恢复门禁，需同时按上一节的取值重开两条 workflow、两个 Variable 与 main 分支保护。
+恢复：见下一节，workflow 定义与 GitHub 侧配置在同一天稍后被移除，恢复需先从 git 历史取回文件。
+
+## 2026-09-22 移除 workflow 定义与 GitHub 侧配置
+
+上一节记录的"文件保留"到此为止。以下三项已实际删除，仓库与远端均不再留痕：
+
+| 对象 | 处置 |
+| --- | --- |
+| `.github/workflows/{ci,deploy,inspection}.yml` | 从工作树删除，提交 `4c50c48` 已推 main |
+| 仓库 Variable `DEPLOY_ENABLED`、`INSPECTION_ENABLED` | 已删除 |
+| `production` Environment（含 `DEPLOY_HOST`、`DEPLOY_USER`、`DEPLOY_URL` 与 `DEPLOY_SSH_KEY`、`DEPLOY_KNOWN_HOSTS`） | 整个环境已删除，Secrets 随环境消失且不可读回 |
+
+删除后核对：仓库 workflow 列表为空、仓库 Variable 为 0 条、Environment 为 0 个。
+
+`ops/` 与 `scripts/` 下的旧链路脚本**一个都没有删**。按 [ADR 0005](adr/0005-local-manual-single-instance-release.md) 与 [ADR 0006](adr/0006-no-automated-gates-in-release-path.md) 它们作为历史与手动验收工具保留，其中 `scripts/verify-host-control.mjs` 仍是手工主机验收用来自动发现 `ops/testing/*.test.mjs` 的入口，不是废弃文件。
+
+要恢复自动门禁，顺序是：
+
+```sh
+# 1. 从历史取回定义
+git show d476cd7:.github/workflows/ci.yml > .github/workflows/ci.yml
+git show d476cd7:.github/workflows/deploy.yml > .github/workflows/deploy.yml
+git show d476cd7:.github/workflows/inspection.yml > .github/workflows/inspection.yml
+# 2. 重建变量与开关
+gh variable set DEPLOY_ENABLED --body false
+gh variable set INSPECTION_ENABLED --body false
+# 3. 重建 production Environment 及其变量与 Secrets（部署私钥需重新生成并重新登记到主机）
+# 4. 按「2026-09-21 停用自动发布与巡检」一节的取值恢复 main 分支保护
+```
+
+**注意**：从 GitHub 删除 `DEPLOY_SSH_KEY` 只是移走了 GitHub 持有的私钥副本，**不会撤销主机上 `daily-deploy` 账号已登记的授权公钥**。要真正断掉那条访问路径，必须在服务器上删除对应的 `authorized_keys` 条目，这一步不在本仓库能完成的范围内。
