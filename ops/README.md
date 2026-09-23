@@ -1,6 +1,6 @@
 # 发布控制（按 ADR 0005 分段）
 
-这是与业务数据库分开的主机运维入口，提供一致备份、失败恢复、本地备份保留与隔离恢复、受限 SSH 和巡检。通过真实 Linux systemd/Nginx 验收。**2026-09-22 只读实测确认本目录已安装在正式服务器**（`/opt/daily-flow/control/ops`，`deploy.json` 指向 blue 槽，备份与保留两个 timer 每日执行），因此原先"尚未安装到正式服务器"的说明作废。按 ADR 0005，**双槽发布与切槽链路已不再使用**（保留但不执行），备份与保留链路仍是活代码；日常发布改由维护者本机一条命令发起，流程、判据与人工恢复见 `docs/manual-release.md`（本 README 只描述服务器侧机制）。
+这是与业务数据库分开的主机运维入口，提供一致备份、失败恢复、本地备份保留与隔离恢复、受限 SSH 和巡检。通过真实 Linux systemd/Nginx 验收。**2026-09-23 已把经固定提交审查的控制代码安装到正式服务器**（`/opt/daily-flow/control/ops`）；生产配置指向单个 `daily-flow.service`，备份与保留两个 timer 继续运行。按 ADR 0005，**双槽发布与切槽链路已不再使用**（保留但不执行）；日常发布由维护者本机发起，流程、判据与人工恢复见 `docs/manual-release.md`（本 README 只描述服务器侧机制）。
 
 ## 操作入口
 
@@ -38,7 +38,7 @@ node ops/control.mjs --config /etc/daily-flow/deploy.json release --id release-U
 
 失败即停：开放前失败恢复配套旧代码与数据并记为失败，恢复本身失败保持维护、保留现场、不循环重试；一旦可能开放只保留现有数据转人工。任何失败都冻结后续发布，换 ID 不能绕过。请求已落盘但工作单元从未启动时，核对入口留下 `WORKER_NEVER_STARTED` 失败记录与事故冻结，绝不再次派发。操作手册见 `docs/manual-release.md`。
 
-## 失败与事故处理
+## 旧双槽失败与事故处理（历史）
 
 开放前的启动、数据升级、代理切换或验收失败会先停止两个槽，再恢复发布前配套快照、旧代码及配置，验证后才重新开放。恢复结果为 `baseline-restored`，发布本身仍返回失败；如配套恢复失败，则保持维护、写入事故冻结，保留替换前的数据现场，不循环重试覆盖。
 
@@ -79,9 +79,9 @@ node ops/reconcile.mjs --config /etc/daily-flow/deploy.json
 
 应用槽的 `ExecStartPre` 核验 root 保存的数据所有者许可及开机标识，非活动槽不能因人为启动或自动重启夺取数据。新开机必须由 `daily-flow-reconcile.service` 核对并重新签发许可，两个槽不单独 enable；实际数据库锁仍是第二道互斥。首次生产安装及重启顺序绑定在任务11执行。
 
-`systemd/daily-flow-backup.timer` 安排北京时间每日 04:00，调用相同控制入口，服务使用无限启动时间以免在处理数据时被固定作业超时杀死。实际替换现有生产备份脚本与定时器留到首次接入阶段，避免两套备份流程交错启停应用。
+`systemd/daily-flow-backup.timer` 安排北京时间每日 04:00，调用相同控制入口，服务使用无限启动时间以免在处理数据时被固定作业超时杀死。2026-09-23 单实例接管保留了既有受管备份与保留 timer；历史备份脚本仍不应重新启用，以免两套流程交错启停应用。
 
-应用单元有两种：`systemd/daily-flow@.service` 是双槽时期的模板（带 `%i`、`ExecStartPre` 的 owner 守卫、不可独立 enable），`systemd/daily-flow.service` 是当前生产形态的单个实例（可 enable，仍用同一条 `flock` 数据锁）。控制器只按配置的 `unit` 字段停启，`slots`/`activeSlot`/`upstreamFile` 只服务双槽形态；不含这些键的配置即单实例，主路径无需改代码，善后路径（`reconcile.mjs`、`resolve-incident`）已按此收紧。覆盖该形态的验收见 `testing/single-instance.test.mjs`。`config.example.json` 描述的是单实例形态。
+应用单元有两种：`systemd/daily-flow@.service` 是双槽时期的模板（带 `%i`、`ExecStartPre` 的 owner 守卫、不可独立 enable），`systemd/daily-flow.service` 是当前生产形态的单个实例（仍用同一条 `flock` 数据锁，当前生产**未 enable 开机自启**）。控制器只按配置的 `unit` 字段停启，`slots`/`activeSlot`/`upstreamFile` 只服务双槽形态；不含这些键的配置即单实例，主路径无需改代码，善后路径（`reconcile.mjs`、`resolve-incident`）已按此收紧。覆盖该形态的验收见 `testing/single-instance.test.mjs`。`config.example.json` 描述的是单实例形态。
 
 ## 隔离 Linux 验收
 
