@@ -73,6 +73,7 @@ async function issueKey(page: Page, origin: string, label: string) {
   const panel = page.getByRole("region", { name: "Node 授权 Key" });
   await expect(panel.getByLabel("查询团队工作进展")).toBeChecked();
   await expect(panel.getByLabel("读写本人日报草稿")).toBeChecked();
+  await panel.getByText("更多权限").click();
   for (const scope of [
     "提交本人日报",
     "创建任务和更新任务状态",
@@ -94,33 +95,28 @@ async function issueKey(page: Page, origin: string, label: string) {
   expect(await panel.getByLabel("服务地址", { exact: true }).inputValue()).toBe(
     `${origin}/mcp`,
   );
-  const packagePath = await panel
-    .getByLabel("本地包路径", { exact: true })
-    .inputValue();
+  await panel
+    .getByLabel("本地包路径")
+    .fill("C:/tools/daily-flow-mcp-0.1.0.tgz");
   const configuration = await panel
-    .getByLabel("MCP 客户端配置", { exact: true })
+    .getByLabel("Codex 配置", { exact: true })
     .inputValue();
   await panel
-    .getByRole("button", { name: "复制客户端配置", exact: true })
+    .getByRole("button", { name: "复制 Codex 配置", exact: true })
     .click();
   await expect(panel.getByRole("status").first()).toContainText(
-    "已复制客户端配置",
+    "已复制Codex 配置",
   );
   const copied = await page.evaluate(() => navigator.clipboard.readText());
-  const parsed = JSON.parse(configuration);
-  // 复制所得配置与页面展示一致（忽略行尾空白差异），字段保持原连接格式。
-  expect(JSON.parse(copied)).toEqual(parsed);
-  expect(copied.replace(/\s+/g, " ")).toBe(configuration.replace(/\s+/g, " "));
-  expect(parsed.mcpServers["daily-flow"].env).toEqual({
-    DAILY_FLOW_URL: `${origin}/mcp`,
-    DAILY_FLOW_API_KEY: key,
-  });
-  expect(parsed.mcpServers["daily-flow"].command).toMatch(/^(npx|cmd)$/);
-  expect(parsed.mcpServers["daily-flow"].args).toContain("--yes");
-  expect(parsed.mcpServers["daily-flow"].args).toContain(
-    `--package=${packagePath}`,
+  expect(copied.replace(/\r\n/g, "\n")).toBe(configuration);
+  expect(configuration).toContain("[mcp_servers.daily_flow_node]");
+  expect(configuration).toContain('command = "cmd"');
+  expect(configuration).toContain(
+    "--package=C:/tools/daily-flow-mcp-0.1.0.tgz",
   );
-  expect(parsed.mcpServers["daily-flow"].args).toContain("daily-flow-mcp");
+  expect(configuration).toContain(`DAILY_FLOW_URL = "${origin}/mcp"`);
+  expect(configuration).toContain(`DAILY_FLOW_API_KEY = "${key}"`);
+  await expect(panel.getByLabel("本地包路径")).toBeVisible();
   return { panel, key };
 }
 

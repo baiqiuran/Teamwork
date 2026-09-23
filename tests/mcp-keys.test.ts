@@ -128,6 +128,7 @@ test("版本 6 升级保留 OAuth 连接和凭证，并可创建 Key", async (t)
   );
   assert.equal(oauth.credentialType, "oauth");
   assert.equal(oauth.name, null);
+  assert.equal(oauth.lastReadSucceededAt, null);
   const client = await mcpClient(f.origin, "legacy-oauth");
   t.after(() => client.close());
   assert.ok(
@@ -228,23 +229,25 @@ test("Node stdio 包传递真实工具契约和写入回执，撤销后不能调
   ).data;
   const archive = process.env.DAILY_FLOW_TEST_PACKAGE;
   const windows = process.platform === "win32";
-  const transport = new StdioClientTransport({
-    command: archive
-      ? windows
-        ? process.env.ComSpec!
-        : "npx"
-      : process.execPath,
-    args: archive
-      ? [
-          ...(windows ? ["/c", "npx"] : []),
-          "--yes",
-          `--package=${archive}`,
-          "daily-flow-mcp",
-        ]
-      : [resolve("packages/mcp-node/bin/daily-flow-mcp.mjs")],
-    env: { DAILY_FLOW_URL: f.origin, DAILY_FLOW_API_KEY: issued.data.key },
-    stderr: "pipe",
-  });
+  const transportFor = (key: string) =>
+    new StdioClientTransport({
+      command: archive
+        ? windows
+          ? process.env.ComSpec!
+          : "npx"
+        : process.execPath,
+      args: archive
+        ? [
+            ...(windows ? ["/c", "npx"] : []),
+            "--yes",
+            `--package=${archive}`,
+            "daily-flow-mcp",
+          ]
+        : [resolve("packages/mcp-node/bin/daily-flow-mcp.mjs")],
+      env: { DAILY_FLOW_URL: f.origin, DAILY_FLOW_API_KEY: key },
+      stderr: "pipe",
+    });
+  const transport = transportFor(issued.data.key);
   let stderr = "";
   transport.stderr?.on("data", (chunk) => {
     stderr += String(chunk);
@@ -257,10 +260,28 @@ test("Node stdio 包传递真实工具契约和写入回执，撤销后不能调
   await client.connect(transport);
   assert.ok(client.getInstructions()?.includes("版本冲突"));
   const listed = await client.listTools();
+  const connection = async () =>
+    (await f.author("/ai/connections")).data.find(
+      (item: { id: string }) => item.id === issued.data.id,
+    );
+  assert.equal((await connection()).lastReadSucceededAt, null);
   assert.ok(
     listed.tools.find((tool) => tool.name === "create_task")?.outputSchema,
   );
   assert.ok(!listed.tools.some((tool) => tool.name === "create_share"));
+  const failedRead = await client.callTool({
+    name: "get_project",
+    arguments: { id: randomUUID() },
+  });
+  assert.ok(failedRead.isError);
+  assert.equal((await connection()).lastReadSucceededAt, null);
+  assert.deepEqual((await f.colleague("/ai/connections")).data, []);
+  const emptyRead = await client.callTool({
+    name: "list_projects",
+    arguments: { query: "no-such-project-2026" },
+  });
+  assert.ok(!emptyRead.isError, JSON.stringify(emptyRead));
+  assert.ok((await connection()).lastReadSucceededAt > 0);
   const input = {
     operationId: randomUUID(),
     projectId: project.id,
@@ -304,12 +325,58 @@ test("Node stdio 包传递真实工具契约和写入回执，撤销后不能调
     JSON.parse(JSON.stringify(oauthReplay.structuredContent)).replayed,
     true,
   );
+  const replacement = await f.author("/ai/keys", {
+    name: "stdio 新连接",
+    scopes: ["progress:read"],
+  });
+  const replacementClient = new Client({
+    name: "stdio-replacement",
+    version: "1",
+  });
+  t.after(() => replacementClient.close());
+  await replacementClient.connect(transportFor(replacement.data.key));
+  assert.ok(
+    !(await replacementClient.listTools()).tools.some(
+      (tool) => tool.name === "create_task",
+    ),
+  );
+  const replacementConnection = async () =>
+    (await f.author("/ai/connections")).data.find(
+      (item: { id: string }) => item.id === replacement.data.id,
+    );
+  assert.equal((await replacementConnection()).lastReadSucceededAt, null);
+  assert.ok(
+    (
+      await replacementClient.callTool({
+        name: "get_project",
+        arguments: { id: randomUUID() },
+      })
+    ).isError,
+  );
+  assert.equal((await replacementConnection()).lastReadSucceededAt, null);
+  assert.ok(
+    !(await client.callTool({ name: "list_projects", arguments: {} })).isError,
+  );
+  assert.ok(
+    !(
+      await replacementClient.callTool({
+        name: "list_projects",
+        arguments: { query: "no-such-project-replacement-2026" },
+      })
+    ).isError,
+  );
+  assert.ok((await replacementConnection()).lastReadSucceededAt > 0);
   await f.author(`/ai/connections/${issued.data.id}/revoke`, {});
   const revoked = await client.callTool({
     name: "create_task",
     arguments: input,
   });
   assert.ok(revoked.isError);
+  assert.ok(
+    !(
+      await replacementClient.callTool({ name: "list_projects", arguments: {} })
+    ).isError,
+  );
   await assert.rejects(client.listTools(undefined, { cacheMode: "bypass" }));
   assert.equal(
     (await oauth.callTool({ name: "get_context", arguments: {} })).isError,

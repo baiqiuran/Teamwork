@@ -6,38 +6,26 @@
 
 1. 使用 Node.js 22 或更高版本。
 2. 日序网页打开「AI 连接 → 通过 Node 连接」，填写名称、选择能力并生成 Key。
-3. 立即复制 Key；只显示一次，忘记时撤销并重新创建。默认选择查询和本人草稿，其余能力需要明确选择。Key 持续有效直到成员撤销。
+3. 在 `packages/mcp-node` 目录运行 `npm pack`，将生成的 `daily-flow-mcp-0.1.0.tgz` 放到使用 Codex 的电脑上。此包尚未发布到 npm，请勿使用同名公共包。
+4. 在网页填写该包的本机绝对路径，复制生成的 Codex 配置。Key 只显示一次，忘记时需生成新 Key。默认选择查询和本人草稿，其余能力需要明确选择。Key 持续有效直到成员撤销。
 
-## 本地包接入
+## Windows Codex 接入
 
-这个包尚未发布到 npm；不要使用未核实的同名公共包。先在本目录运行 `npm pack`，将生成的 `daily-flow-mcp-0.1.0.tgz` 放在使用 AI 客户端的电脑上。
+日序网页会生成包含本地包路径、当前站点地址和本人 Key 的配置。将片段追加到 Windows 用户级 Codex 配置 `%USERPROFILE%\.codex\config.toml`，重启 Codex，然后使用 `/mcp` 查看连接。请 Codex 使用日序工具列出项目，即可进行不修改数据的连接测试。Codex OAuth 仍可用；若同时配置两条日序连接，建议只启用其中一条以免工具重复。
 
-支持 MCP JSON 配置的客户端可使用：
+配置结构如下；实际使用时应复制网页生成的片段，不要把 Key 提交到仓库或写入日志：
 
-```json
-{
-  "mcpServers": {
-    "daily-flow": {
-      "command": "npx",
-      "args": [
-        "--yes",
-        "--package=/absolute/path/daily-flow-mcp-0.1.0.tgz",
-        "daily-flow-mcp"
-      ],
-      "env": {
-        "DAILY_FLOW_URL": "https://team.example.com/mcp",
-        "DAILY_FLOW_API_KEY": "dfk_替换为你的授权Key"
-      }
-    }
-  }
-}
+```toml
+[mcp_servers.daily_flow_node]
+command = "cmd"
+args = ["/c", "npx", "--yes", "--package=C:/tools/daily-flow-mcp-0.1.0.tgz", "daily-flow-mcp"]
+
+[mcp_servers.daily_flow_node.env]
+DAILY_FLOW_URL = "https://team.example.com/mcp"
+DAILY_FLOW_API_KEY = "dfk_替换为你的授权Key"
 ```
 
-Windows 客户端若不能直接启动 `npx`，使用 `command: "cmd"`，并在 `args` 开头加 `"/c", "npx"`；包路径使用本机绝对路径，例如 `--package=C:/tools/daily-flow-mcp-0.1.0.tgz`。
-
-首次使用 npx 可能需要下载包的 MCP SDK 依赖。也可以在本目录执行 `npm install`，配置客户端以 `node` 启动 `bin/daily-flow-mcp.mjs` 的绝对路径。
-
-只有将来确认包名并发布到自己的 npm 账号后，才能把本地 tarball 路径替换成已经发布的包名和版本。
+示例路径需换成实际存放位置。首次使用 npx 可能需要联网下载依赖。Key 在用户级配置中以明文保存；本地包不会持久化它。
 
 ## 配置与行为
 
