@@ -84,7 +84,26 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
       `${origin}/oauth/authorize?${new URLSearchParams(request)}`,
     );
     await expect(page.getByLabel("查询团队工作进展")).toBeChecked();
+    await expect(page.getByLabel("读写本人日报草稿")).toBeChecked();
     await expect(page.getByLabel("提交本人日报")).not.toBeChecked();
+    const permissionRows = page.locator(".oauth-scope");
+    await expect(permissionRows).toHaveCount(5);
+    for (const row of await permissionRows.all()) {
+      const checkbox = await row
+        .locator('input[type="checkbox"]')
+        .boundingBox();
+      const title = await row.locator("strong").boundingBox();
+      if (!checkbox || !title) throw new Error("Permission row is not visible");
+      expect(checkbox.width).toBeLessThan(28);
+      expect(title.x).toBeGreaterThan(checkbox.x + checkbox.width);
+      expect(Math.abs(title.y - checkbox.y)).toBeLessThan(16);
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
     await page.getByRole("button", { name: "取消授权" }).click();
     await expect(page).toHaveURL(/error=access_denied/);
     expect(

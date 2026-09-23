@@ -2,12 +2,27 @@ import { useEffect, useState } from "react";
 import { api } from "../../shared/api";
 import { Message } from "../../shared/components/Message";
 import { describeError } from "../../shared/errors";
-const labels: Record<string, string> = {
-  "progress:read": "查询团队工作进展",
-  "drafts:write": "读写本人日报草稿",
-  "diaries:submit": "提交本人日报",
-  "tasks:write": "创建任务和更新任务状态",
-  "shares:manage": "创建和关闭本人公开链接",
+const permissions: Record<string, { label: string; description: string }> = {
+  "progress:read": {
+    label: "查询团队工作进展",
+    description: "查看本团队项目、任务和已提交的进展。",
+  },
+  "drafts:write": {
+    label: "读写本人日报草稿",
+    description: "读取和保存你的草稿，不会直接公开。",
+  },
+  "diaries:submit": {
+    label: "提交本人日报",
+    description: "提交后会更新团队阅读内容和已有公开页。",
+  },
+  "tasks:write": {
+    label: "创建任务和更新任务状态",
+    description: "更新状态可能改变公开任务列表。",
+  },
+  "shares:manage": {
+    label: "创建和关闭本人公开链接",
+    description: "日报链接可展示所选日期内全团队已提交的内容。",
+  },
 };
 export function AiAuthorization() {
   const [details, setDetails] = useState<{
@@ -47,55 +62,71 @@ export function AiAuthorization() {
     }
   }
   return (
-    <main className="content">
-      <section className="account-card">
+    <main className="content oauth-consent-page">
+      <section className="account-card oauth-consent-card">
         <h1>授权 Codex</h1>
-        <p>选择允许的操作。授权持续到你撤销连接。</p>
-        <ul className="permission-notes">
-          <li>提交日报会更新团队阅读内容和已有公开页。</li>
-          <li>更新任务状态会改变公开任务列表中的当前状态。</li>
-          <li>日报公开链接会展示所选日期内全团队的已提交内容。</li>
-        </ul>
+        <p className="oauth-consent-intro">
+          选择 Codex 可以代表你执行的操作。授权持续到你撤销连接。
+        </p>
         <Message error>{error}</Message>
         {details && (
           <>
-            <fieldset disabled={busy}>
+            <fieldset className="oauth-scopes" disabled={busy}>
               <legend>授权能力</legend>
-              {details.scopes.map((scope) => (
-                <label
-                  key={scope}
-                  style={{ display: "flex", gap: 12, marginBlock: 16 }}
-                >
-                  <input
-                    type="checkbox"
-                    checked={scopes.includes(scope)}
-                    onChange={(e) =>
-                      setScopes((current) =>
-                        e.target.checked
-                          ? [...current, scope]
-                          : current.filter((s) => s !== scope),
-                      )
-                    }
-                  />
-                  {labels[scope]}
-                </label>
-              ))}
+              {details.scopes.map((scope) => {
+                const permission = permissions[scope] ?? {
+                  label: scope,
+                  description: "",
+                };
+                const descriptionId = `oauth-${scope.replaceAll(":", "-")}`;
+                return (
+                  <label className="oauth-scope" key={scope}>
+                    <input
+                      type="checkbox"
+                      aria-label={permission.label}
+                      aria-describedby={
+                        permission.description ? descriptionId : undefined
+                      }
+                      checked={scopes.includes(scope)}
+                      onChange={(e) =>
+                        setScopes((current) =>
+                          e.target.checked
+                            ? [...current, scope]
+                            : current.filter((s) => s !== scope),
+                        )
+                      }
+                    />
+                    <span>
+                      <strong>{permission.label}</strong>
+                      {permission.description && (
+                        <small id={descriptionId}>
+                          {permission.description}
+                        </small>
+                      )}
+                    </span>
+                  </label>
+                );
+              })}
             </fieldset>
-            <p>你的操作仍受团队权限、日报日期和版本冲突规则约束。</p>
-            <button
-              className="primary"
-              disabled={busy || !scopes.length}
-              onClick={() => void decide(true)}
-            >
-              允许所选能力
-            </button>{" "}
-            <button
-              className="secondary"
-              disabled={busy}
-              onClick={() => void decide(false)}
-            >
-              取消授权
-            </button>
+            <p className="oauth-consent-note">
+              操作仍受团队权限、日报日期和版本冲突规则约束。
+            </p>
+            <div className="oauth-consent-actions">
+              <button
+                className="primary"
+                disabled={busy || !scopes.length}
+                onClick={() => void decide(true)}
+              >
+                允许所选能力
+              </button>
+              <button
+                className="secondary"
+                disabled={busy}
+                onClick={() => void decide(false)}
+              >
+                取消授权
+              </button>
+            </div>
           </>
         )}
       </section>

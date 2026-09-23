@@ -2525,14 +2525,76 @@ nav button.selected::before {
 .ai-history-row {
   margin-bottom: var(--s-3);
 }
-.permission-notes {
-  margin: var(--s-5) 0;
-  padding-left: var(--s-5);
-  color: var(--text-secondary);
-  line-height: var(--lh-relaxed);
+.oauth-consent-card {
+  width: 100%;
+  margin-inline: auto;
 }
-.permission-notes li + li {
+.oauth-consent-intro {
   margin-top: var(--s-2);
+  color: var(--text-secondary);
+}
+.oauth-scopes {
+  min-width: 0;
+  margin: var(--s-6) 0 0;
+  padding: var(--s-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-md);
+}
+.oauth-scopes legend {
+  padding: 0 var(--s-2);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+.oauth-scope {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-3);
+  margin: 0;
+  padding: var(--s-3);
+  border-radius: var(--r-md);
+  cursor: pointer;
+}
+.oauth-scope + .oauth-scope {
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+}
+.oauth-scope:hover {
+  background: var(--surface-muted);
+}
+.oauth-scope input[type="checkbox"] {
+  display: block;
+  width: 18px;
+  min-width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  padding: 0;
+  border-radius: 4px;
+  accent-color: var(--accent);
+}
+.oauth-scope strong {
+  display: block;
+  color: var(--text);
+  font-size: var(--t-sm);
+  line-height: var(--lh-snug);
+  font-weight: 600;
+}
+.oauth-scope small {
+  margin-top: var(--s-1);
+  color: var(--text-muted);
+  font-size: var(--t-xs);
+}
+.oauth-consent-note {
+  margin-top: var(--s-4);
+  color: var(--text-muted);
+  font-size: var(--t-xs);
+}
+.oauth-consent-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
 }
 
 @media (max-width: 1100px) {
@@ -2556,5 +2618,11 @@ nav button.selected::before {
 @media (max-width: 680px) {
   .records--masonry {
     grid-template-columns: 1fr;
+  }
+  .oauth-scopes {
+    padding: var(--s-1);
+  }
+  .oauth-scope {
+    padding: var(--s-3) var(--s-2);
   }
 }
