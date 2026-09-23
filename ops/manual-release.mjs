@@ -376,6 +376,11 @@ export async function manualRelease(configPath, config, operation) {
       mayHaveOpenedAt: new Date().toISOString(),
     });
     await maintenance(config, false);
+    const maintenanceEndedAt = new Date().toISOString();
+    const maintenanceMilliseconds =
+      Date.parse(maintenanceEndedAt) - Date.parse(operation.maintenanceAt);
+    await save({ maintenanceEndedAt, maintenanceMilliseconds });
+    assert.ok(maintenanceMilliseconds <= 180000, "MAINTENANCE_BUDGET_EXCEEDED");
     await publicReady(config, target.commit);
     await save({
       criteria: {
@@ -386,7 +391,6 @@ export async function manualRelease(configPath, config, operation) {
     await save({
       phase: "completed",
       actualCommit: target.commit,
-      maintenanceMilliseconds: Date.now() - Date.parse(operation.maintenanceAt),
       maintenanceBudgetMilliseconds: 180000,
       finishedAt: new Date().toISOString(),
     });

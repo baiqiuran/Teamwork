@@ -152,7 +152,9 @@ async function saved(t, phase) {
     },
     snapshotId: "snapshot-one",
     maintenanceMilliseconds: 1250,
-    finishedAt: receipt.builtAt,
+    maintenanceAt: "2026-09-22T00:00:00.000Z",
+    maintenanceEndedAt: "2026-09-22T00:00:01.250Z",
+    finishedAt: "2026-09-22T00:00:05.000Z",
   };
   return { root, config, output, id, file, status };
 }
@@ -202,6 +204,8 @@ test("completed status without matching acceptance evidence cannot advance the b
     { criteria: { ready: true } },
     { snapshotId: undefined },
     { maintenanceMilliseconds: 180001 },
+    { maintenanceEndedAt: undefined },
+    { maintenanceMilliseconds: 1249 },
   ]) {
     const f = await saved(t, "completed");
     const original = { observation: { commit: f.status.baseline } };

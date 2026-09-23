@@ -388,6 +388,7 @@ async function status(config, id) {
     reason:
       phase === "unknown" ? "WORKER_STATE_REQUIRES_RECONCILIATION" : undefined,
     maintenanceMilliseconds: number(record.maintenanceMilliseconds),
+    maintenanceEndedAt: timestamp(record.maintenanceEndedAt),
     snapshotId: match(ID, record.snapshotId),
     createdAt: timestamp(record.createdAt),
     finishedAt: timestamp(record.finishedAt),

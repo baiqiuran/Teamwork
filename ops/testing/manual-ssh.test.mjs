@@ -412,6 +412,8 @@ test("manual SSH controls uploads and detached releases without exposing shell o
     },
     recovery: "not-needed",
     maintenanceMilliseconds: 1250,
+    maintenanceAt: "2026-09-22T10:00:00.000Z",
+    maintenanceEndedAt: "2026-09-22T10:00:01.250Z",
     snapshotId: "snapshot-one",
     createdAt: "2026-09-22T10:00:00.000Z",
     finishedAt: "2026-09-22T10:00:01.250Z",
@@ -426,6 +428,7 @@ test("manual SSH controls uploads and detached releases without exposing shell o
   assert.equal(completed.value.runningCommit, baseline);
   assert.equal(completed.value.criteria.integrity, "ok");
   assert.equal(completed.value.maintenanceMilliseconds, 1250);
+  assert.equal(completed.value.maintenanceEndedAt, record.maintenanceEndedAt);
   assert.equal(completed.value.snapshotId, "snapshot-one");
   assert.equal(completed.value.finishedAt, record.finishedAt);
   // A completed/failed ID must not validate candidate files or dispatch again.

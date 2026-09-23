@@ -94,6 +94,13 @@ test("manual release publishes one instance with a paired snapshot and durable c
       record.maintenanceMilliseconds <= 180000,
   );
   assert.equal(
+    record.maintenanceMilliseconds,
+    Date.parse(record.maintenanceEndedAt) - Date.parse(record.maintenanceAt),
+  );
+  assert.ok(
+    Date.parse(record.finishedAt) >= Date.parse(record.maintenanceEndedAt),
+  );
+  assert.equal(
     (await fetch(`${f.origin}/health/ready`).then((r) => r.json())).version,
     "b".repeat(40),
   );

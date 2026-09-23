@@ -47,6 +47,8 @@ Load the existing encrypted key into your SSH agent yourself. No key creation,
 permission changes, password prompts, arbitrary remote commands or scp are used.
 runtimeNode is a LOCAL executable with exactly the captured production version:
 on Windows use the matching Windows Node distribution, not a Linux binary.
+Packaging requires GNU tar; on Windows the client can use Git for Windows'
+bundled tar and gzip when the system tar is bsdtar.
 
 --capture-baseline is explicitly read-only on the server: manual-baseline only.
 It writes baselineRecord locally from live runtime/readiness observations. Release
@@ -631,6 +633,12 @@ export async function resumeSavedRelease({
       !Number.isSafeInteger(server.maintenanceMilliseconds) ||
       server.maintenanceMilliseconds < 0 ||
       server.maintenanceMilliseconds > 180000 ||
+      !Number.isFinite(Date.parse(server.maintenanceAt)) ||
+      !Number.isFinite(Date.parse(server.maintenanceEndedAt)) ||
+      server.maintenanceMilliseconds !==
+        Date.parse(server.maintenanceEndedAt) -
+          Date.parse(server.maintenanceAt) ||
+      Date.parse(server.finishedAt) < Date.parse(server.maintenanceEndedAt) ||
       !Number.isFinite(Date.parse(server.finishedAt))
     )
       fail(

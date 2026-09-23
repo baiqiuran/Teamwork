@@ -11,7 +11,7 @@ import {
 } from "node:fs/promises";
 import { createReadStream } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { delimiter, dirname, resolve } from "node:path";
 import { createHash } from "node:crypto";
 import { assertArchiveUploadable } from "./release-guards.mjs";
 import {
@@ -54,6 +54,53 @@ export async function assertPureJavaScript(directory) {
   }
 }
 
+async function gnuTar(environment) {
+  const candidates = ["tar"];
+  if (process.platform === "win32") {
+    try {
+      const { stdout } = await exec("where.exe", ["git"], {
+        env: environment,
+        windowsHide: true,
+        timeout: 10000,
+      });
+      for (const path of stdout.split(/\r?\n/).filter(Boolean))
+        candidates.push(
+          resolve(dirname(dirname(path)), "usr", "bin", "tar.exe"),
+        );
+    } catch {
+      // A GNU tar already on PATH remains usable without Git for Windows.
+    }
+  }
+  for (const candidate of candidates) {
+    try {
+      const { stdout } = await exec(candidate, ["--version"], {
+        env: environment,
+        windowsHide: true,
+        timeout: 10000,
+      });
+      if (stdout.startsWith("tar (GNU tar) ")) {
+        if (candidate === "tar") return { command: candidate, environment };
+        const pathKey =
+          Object.keys(environment).find(
+            (key) => key.toLowerCase() === "path",
+          ) ?? "PATH";
+        return {
+          command: candidate,
+          environment: {
+            ...environment,
+            [pathKey]: `${dirname(candidate)}${delimiter}${environment[pathKey] ?? ""}`,
+          },
+        };
+      }
+    } catch {
+      // Continue to the next candidate without exposing local tool paths.
+    }
+  }
+  throw new Error(
+    "GNU_TAR_REQUIRED: install GNU tar or make it available through Git for Windows",
+  );
+}
+
 /** Builds only the fixed git archive, never the caller's working files. This
  * helper does not connect to a server or run API/browser/migration-note gates. */
 export async function buildManualArtifact({
@@ -72,13 +119,19 @@ export async function buildManualArtifact({
     throw new Error("NODE_VERSION_MISMATCH");
   const directory = await mkdtemp(resolve(tmpdir(), "manual-build-"));
   const environment = isolatedEnvironment({ runtimeNode, home: directory });
-  const run = async (label, cwd, command, args) => {
+  const run = async (
+    label,
+    cwd,
+    command,
+    args,
+    commandEnvironment = environment,
+  ) => {
     const start = Date.now();
     onStep(`${label}...`);
     try {
       await exec(command, args, {
         cwd,
-        env: environment,
+        env: commandEnvironment,
         windowsHide: true,
         timeout: 600000,
         maxBuffer: 16 * 1024 * 1024,
@@ -91,6 +144,7 @@ export async function buildManualArtifact({
   };
   let outputCreated = false;
   try {
+    const tar = await gnuTar(environment);
     const { stdout: committedAt } = await exec(
       "git",
       ["show", "-s", "--format=%ct", commit],
@@ -198,19 +252,25 @@ export async function buildManualArtifact({
       JSON.stringify(manifest, null, 2) + "\n",
     );
     // tar only receives relative archive/member names, including on Windows.
-    await run("pack application", directory, "tar", [
-      ...archiveOptions,
-      "-czf",
-      "application.tar.gz",
-      "-C",
-      "runtime",
-      "build",
-      "dist",
-      "node_modules",
-      "package.json",
-      "package-lock.json",
-      "release.json",
-    ]);
+    await run(
+      "pack application",
+      directory,
+      tar.command,
+      [
+        ...archiveOptions,
+        "-czf",
+        "application.tar.gz",
+        "-C",
+        "runtime",
+        "build",
+        "dist",
+        "node_modules",
+        "package.json",
+        "package-lock.json",
+        "release.json",
+      ],
+      tar.environment,
+    );
     const archive = resolve(directory, "application.tar.gz");
     await assertArchiveUploadable({ archive });
     const receipt = { ...manifest, sha256: await fileSha256(archive) };
@@ -222,13 +282,19 @@ export async function buildManualArtifact({
       JSON.stringify(receipt, null, 2) + "\n",
       { flag: "wx" },
     );
-    await run("pack upload bundle", output, "tar", [
-      ...archiveOptions,
-      "-czf",
-      "bundle.tar.gz",
-      "application.tar.gz",
-      "receipt.json",
-    ]);
+    await run(
+      "pack upload bundle",
+      output,
+      tar.command,
+      [
+        ...archiveOptions,
+        "-czf",
+        "bundle.tar.gz",
+        "application.tar.gz",
+        "receipt.json",
+      ],
+      tar.environment,
+    );
     const bundle = resolve(output, "bundle.tar.gz");
     await assertArchiveUploadable({ archive: bundle });
     return { receipt, bundle, bundleSha256: await fileSha256(bundle) };
