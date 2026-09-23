@@ -33,41 +33,43 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
     await page.getByRole("button", { name: "连接 Codex", exact: true }).click();
     const guide = page.getByRole("region", { name: "连接 Codex 指引" });
     const remoteAddress = guide.getByLabel("远程 MCP 服务器地址");
-    const configuration = guide.getByLabel("Codex 服务器配置");
-    const copyConfiguration = guide.getByRole("button", {
-      name: "复制服务器配置",
+    const command = guide.getByLabel("PowerShell 连接并授权命令");
+    const copyCommand = guide.getByRole("button", {
+      name: "复制连接并授权命令",
     });
     await expect(remoteAddress).toHaveValue(`${origin}/mcp`);
-    await expect(configuration).toHaveValue(
-      new RegExp(`url = "${origin.replaceAll(".", "\\.")}/mcp"`),
+    expect(await command.inputValue()).toContain(
+      `codex mcp add daily_flow --url "${origin}/mcp" --oauth-client-id daily-flow-codex`,
     );
     await remoteAddress.fill("https://daily.example.test");
-    await expect(configuration).toHaveValue(
-      /url = "https:\/\/daily\.example\.test\/mcp"/,
-    );
-    await expect(configuration).toHaveValue(/client_id = "daily-flow-codex"/);
-    await expect(configuration).toHaveValue(
-      /callback_url = "http:\/\/127\.0\.0\.1\/callback"/,
+    expect(await command.inputValue()).toContain(
+      'codex mcp add daily_flow --url "https://daily.example.test/mcp" --oauth-client-id daily-flow-codex',
     );
     await remoteAddress.fill("http://daily.example.test/mcp");
     await expect(remoteAddress).toHaveAttribute("aria-invalid", "true");
-    await expect(copyConfiguration).toBeDisabled();
+    await expect(copyCommand).toBeDisabled();
     await remoteAddress.fill(`${origin}/mcp`);
     await guide.getByLabel("Codex 连接名称").fill("team_daily");
-    await expect(configuration).toHaveValue(/\[mcp_servers\.team_daily\]/);
-    await expect(guide.getByLabel("授权命令")).toHaveValue(
-      "codex mcp login team_daily --scopes progress:read,drafts:write",
+    await expect(command).toHaveValue(
+      /codex mcp add team_daily --url .+ --oauth-client-id daily-flow-codex/,
+    );
+    await expect(command).toHaveValue(
+      /if \(\$LASTEXITCODE -eq 0\) \{ codex mcp login team_daily --scopes progress:read,drafts:write \}/,
     );
     await page
       .context()
       .grantPermissions(["clipboard-read", "clipboard-write"], { origin });
-    await copyConfiguration.click();
+    await copyCommand.click();
     expect(
       (await page.evaluate(() => navigator.clipboard.readText())).replace(
         /\r\n/g,
         "\n",
       ),
-    ).toBe(await configuration.inputValue());
+    ).toBe(await command.inputValue());
+    await guide.getByText("手动配置服务器").click();
+    await expect(guide.getByLabel("Codex 服务器配置")).toHaveValue(
+      /\[mcp_servers\.team_daily\]/,
+    );
     const verifier = "t".repeat(43),
       request = {
         client_id: "daily-flow-codex",
