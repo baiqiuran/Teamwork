@@ -14,6 +14,7 @@ export interface AiAuthorizationRepository {
   removeRefresh(hash: string): void;
   grant(id: string): AiGrant | undefined;
   saveGrant(grant: AiGrant): void;
+  removeRevokedGrant(id: string, deletedAt: number): boolean;
   code(hash: string): AuthorizationCode | undefined;
   saveCode(code: AuthorizationCode): void;
   removeCode(hash: string): void;

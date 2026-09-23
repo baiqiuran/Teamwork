@@ -79,6 +79,11 @@ test("授权持续有效、凭证轮换且网页撤销仅影响本人的指定�
     201,
   );
   assert.equal(
+    (await f.author(`/ai/connections/${active.id}/delete`, {})).status,
+    200,
+  );
+  assert.equal((await f.author("/ai/connections")).data.length, 1);
+  assert.equal(
     (
       await fetch(`${f.origin}/mcp`, {
         headers: {

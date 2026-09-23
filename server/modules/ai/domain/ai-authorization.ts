@@ -35,6 +35,7 @@ export interface AiGrant {
   scopes: Capability[];
   createdAt: number;
   revokedAt: number | null;
+  deletedAt: number | null;
   lastUsedAt: number;
   lastReadSucceededAt: number | null;
   credentialType: "oauth" | "api-key";

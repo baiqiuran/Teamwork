@@ -153,6 +153,15 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
     await expect(replacement.getByText(/已连接：这个 Key/)).toBeVisible();
     await replacement.getByRole("button", { name: "撤销旧 Key" }).click();
     await expect(page.getByText("已撤销", { exact: true })).toBeVisible();
+    const oldConnection = page.getByRole("article").filter({
+      has: page.getByRole("heading", {
+        name: "我的桌面助手",
+        exact: true,
+      }),
+    });
+    page.once("dialog", (dialog) => void dialog.accept());
+    await oldConnection.getByRole("button", { name: "删除记录" }).click();
+    await expect(oldConnection).toHaveCount(0);
     const rejected = await page.request.get(`${origin}/mcp`, {
       headers: { Authorization: `Bearer ${key}` },
     });

@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { teamNameKey } from "../../shared/domain/team-name.ts";
 
-const latestVersion = 9;
+const latestVersion = 10;
 
 export function assertAiVersion(db: DatabaseSync) {
   const exists = db
@@ -115,6 +115,11 @@ export function migrateAi(db: DatabaseSync) {
       db.exec(`
         ALTER TABLE ai_grants ADD COLUMN last_read_succeeded_at INTEGER;
         INSERT INTO schema_migrations (version) VALUES (9);
+      `);
+    if (current < 10)
+      db.exec(`
+        ALTER TABLE ai_grants ADD COLUMN deleted_at INTEGER;
+        INSERT INTO schema_migrations (version) VALUES (10);
       `);
     if (db.prepare("PRAGMA foreign_key_check").get())
       throw new Error("数据库关联检查失败，迁移已取消。");

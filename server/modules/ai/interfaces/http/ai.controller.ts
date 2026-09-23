@@ -255,6 +255,18 @@ export class AiController {
       oauthFailure(response, error);
     }
   }
+  @Post("api/ai/connections/:id/delete")
+  deleteRevoked(
+    @CurrentMember() member: Member,
+    @Param("id") id: string,
+    @Res() response: Response,
+  ) {
+    try {
+      response.status(200).json(this.auth.deleteRevoked(member.id, id));
+    } catch (error) {
+      oauthFailure(response, error);
+    }
+  }
   @All("mcp")
   @Anonymous()
   async mcp(@Req() request: Request, @Res() response: Response) {

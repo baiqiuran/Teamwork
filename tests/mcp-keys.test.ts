@@ -58,6 +58,14 @@ test("成员 Key 只显示一次、持久化摘要、跨重启有效，并沿用
   assert.ok(!JSON.stringify(connections).includes(key));
   assert.deepEqual((await f.colleague("/ai/connections")).data, []);
   assert.equal(
+    (await f.author(`/ai/connections/${id}/delete`, {})).status,
+    409,
+  );
+  assert.equal(
+    (await f.colleague(`/ai/connections/${id}/delete`, {})).status,
+    404,
+  );
+  assert.equal(
     (await f.colleague(`/ai/connections/${id}/revoke`, {})).status,
     404,
   );
@@ -96,6 +104,31 @@ test("成员 Key 只显示一次、持久化摘要、跨重启有效，并沿用
   });
   assert.equal(delegated.status, 401);
   await f.author(`/ai/connections/${id}/revoke`, {});
+  assert.equal(
+    (await f.author(`/ai/connections/${id}/delete`, {})).status,
+    200,
+  );
+  assert.deepEqual((await f.author("/ai/connections")).data, []);
+  assert.equal(
+    (await f.author(`/ai/connections/${id}/delete`, {})).status,
+    404,
+  );
+  const removed = new DatabaseSync(f.databasePath);
+  try {
+    assert.equal(
+      removed.prepare("SELECT count(*) AS count FROM ai_api_keys").get()!.count,
+      0,
+    );
+    assert.notEqual(
+      removed.prepare("SELECT deleted_at FROM ai_grants WHERE id=?").get(id)!
+        .deleted_at,
+      null,
+    );
+  } finally {
+    removed.close();
+  }
+  await f.restart();
+  assert.deepEqual((await f.author("/ai/connections")).data, []);
   const rejected = await fetch(`${f.origin}/mcp`, {
     headers: { Authorization: `Bearer ${key}` },
   });
@@ -367,6 +400,16 @@ test("Node stdio 包传递真实工具契约和写入回执，撤销后不能调
   );
   assert.ok((await replacementConnection()).lastReadSucceededAt > 0);
   await f.author(`/ai/connections/${issued.data.id}/revoke`, {});
+  const historyBeforeDelete = (await f.author("/ai/operations")).data.items;
+  assert.ok(historyBeforeDelete.length > 0);
+  assert.equal(
+    (await f.author(`/ai/connections/${issued.data.id}/delete`, {})).status,
+    200,
+  );
+  assert.deepEqual(
+    (await f.author("/ai/operations")).data.items,
+    historyBeforeDelete,
+  );
   const revoked = await client.callTool({
     name: "create_task",
     arguments: input,

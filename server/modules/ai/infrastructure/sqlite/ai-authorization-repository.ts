@@ -20,7 +20,7 @@ export function aiAuthorizationRepository(
     grants(memberId) {
       return db
         .prepare(
-          "SELECT id FROM ai_grants WHERE member_id=? ORDER BY created_at DESC,id",
+          "SELECT id FROM ai_grants WHERE member_id=? AND deleted_at IS NULL ORDER BY created_at DESC,id",
         )
         .all(memberId)
         .map((row) => repository.grant(String(row.id))!);
@@ -56,6 +56,7 @@ export function aiAuthorizationRepository(
                 ? null
                 : Number(row.last_read_succeeded_at),
             revokedAt: row.revoked_at === null ? null : Number(row.revoked_at),
+            deletedAt: row.deleted_at === null ? null : Number(row.deleted_at),
             credentialType:
               row.credential_type === "api-key" ? "api-key" : "oauth",
             name: row.name === null ? null : String(row.name),
@@ -64,7 +65,7 @@ export function aiAuthorizationRepository(
     },
     saveGrant(g) {
       db.prepare(
-        "INSERT INTO ai_grants (id,member_id,client_id,resource,scopes,created_at,revoked_at,last_used_at,last_read_succeeded_at,credential_type,name) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revoked_at=excluded.revoked_at,last_used_at=excluded.last_used_at,last_read_succeeded_at=excluded.last_read_succeeded_at",
+        "INSERT INTO ai_grants (id,member_id,client_id,resource,scopes,created_at,revoked_at,deleted_at,last_used_at,last_read_succeeded_at,credential_type,name) VALUES (?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revoked_at=excluded.revoked_at,last_used_at=excluded.last_used_at,last_read_succeeded_at=excluded.last_read_succeeded_at",
       ).run(
         g.id,
         g.memberId,
@@ -73,11 +74,28 @@ export function aiAuthorizationRepository(
         JSON.stringify(g.scopes),
         g.createdAt,
         g.revokedAt,
+        g.deletedAt,
         g.lastUsedAt,
         g.lastReadSucceededAt,
         g.credentialType,
         g.name,
       );
+    },
+    removeRevokedGrant(id, deletedAt) {
+      const updated = db
+        .prepare(
+          "UPDATE ai_grants SET deleted_at=? WHERE id=? AND revoked_at IS NOT NULL AND deleted_at IS NULL",
+        )
+        .run(deletedAt, id);
+      if (updated.changes !== 1) return false;
+      for (const table of [
+        "ai_codes",
+        "ai_access",
+        "ai_refresh",
+        "ai_api_keys",
+      ])
+        db.prepare(`DELETE FROM ${table} WHERE grant_id=?`).run(id);
+      return true;
     },
     code(hash) {
       const r = db.prepare("SELECT * FROM ai_codes WHERE hash=?").get(hash);
