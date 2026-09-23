@@ -46,7 +46,6 @@ export function TeamDiaries() {
       <header className="team-diary-heading">
         <div>
           <h1>团队日报</h1>
-          <p className="subtitle">按成员、项目和日期查看本团队已提交的日报。</p>
         </div>
         <span className="team-reading-note">已提交内容 · 北京时间</span>
       </header>

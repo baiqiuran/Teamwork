@@ -48,11 +48,7 @@ export function Projects({ memberId }: { memberId: string }) {
     <>
       <div className="journal-heading">
         <div>
-          <p className="eyebrow">当前团队</p>
           <h1>项目与任务</h1>
-          <p className="subtitle">
-            查看项目任务和已提交的进展，完整日报保留在日报页。
-          </p>
         </div>
         <button
           className="primary"
@@ -118,117 +114,138 @@ export function Projects({ memberId }: { memberId: string }) {
           </div>
         </form>
       )}
-      <div className="project-picker">
-        {projects.map((p) => (
-          <button
-            key={p.id}
-            className={selected?.id === p.id ? "selected" : ""}
-            onClick={() => action(() => open(p))}
-          >
-            <strong>{p.name}</strong>
-            <small>
-              {p.creator.name} 创建{p.archived ? " · 已归档" : ""}
-            </small>
-          </button>
-        ))}
-      </div>
-      {!projects.length && (
-        <div className="empty">
-          暂无项目。新建项目后，可在日报工作条目中通过 @ 关联。
-        </div>
-      )}
-      {selected && (
-        <>
-          <section className="record-card">
-            <div className="section-heading">
-              <div>
-                <h2>{selected.name}</h2>
-                <p className="muted">{selected.creator.name} 创建</p>
+      <div className="projects-workbench">
+        <aside className="project-rail" aria-label="项目列表">
+          <div className="project-rail-heading">
+            <h2>项目</h2>
+            <span className="count">{projects.length}</span>
+          </div>
+          <div className="project-picker">
+            {projects.map((p) => (
+              <button
+                key={p.id}
+                className={selected?.id === p.id ? "selected" : ""}
+                aria-current={selected?.id === p.id ? "true" : undefined}
+                onClick={() => action(() => open(p))}
+              >
+                <strong>{p.name}</strong>
+                <small>
+                  {p.creator.name} 创建{p.archived ? " · 已归档" : ""}
+                </small>
+              </button>
+            ))}
+          </div>
+          {!projects.length && <p className="muted">暂无项目。</p>}
+        </aside>
+        <div className="project-main">
+          {selected ? (
+            <>
+              <section className="record-card project-overview">
+                <div className="section-heading">
+                  <div>
+                    <h2>{selected.name}</h2>
+                    <p className="muted">{selected.creator.name} 创建</p>
+                  </div>
+                  {selected.creator.id === memberId && (
+                    <button
+                      className="secondary"
+                      onClick={() => {
+                        setEditing(true);
+                        setForm({
+                          name: selected.name,
+                          description: selected.description,
+                        });
+                      }}
+                    >
+                      编辑项目资料
+                    </button>
+                  )}
+                </div>
+                <p className="entry-body">
+                  {selected.description || "暂无项目说明"}
+                </p>
+                {selected.archived && (
+                  <p className="message">
+                    项目已归档，保留历史，停止新增进展。恢复后旧公开链接仍保持关闭。
+                  </p>
+                )}
+                {selected.creator.id === memberId && (
+                  <button
+                    className="text-button danger"
+                    disabled={busy}
+                    onClick={() =>
+                      action(async () => {
+                        if (
+                          !window.confirm(
+                            selected.archived
+                              ? "恢复项目？之前关闭的公开链接不会自动恢复。"
+                              : "归档项目并关闭此项目及其任务的专属公开链接？团队日报中的历史条目仍保留。",
+                          )
+                        )
+                          return;
+                        const updated = await api<Project>(
+                          `/projects/${selected.id}/archive`,
+                          { archived: !selected.archived },
+                        );
+                        await refresh();
+                        await open(updated);
+                      })
+                    }
+                  >
+                    {selected.archived ? "恢复项目" : "归档项目"}
+                  </button>
+                )}
+              </section>
+              <div className="project-section">
+                <Tasks
+                  key={selected.id}
+                  project={selected}
+                  memberId={memberId}
+                />
               </div>
-              {selected.creator.id === memberId && (
-                <button
-                  className="secondary"
-                  onClick={() => {
-                    setEditing(true);
-                    setForm({
-                      name: selected.name,
-                      description: selected.description,
-                    });
+              <section className="project-section project-progress">
+                <h2>工作进展</h2>
+                <form
+                  className="filters"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void action(() => open(selected));
                   }}
                 >
-                  编辑项目资料
-                </button>
-              )}
+                  <label>
+                    开始日期
+                    <input
+                      type="date"
+                      required
+                      value={from}
+                      onChange={(e) => setFrom(e.target.value)}
+                    />
+                  </label>
+                  <label>
+                    结束日期
+                    <input
+                      type="date"
+                      required
+                      value={to}
+                      onChange={(e) => setTo(e.target.value)}
+                    />
+                  </label>
+                  <button className="secondary" disabled={busy}>
+                    查看进展
+                  </button>
+                </form>
+                <DiaryRecords records={records} layout="masonry" />
+              </section>
+            </>
+          ) : (
+            <div className="empty">
+              {projects.length
+                ? "选择左侧项目查看任务和进展。"
+                : "新建项目后，可在日报中关联工作。"}
             </div>
-            <p className="entry-body">
-              {selected.description || "暂无项目说明"}
-            </p>
-            {selected.archived && (
-              <p className="message">
-                项目已归档，保留历史，停止新增进展。恢复后旧公开链接仍保持关闭。
-              </p>
-            )}
-            {selected.creator.id === memberId && (
-              <button
-                className="text-button danger"
-                disabled={busy}
-                onClick={() =>
-                  action(async () => {
-                    if (
-                      !window.confirm(
-                        selected.archived
-                          ? "恢复项目？之前关闭的公开链接不会自动恢复。"
-                          : "归档项目并关闭此项目及其任务的专属公开链接？团队日报中的历史条目仍保留。",
-                      )
-                    )
-                      return;
-                    const updated = await api<Project>(
-                      `/projects/${selected.id}/archive`,
-                      { archived: !selected.archived },
-                    );
-                    await refresh();
-                    await open(updated);
-                  })
-                }
-              >
-                {selected.archived ? "恢复项目" : "归档项目"}
-              </button>
-            )}
-          </section>
-          <Tasks key={selected.id} project={selected} memberId={memberId} />
-          <h2>工作进展</h2>
-          <form
-            className="filters"
-            onSubmit={(e) => {
-              e.preventDefault();
-              void action(() => open(selected));
-            }}
-          >
-            <label>
-              开始日期
-              <input
-                type="date"
-                required
-                value={from}
-                onChange={(e) => setFrom(e.target.value)}
-              />
-            </label>
-            <label>
-              结束日期
-              <input
-                type="date"
-                required
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-              />
-            </label>
-            <button className="secondary" disabled={busy}>
-              查看进展
-            </button>
-          </form>
-          <DiaryRecords records={records} layout="masonry" />
-        </>
-      )}
+          )}
+        </div>
+      </div>
     </>
   );
 }

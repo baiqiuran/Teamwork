@@ -90,10 +90,9 @@ export function Sharing() {
   return (
     <>
       <div className="page-intro">
-        <p className="eyebrow">公开分享</p>
         <h1>公开链接</h1>
         <p className="subtitle">
-          为选定范围生成只读链接，持链接者无需登录即可查看；关闭后原链接立即失效。
+          持链接者无需登录即可查看；关闭后链接立即失效。
         </p>
       </div>
       <form
@@ -210,9 +209,9 @@ export function Sharing() {
         </fieldset>
         <p className="field-hint">
           {type === "diary"
-            ? "包含所选日期内所有成员的完整已提交日报，包括未关联项目的工作。"
-            : "仅展示所选对象的相关进展，不会带出完整日报中的其他工作。"}
-          任务模块显示当前状态，日期筛选进展。
+            ? "分享所选日期内全团队的完整已提交日报，含未关联项目的工作。"
+            : "只显示所选对象的相关进展。"}
+          任务列表显示当前状态；日期只筛选进展日报。
         </p>
         <button className="primary" disabled={busy || !modules.length}>
           生成公开链接
@@ -356,7 +355,6 @@ export function PublicShare() {
         <>
           <div className="journal-heading">
             <div>
-              <p className="eyebrow">{typeNames[data.type]}分享</p>
               <h1>{data.overview?.name || `${typeNames[data.type]}进展`}</h1>
               <p className="subtitle">
                 {data.from} 至 {data.to} · 北京时间
@@ -429,7 +427,6 @@ export function PublicShare() {
           )}
         </>
       )}
-      <footer>日序 · 公开只读页，内容由团队生成者按所选范围开放</footer>
     </main>
   );
 }

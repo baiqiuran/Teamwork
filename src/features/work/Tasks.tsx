@@ -219,9 +219,11 @@ export function Tasks({
             </p>
           ))}
           <h3>任务进展</h3>
-          <p className="muted">
-            在“我的日报”中关联此任务并提交，进展会显示在这里。
-          </p>
+          {!records.length && (
+            <p className="muted">
+              在日报中关联此任务并提交后，进展会显示在这里。
+            </p>
+          )}
           <DiaryRecords records={records} />
         </section>
       )}

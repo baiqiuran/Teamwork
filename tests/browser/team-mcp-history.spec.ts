@@ -163,12 +163,9 @@ for (const viewport of [
       await expect(
         page.getByRole("heading", { name: "我的 AI 操作记录", exact: true }),
       ).toBeVisible();
-      await expect(
-        page.getByText(
-          "记录当时的执行结果；对象状态显示当前情况。使用同一操作标识重试时只会返回原结果，不会再次修改业务数据。",
-          { exact: true },
-        ),
-      ).toBeVisible();
+      await expect(records.locator(":scope > p")).toContainText(
+        "重试同一操作不会重复执行",
+      );
       const rows = page.locator('section[aria-label="AI 操作记录"] article');
       await expect(rows).toHaveCount(3);
       await expect(rows.nth(0)).toContainText("创建任务 · 已处理，返回原结果");

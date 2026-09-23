@@ -24,6 +24,7 @@ type Tab =
   | "account"
   | "ai";
 const tabByPath = {
+  "/diaries": "diaries",
   "/members": "members",
   "/invitations": "invitations",
   "/team": "team",
@@ -32,6 +33,8 @@ const tabByPath = {
   "/account": "account",
   "/ai": "ai",
 } as const;
+const tabForPath = (path: string): Tab =>
+  tabByPath[path as keyof typeof tabByPath] ?? "diaries";
 function Workspace({
   identity,
   onLogout,
@@ -39,13 +42,21 @@ function Workspace({
   identity: Identity;
   onLogout: () => void;
 }) {
-  const [tab, setTab] = useState<Tab>(
-    () =>
-      tabByPath[window.location.pathname as keyof typeof tabByPath] ??
-      "diaries",
+  const [tab, setTab] = useState<Tab>(() =>
+    tabForPath(window.location.pathname),
   );
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    const followHistory = () => setTab(tabForPath(window.location.pathname));
+    window.addEventListener("popstate", followHistory);
+    return () => window.removeEventListener("popstate", followHistory);
+  }, []);
+  function navigate(next: Tab) {
+    if (tab === next) return;
+    window.history.pushState({}, "", `/${next}`);
+    setTab(next);
+  }
   async function logout() {
     setBusy(true);
     try {
@@ -63,12 +74,8 @@ function Workspace({
         <Brand />
         <div className="team-badge">
           <Icon name="workspace" />
-          <div>
-            {identity.team.name}
-            <small>团队工作空间</small>
-          </div>
+          <div>{identity.team.name}</div>
         </div>
-        <p className="nav-caption">工作空间</p>
         <nav aria-label="团队导航">
           {(
             [
@@ -86,10 +93,7 @@ function Workspace({
               key={key}
               className={tab === key ? "selected" : ""}
               aria-current={tab === key ? "page" : undefined}
-              onClick={() => {
-                window.history.replaceState({}, "", `/${key}`);
-                setTab(key);
-              }}
+              onClick={() => navigate(key)}
             >
               <Icon name={icon} />
               {label}
@@ -102,7 +106,6 @@ function Workspace({
           </span>
           <div>
             <strong>{identity.member.name}</strong>
-            <small>团队成员</small>
           </div>
           <span className="online-dot" aria-label="已登录" />
         </div>
@@ -130,7 +133,7 @@ function Workspace({
             <Icon name="lock" /> 团队内部
           </span>
         </header>
-        <main className={`content${tab === "team" ? " content--team" : ""}`}>
+        <main className={`content content--${tab}`}>
           <div hidden={tab !== "diaries"}>
             <Diaries />
           </div>
@@ -149,11 +152,7 @@ function Workspace({
           ) : (
             <>
               <div className="page-intro">
-                <p className="eyebrow">账号信息</p>
                 <h1>我的账号</h1>
-                <p className="subtitle">
-                  查看姓名、邮箱和所属团队，或退出登录。
-                </p>
               </div>
               <section className="account-card">
                 <dl>

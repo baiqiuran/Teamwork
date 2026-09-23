@@ -116,7 +116,7 @@ export function AiKeyCreate({
             spellCheck={false}
           />
           <button
-            className="secondary"
+            className="primary"
             disabled={!packagePath.trim()}
             onClick={() => void copy(configuration, "客户端配置")}
           >
@@ -169,6 +169,7 @@ export function AiKeyCreate({
             AI 自动执行相应操作，并可能更新已有公开页。
           </p>
           <button
+            className="primary"
             disabled={busy || !name.trim() || !scopes.length}
             onClick={() => void create()}
           >

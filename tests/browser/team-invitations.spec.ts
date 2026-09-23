@@ -148,9 +148,6 @@ for (const viewport of [
         page.getByRole("heading", { name: "成员邀请", exact: true }),
       ).toBeVisible();
       await expect(
-        page.getByText("每位成员都可以邀请新成员加入本团队。", { exact: true }),
-      ).toBeVisible();
-      await expect(
         page.getByRole("heading", { name: "生成邀请", exact: true }),
       ).toBeVisible();
       await expect(

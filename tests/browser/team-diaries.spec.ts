@@ -433,7 +433,7 @@ for (const viewport of [
       );
       expect(empty.records).toEqual([]);
       await expect(
-        reader.getByText("按成员、项目和日期查看本团队已提交的日报。", {
+        reader.getByText("已提交内容 · 北京时间", {
           exact: true,
         }),
       ).toBeVisible();

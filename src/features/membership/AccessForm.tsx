@@ -70,37 +70,22 @@ export function AccessForm({
       <aside className="access-story">
         <Brand />
         <div className="story-content">
-          <p className="eyebrow">团队工作记录</p>
-          <h2>日报、项目与任务</h2>
-          <p>团队成员在这里记录日报、查看项目和任务进展。</p>
-          <div className="story-lines" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-            <i />
-          </div>
+          <h2>团队日报与项目进展</h2>
+          <p>在日报中记录工作，提交后供团队查看。</p>
         </div>
-        <span className="story-footer">日序 · 团队工作记录</span>
       </aside>
       <main className="access-main">
         <div className="access-card">
-          <p className="eyebrow">
-            {mode === "setup"
-              ? "新团队"
-              : mode === "join"
-                ? "团队邀请"
-                : "成员登录"}
-          </p>
           <h1>{title}</h1>
-          <p className="subtitle">
-            {mode === "setup"
-              ? "创建新团队并注册账号，成为首位成员。"
-              : mode === "join"
-                ? preview
+          {mode !== "login" && (
+            <p className="subtitle">
+              {mode === "setup"
+                ? "创建后可邀请成员加入。"
+                : preview
                   ? `${preview.invitedBy} 邀请你加入此团队。`
-                  : "正在确认邀请…"
-                : "使用邮箱和密码登录所属团队。"}
-          </p>
+                  : "正在确认邀请…"}
+            </p>
+          )}
           <Message error>{inviteError}</Message>
           {!inviteError && (mode !== "join" || preview) && (
             <form onSubmit={submit}>

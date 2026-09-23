@@ -16,11 +16,7 @@ export function Members() {
     <section className="members-page">
       <div className="journal-heading">
         <div>
-          <p className="eyebrow">当前团队</p>
           <h1>团队成员</h1>
-          <p className="subtitle">
-            显示本团队全部成员、加入日期和最近一次已提交日报的日期。
-          </p>
         </div>
         <a className="primary" href="/invitations">
           管理成员邀请
@@ -50,9 +46,6 @@ export function Members() {
           ))}
         </ul>
       )}
-      <p className="field-hint">
-        成员名单仅限本团队查看；新成员通过成员邀请加入，加入日期按北京时间显示。
-      </p>
     </section>
   );
 }

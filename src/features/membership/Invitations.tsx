@@ -71,14 +71,11 @@ export function Invitations({ onExpired }: { onExpired: () => void }) {
   return (
     <>
       <div className="page-intro">
-        <p className="eyebrow">成员邀请</p>
         <h1>成员邀请</h1>
-        <p className="subtitle">每位成员都可以邀请新成员加入本团队。</p>
       </div>
       <section className="invite-panel" aria-labelledby="new-invite-title">
         <div className="invite-main">
           <h2 id="new-invite-title">生成邀请</h2>
-          <p>生成邀请链接，复制后发送给新成员。</p>
           <button
             className="primary"
             onClick={() => perform(create)}
@@ -137,7 +134,6 @@ export function Invitations({ onExpired }: { onExpired: () => void }) {
             <h2 id="history-title">
               我发出的邀请 <span className="count">{invitations.length}</span>
             </h2>
-            <p>仅展示你生成的邀请。</p>
           </div>
           <button
             className="text-button"
@@ -157,7 +153,6 @@ export function Invitations({ onExpired }: { onExpired: () => void }) {
               ＋
             </div>
             <h3>还没有发出的邀请</h3>
-            <p>生成链接后，可以在这里查看状态或撤销邀请。</p>
           </div>
         ) : (
           <div className="invitation-list">
@@ -198,7 +193,6 @@ export function Invitations({ onExpired }: { onExpired: () => void }) {
           </div>
         )}
       </section>
-      <p className="page-footnote">邀请时间以北京时间显示。</p>
     </>
   );
 }

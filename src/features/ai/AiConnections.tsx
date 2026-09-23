@@ -46,11 +46,13 @@ export function AiConnections() {
   return (
     <>
       <div className="page-intro">
-        <p className="eyebrow">AI 连接</p>
-        <h1>管理 AI 的操作权限</h1>
-        <p>每个连接独立授权。撤销后立即停止访问，网页操作不受影响。</p>
+        <h1>AI 连接</h1>
+        <p className="subtitle">每个连接单独授权；撤销立即生效。</p>
         <div className="ai-connection-actions">
-          <button onClick={() => setGuide(guide === "new" ? undefined : "new")}>
+          <button
+            className="primary"
+            onClick={() => setGuide(guide === "new" ? undefined : "new")}
+          >
             连接 Codex
           </button>
           <button
@@ -76,57 +78,64 @@ export function AiConnections() {
       {guide === "new" && (
         <AiConnectionGuide scopes={["progress:read", "drafts:write"]} />
       )}
-      {!connections.length && <p>尚未授权 AI 连接。</p>}
-      {connections.map((connection) => (
-        <section
-          className="account-card"
-          key={connection.id}
-          style={{ marginBottom: 16 }}
-        >
-          <h2>
-            {connection.credentialType === "api-key"
-              ? connection.name
-              : "Codex"}
-          </h2>
-          {connection.credentialType === "api-key" && <p>Node · 授权 Key</p>}
-          <p>{connection.scopes.map((scope) => labels[scope]).join(" · ")}</p>
-          <p>
-            创建：{new Date(connection.createdAt).toLocaleString("zh-CN")} ·
-            最近活动：{new Date(connection.lastUsedAt).toLocaleString("zh-CN")}
-          </p>
-          {connection.revokedAt !== null ? (
-            <>
-              <p>已撤销</p>
-              {connection.credentialType === "api-key" ? (
-                <p>需要再次连接时，请生成新的授权 Key。</p>
+      <section className="ai-connection-section" aria-label="已有连接">
+        <h2>已有连接</h2>
+        {!connections.length && <p className="empty">暂无连接。</p>}
+        <div className="ai-connection-list">
+          {connections.map((connection) => (
+            <article
+              className="account-card ai-connection-card"
+              key={connection.id}
+            >
+              <h2>
+                {connection.credentialType === "api-key"
+                  ? connection.name
+                  : "Codex"}
+              </h2>
+              {connection.credentialType === "api-key" && (
+                <p>Node · 授权 Key</p>
+              )}
+              <p>{connection.scopes.map((scope) => labels[scope]).join(" · ")}</p>
+              <p>
+                创建：{new Date(connection.createdAt).toLocaleString("zh-CN")} ·
+                最近活动：
+                {new Date(connection.lastUsedAt).toLocaleString("zh-CN")}
+              </p>
+              {connection.revokedAt !== null ? (
+                <>
+                  <p>已撤销</p>
+                  {connection.credentialType === "api-key" ? (
+                    <p>需要再次连接时，请生成新的授权 Key。</p>
+                  ) : (
+                    <button
+                      className="secondary"
+                      aria-expanded={guide === connection.id}
+                      onClick={() =>
+                        setGuide(
+                          guide === connection.id ? undefined : connection.id,
+                        )
+                      }
+                    >
+                      重新授权
+                    </button>
+                  )}
+                  {guide === connection.id && (
+                    <AiConnectionGuide scopes={connection.scopes} reconnect />
+                  )}
+                </>
               ) : (
                 <button
                   className="secondary"
-                  aria-expanded={guide === connection.id}
-                  onClick={() =>
-                    setGuide(
-                      guide === connection.id ? undefined : connection.id,
-                    )
-                  }
+                  disabled={!!busy}
+                  onClick={() => void revoke(connection.id)}
                 >
-                  重新授权
+                  {busy === connection.id ? "正在撤销…" : "撤销连接"}
                 </button>
               )}
-              {guide === connection.id && (
-                <AiConnectionGuide scopes={connection.scopes} reconnect />
-              )}
-            </>
-          ) : (
-            <button
-              className="secondary"
-              disabled={!!busy}
-              onClick={() => void revoke(connection.id)}
-            >
-              {busy === connection.id ? "正在撤销…" : "撤销连接"}
-            </button>
-          )}
-        </section>
-      ))}
+            </article>
+          ))}
+        </div>
+      </section>
       <AiHistory />
     </>
   );

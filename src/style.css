@@ -1,3 +1,4 @@
+/* Hallmark · pre-emit critique: P4 H4 E4 S4 R4 V4 · macrostructure: app workbench · genre: modern-minimal · existing indigo system */
 /* ============================================================
    日序 · 设计令牌
    品牌延续既有靛蓝（#555fd3 / #4d55ce），其余层级全部收敛到 token。
@@ -108,8 +109,7 @@
   --topbar-h: 60px;
   --content-max: 1120px;
   --e-1: 0 1px 2px rgba(23, 29, 39, 0.06);
-  --e-2:
-    0 1px 2px rgba(23, 29, 39, 0.05), 0 4px 12px rgba(23, 29, 39, 0.06);
+  --e-2: 0 1px 2px rgba(23, 29, 39, 0.05), 0 4px 12px rgba(23, 29, 39, 0.06);
   --e-3: 0 12px 32px rgba(23, 29, 39, 0.1);
 
   /* 动效 */
@@ -355,7 +355,8 @@ form .primary {
 select {
   max-width: 100%;
   appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--n-500) 50%),
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--n-500) 50%),
     linear-gradient(135deg, var(--n-500) 50%, transparent 50%);
   background-position:
     calc(100% - 16px) calc(50% + 1px),
@@ -2255,5 +2256,305 @@ nav button.selected::before {
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
+  }
+}
+
+:root {
+  --content-max: 1360px;
+  --page-title: 32px;
+}
+
+.content--diaries,
+.content--projects,
+.content--sharing,
+.content--ai {
+  max-width: 1440px;
+}
+.content {
+  padding-top: var(--s-10);
+}
+.journal-heading,
+.page-intro,
+.team-diary-heading {
+  margin-bottom: var(--s-8);
+}
+.journal-heading {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+.journal-heading h1,
+.page-intro h1,
+.team-diary-heading h1 {
+  font-size: var(--page-title);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.02em;
+}
+.page-intro .subtitle {
+  max-width: 68ch;
+  margin-top: var(--s-2);
+}
+.sidebar nav {
+  margin-top: var(--s-10);
+}
+.team-badge {
+  margin-top: var(--s-10);
+}
+.sidebar-member {
+  padding-top: var(--s-4);
+}
+
+/* 日报：列表退后，编辑区成为主区域。 */
+.journal-layout {
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: var(--s-5);
+}
+.draft-list {
+  background: var(--surface-muted);
+  box-shadow: none;
+}
+.draft-list h2 {
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  letter-spacing: 0;
+}
+.diary-editor {
+  border-color: var(--border-strong);
+  box-shadow: var(--e-2);
+}
+.editor-meta {
+  margin-bottom: var(--s-5);
+}
+.editor-meta span:last-child {
+  border: 1px solid var(--success-border);
+  border-radius: var(--r-pill);
+  padding: var(--s-1) var(--s-3);
+  background: var(--success-bg);
+  color: var(--success-fg);
+}
+.dirty .editor-meta span:last-child {
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+.editor-meta span:last-child::before {
+  background: currentColor;
+}
+.editor-actions {
+  padding: var(--s-4) 0;
+  margin-top: var(--s-6);
+  position: static;
+  box-shadow: none;
+}
+.work-entry textarea {
+  min-height: 164px;
+}
+
+/* 团队阅读仍使用瀑布流，降低卡片内部的视觉噪声。 */
+.content.content--team {
+  padding-top: var(--s-10);
+}
+.team-diary-filters {
+  background: var(--surface);
+}
+.records--masonry {
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  column-gap: var(--s-5);
+}
+.records--masonry .record-card {
+  border-color: var(--border-strong);
+  animation: none;
+}
+.records--masonry .record-meta {
+  padding-bottom: var(--s-3);
+  border-bottom: 1px solid var(--border);
+}
+.records--masonry .record-card h2 {
+  margin-top: var(--s-4);
+}
+.records--masonry .read-entry:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+  margin-top: var(--s-4);
+}
+
+/* 项目：左侧选项目，右侧连续查看任务与进展。 */
+.projects-workbench {
+  display: grid;
+  grid-template-columns: 248px minmax(0, 1fr);
+  align-items: start;
+  gap: var(--s-6);
+}
+.project-rail {
+  position: sticky;
+  top: calc(var(--topbar-h) + var(--s-5));
+  background: var(--surface-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--s-3);
+  max-height: calc(100dvh - var(--topbar-h) - var(--s-10));
+  overflow: auto;
+}
+.project-rail-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--s-2) var(--s-3) var(--s-3);
+}
+.project-rail-heading h2 {
+  font-size: var(--t-sm);
+}
+.project-rail-heading .count {
+  margin-left: 0;
+}
+.project-rail > .muted {
+  padding: var(--s-3);
+}
+.project-picker {
+  display: grid;
+  gap: var(--s-2);
+  margin: 0;
+}
+.project-picker button {
+  min-width: 0;
+  width: 100%;
+  padding: var(--s-3);
+  box-shadow: none;
+}
+.project-main {
+  min-width: 0;
+}
+.project-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  padding: var(--s-6);
+  margin-bottom: var(--s-5);
+}
+.project-overview {
+  margin-bottom: var(--s-5);
+}
+.project-section > h2,
+.project-section > section > .section-heading h2 {
+  font-size: var(--t-lg);
+}
+.project-section .task-list {
+  margin-bottom: 0;
+}
+.project-section .task-row {
+  box-shadow: none;
+  background: var(--surface-muted);
+}
+.project-section .task-row:last-child {
+  margin-bottom: 0;
+}
+.project-progress > .filters {
+  margin-top: var(--s-5);
+}
+.project-progress .records--masonry {
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+}
+.project-progress .record-cell:only-child {
+  grid-column: 1 / -1;
+}
+
+/* 次要页面沿用同一标题与卡片节奏。 */
+.content--members .invitation-list,
+.content--invitations .invitation-list {
+  max-width: 920px;
+}
+.content--sharing .definition-form {
+  max-width: 760px;
+}
+.access-story {
+  background: var(--brand-50);
+  border-right: 1px solid var(--brand-100);
+}
+.story-content h2 {
+  max-width: 12ch;
+  font-size: 44px;
+  line-height: 1.2;
+}
+.story-content > p {
+  max-width: 28ch;
+}
+.ai-connection-section,
+.ai-history {
+  margin-top: var(--s-10);
+}
+.ai-connection-section > h2,
+.ai-history > h2 {
+  margin-bottom: var(--s-4);
+}
+.ai-connection-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s-4);
+}
+.ai-connection-card,
+.ai-history-row {
+  max-width: none;
+  margin: 0;
+  padding: var(--s-5);
+}
+.ai-connection-card {
+  display: grid;
+  align-content: start;
+  gap: var(--s-3);
+}
+.ai-connection-card h2 {
+  margin: 0;
+}
+.ai-connection-card > button {
+  justify-self: start;
+}
+.ai-history > p {
+  color: var(--text-muted);
+  max-width: 72ch;
+  margin-bottom: var(--s-5);
+}
+.ai-history > label {
+  display: inline-grid;
+  vertical-align: bottom;
+  max-width: 240px;
+  width: 240px;
+  margin-right: var(--s-3);
+}
+.ai-history > .secondary {
+  margin: 0 0 var(--s-5);
+}
+.ai-history-row {
+  margin-bottom: var(--s-3);
+}
+.permission-notes {
+  margin: var(--s-5) 0;
+  padding-left: var(--s-5);
+  color: var(--text-secondary);
+  line-height: var(--lh-relaxed);
+}
+.permission-notes li + li {
+  margin-top: var(--s-2);
+}
+
+@media (max-width: 1100px) {
+  .journal-layout {
+    grid-template-columns: 1fr;
+  }
+  .projects-workbench {
+    grid-template-columns: 1fr;
+  }
+  .project-rail {
+    position: static;
+    max-height: none;
+  }
+  .project-picker {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+  .ai-connection-list {
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 680px) {
+  .records--masonry {
+    grid-template-columns: 1fr;
   }
 }

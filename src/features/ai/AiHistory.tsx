@@ -62,11 +62,9 @@ export function AiHistory() {
     };
   }, [outcome]);
   return (
-    <section aria-label="AI 操作记录">
+    <section className="ai-history" aria-label="AI 操作记录">
       <h2>我的 AI 操作记录</h2>
-      <p>
-        记录当时的执行结果；对象状态显示当前情况。使用同一操作标识重试时只会返回原结果，不会再次修改业务数据。
-      </p>
+      <p>显示当时的执行结果和对象当前状态；重试同一操作不会重复执行。</p>
       <label>
         执行结果{" "}
         <select value={outcome} onChange={(e) => setOutcome(e.target.value)}>
@@ -82,11 +80,7 @@ export function AiHistory() {
       <Message error>{error}</Message>
       {!busy && !page.items.length && <p>暂无操作记录。</p>}
       {page.items.map((item) => (
-        <article
-          className="account-card"
-          key={item.id}
-          style={{ marginBlock: 12 }}
-        >
+        <article className="account-card ai-history-row" key={item.id}>
           <strong>
             {tools[item.tool] ?? item.tool} · {outcomes[item.outcome]}
           </strong>

@@ -49,13 +49,13 @@ export function AiAuthorization() {
   return (
     <main className="content">
       <section className="account-card">
-        <p className="eyebrow">AI 连接授权</p>
-        <h1>允许 Codex 为你处理工作</h1>
-        <p>选择 Codex 可使用的能力。授权持续有效，直到你在 AI 连接中撤销。</p>
-        <p>
-          勾选提交、任务或公开分享后，Codex
-          可自动执行这些操作。提交会更新已有公开页；独立更新任务状态也会改变已开放任务模块的当前状态；日报公开链接会包含所选日期的全团队已提交内容。
-        </p>
+        <h1>授权 Codex</h1>
+        <p>选择允许的操作。授权持续到你撤销连接。</p>
+        <ul className="permission-notes">
+          <li>提交日报会更新团队阅读内容和已有公开页。</li>
+          <li>更新任务状态会改变公开任务列表中的当前状态。</li>
+          <li>日报公开链接会展示所选日期内全团队的已提交内容。</li>
+        </ul>
         <Message error>{error}</Message>
         {details && (
           <>
@@ -83,6 +83,7 @@ export function AiAuthorization() {
             </fieldset>
             <p>你的操作仍受团队权限、日报日期和版本冲突规则约束。</p>
             <button
+              className="primary"
               disabled={busy || !scopes.length}
               onClick={() => void decide(true)}
             >

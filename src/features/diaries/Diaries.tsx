@@ -181,7 +181,6 @@ export function Diaries() {
     <>
       <div className="journal-heading">
         <div>
-          <p className="eyebrow">日报</p>
           <h1>我的日报</h1>
           <p className="subtitle">保存草稿仅自己可见，提交后团队可见。</p>
         </div>
@@ -319,7 +318,7 @@ export function Diaries() {
           {!current ? (
             <div className="empty">
               <h2>新建或选择日报</h2>
-              <p>草稿仅自己可见，提交后团队可见。</p>
+              <p>草稿仅自己可见。</p>
               <button
                 className="secondary"
                 onClick={() => action(create)}
@@ -336,7 +335,9 @@ export function Diaries() {
                     ? `${current.diaryDate} · 已提交`
                     : "私人草稿 · 仅自己可见"}
                 </span>
-                <span>{dirty ? "有未保存修改" : "已保存"}</span>
+                <span aria-live="polite">
+                  {dirty ? "有未保存修改" : "已保存"}
+                </span>
               </div>
               {!current.editable && (
                 <p className="message">
@@ -461,8 +462,8 @@ export function Diaries() {
                         </button>
                         <span className="muted">
                           {entry.projectId
-                            ? "提交后显示在此项目的进展中"
-                            : "未关联项目，仅保留在完整日报中"}
+                            ? "提交后计入项目进展"
+                            : "未关联项目"}
                         </span>
                         {associating === entry.id && (
                           <label>
@@ -598,9 +599,7 @@ export function Diaries() {
                 >
                   ＋ 新增一条工作
                 </button>
-                <p className="field-hint">
-                  换行仍属于当前工作；新增条目后，可单独记录下一项工作。
-                </p>
+                <p className="field-hint">每条工作可单独关联项目和任务。</p>
               </fieldset>
               <div className="editor-actions">
                 <button
@@ -626,7 +625,7 @@ export function Diaries() {
                   {current.diaryDate ? "删除日报" : "删除草稿"}
                 </button>
                 <div>
-                  <span role="status">{notice}</span>
+                  <span role="status">{dirty ? "有未保存修改" : notice}</span>
                   <button
                     className="secondary"
                     disabled={busy || !current.editable || !!pendingUpload}
