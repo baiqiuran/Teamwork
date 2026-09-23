@@ -53,6 +53,7 @@ export class AiAuthorization {
         scopes: [...new Set(scopes)],
         createdAt: this.runtime.now(),
         lastUsedAt: this.runtime.now(),
+        lastReadSucceededAt: null,
         revokedAt: null,
         credentialType: "oauth" as const,
         name: null,
@@ -148,6 +149,7 @@ export class AiAuthorization {
       scopes: grant.scopes,
       createdAt: grant.createdAt,
       lastUsedAt: grant.lastUsedAt,
+      lastReadSucceededAt: grant.lastReadSucceededAt,
       revokedAt: grant.revokedAt,
       credentialType: grant.credentialType,
       name: grant.name,
@@ -168,6 +170,7 @@ export class AiAuthorization {
         credentialType: "api-key",
         createdAt: this.runtime.now(),
         lastUsedAt: this.runtime.now(),
+        lastReadSucceededAt: null,
         revokedAt: null,
       };
       const key = `dfk_${this.security.secret()}`;
@@ -207,6 +210,26 @@ export class AiAuthorization {
       );
     return execute(actor);
   }
+  confirmedRead<T>(
+    token: string,
+    resource: string,
+    read: (memberId: string) => T,
+  ): T {
+    return this.authorized(
+      token,
+      resource,
+      ["progress:read"],
+      ({ grant, member }) => {
+        const result = read(member.id);
+        if (grant.credentialType === "api-key")
+          this.repo.saveGrant({
+            ...grant,
+            lastReadSucceededAt: this.runtime.now(),
+          });
+        return result;
+      },
+    );
+  }
   authenticate(token: string, resource: string) {
     const hash = this.security.digest(token);
     const key = token.startsWith("dfk_") ? this.repo.apiKey(hash) : undefined;
@@ -226,9 +249,10 @@ export class AiAuthorization {
       !member
     )
       throw new AuthorizationError("invalid_token", "请重新连接并授权。", 401);
-    this.repo.saveGrant({ ...grant, lastUsedAt: this.runtime.now() });
+    const usedGrant = { ...grant, lastUsedAt: this.runtime.now() };
+    this.repo.saveGrant(usedGrant);
     return {
-      grant,
+      grant: usedGrant,
       member: { id: member.id, name: member.name },
     };
   }

@@ -51,6 +51,10 @@ export function aiAuthorizationRepository(
             scopes: JSON.parse(String(row.scopes)) as Capability[],
             createdAt: Number(row.created_at),
             lastUsedAt: Number(row.last_used_at),
+            lastReadSucceededAt:
+              row.last_read_succeeded_at === null
+                ? null
+                : Number(row.last_read_succeeded_at),
             revokedAt: row.revoked_at === null ? null : Number(row.revoked_at),
             credentialType:
               row.credential_type === "api-key" ? "api-key" : "oauth",
@@ -60,7 +64,7 @@ export function aiAuthorizationRepository(
     },
     saveGrant(g) {
       db.prepare(
-        "INSERT INTO ai_grants (id,member_id,client_id,resource,scopes,created_at,revoked_at,last_used_at,credential_type,name) VALUES (?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revoked_at=excluded.revoked_at,last_used_at=excluded.last_used_at",
+        "INSERT INTO ai_grants (id,member_id,client_id,resource,scopes,created_at,revoked_at,last_used_at,last_read_succeeded_at,credential_type,name) VALUES (?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET revoked_at=excluded.revoked_at,last_used_at=excluded.last_used_at,last_read_succeeded_at=excluded.last_read_succeeded_at",
       ).run(
         g.id,
         g.memberId,
@@ -70,6 +74,7 @@ export function aiAuthorizationRepository(
         g.createdAt,
         g.revokedAt,
         g.lastUsedAt,
+        g.lastReadSucceededAt,
         g.credentialType,
         g.name,
       );

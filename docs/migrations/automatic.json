@@ -164,5 +164,15 @@
     "automatic": true,
     "kind": "runtime",
     "description": "项目、任务与任务状态事件的读取按创建者或操作者所属团队限定，已提交日报删除后仍保留同团队状态记录；不改表结构。"
+  },
+  "daa5efbdf896bf0a4c7754b4f22150a04e3d9643": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "v9 迁移：为 ai_grants 增加可空的成功只读查询时间；旧连接初始为空，原授权、凭证和业务数据保持不变，迁移失败整体回滚。"
+  },
+  "1566170680319fc7e18d484e3c519eb699301c6d": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "授权仓储读写各连接的成功只读查询时间；只保存连接 ID 和时间，不保存 Key 或查询内容，原有成员范围及撤销行为保持不变。"
   }
 }

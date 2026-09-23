@@ -18,11 +18,7 @@ export function registerReadingTools(
   resource: string,
 ) {
   const execute = (work: (memberId: string) => object) =>
-    toolResult(() =>
-      auth.authorized(token, resource, ["progress:read"], ({ member }) =>
-        work(member.id),
-      ),
-    );
+    toolResult(() => auth.confirmedRead(token, resource, work));
   if (
     !auth.authenticate(token, resource).grant.scopes.includes("progress:read")
   )

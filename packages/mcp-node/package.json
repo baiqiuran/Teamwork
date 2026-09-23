@@ -4,7 +4,7 @@
   "description": "日序 MCP stdio 客户端，使用成员授权 Key 连接远程服务",
   "type": "module",
   "bin": {
-    "daily-flow-mcp": "./bin/daily-flow-mcp.mjs"
+    "daily-flow-mcp": "bin/daily-flow-mcp.mjs"
   },
   "files": [
     "bin",

@@ -36,6 +36,7 @@ export interface AiGrant {
   createdAt: number;
   revokedAt: number | null;
   lastUsedAt: number;
+  lastReadSucceededAt: number | null;
   credentialType: "oauth" | "api-key";
   name: string | null;
 }

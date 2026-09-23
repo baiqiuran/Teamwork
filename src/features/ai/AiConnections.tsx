@@ -11,6 +11,7 @@ type Connection = {
   scopes: string[];
   createdAt: number;
   lastUsedAt: number;
+  lastReadSucceededAt: number | null;
   revokedAt: number | null;
   credentialType: "oauth" | "api-key";
   name: string | null;
@@ -27,7 +28,10 @@ export function AiConnections() {
     [error, setError] = useState(""),
     [busy, setBusy] = useState<string>(),
     [guide, setGuide] = useState<string>();
-  const load = () => api<Connection[]>("/ai/connections").then(setConnections);
+  const load = async () => {
+    const result = await api<Connection[]>("/ai/connections");
+    setConnections(result);
+  };
   useEffect(() => {
     load().catch((e) => setError(describeError(e)));
   }, []);
@@ -72,7 +76,9 @@ export function AiConnections() {
         </div>
       </div>
       <Message error>{error}</Message>
-      {guide === "key" && <AiKeyCreate onCreated={load} />}
+      {guide === "key" && (
+        <AiKeyCreate reloadConnections={load} connections={connections} />
+      )}
       {guide === "new" && (
         <AiConnectionGuide scopes={["progress:read", "drafts:write"]} />
       )}
@@ -94,6 +100,14 @@ export function AiConnections() {
             创建：{new Date(connection.createdAt).toLocaleString("zh-CN")} ·
             最近活动：{new Date(connection.lastUsedAt).toLocaleString("zh-CN")}
           </p>
+          {connection.credentialType === "api-key" &&
+            connection.revokedAt === null && (
+              <p>
+                {connection.lastReadSucceededAt === null
+                  ? "待测试：请让 Codex 列出项目，再刷新连接。"
+                  : `已连接：只读查询成功于 ${new Date(connection.lastReadSucceededAt).toLocaleString("zh-CN")}`}
+              </p>
+            )}
           {connection.revokedAt !== null ? (
             <>
               <p>已撤销</p>
@@ -117,13 +131,38 @@ export function AiConnections() {
               )}
             </>
           ) : (
-            <button
-              className="secondary"
-              disabled={!!busy}
-              onClick={() => void revoke(connection.id)}
-            >
-              {busy === connection.id ? "正在撤销…" : "撤销连接"}
-            </button>
+            <>
+              {connection.credentialType === "api-key" && (
+                <button
+                  className="secondary"
+                  aria-expanded={guide === `replace:${connection.id}`}
+                  onClick={() =>
+                    setGuide(
+                      guide === `replace:${connection.id}`
+                        ? undefined
+                        : `replace:${connection.id}`,
+                    )
+                  }
+                >
+                  更换 Key / 调整能力
+                </button>
+              )}
+              <button
+                className="secondary"
+                disabled={!!busy}
+                onClick={() => void revoke(connection.id)}
+              >
+                {busy === connection.id ? "正在撤销…" : "撤销连接"}
+              </button>
+            </>
+          )}
+          {guide === `replace:${connection.id}` && (
+            <AiKeyCreate
+              reloadConnections={load}
+              connections={connections}
+              replacement={connection}
+              onRevokeOld={revoke}
+            />
           )}
         </section>
       ))}
