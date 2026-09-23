@@ -47,6 +47,19 @@ export function AiConnections() {
       setBusy(undefined);
     }
   }
+  async function deleteRevoked(id: string) {
+    if (!window.confirm("删除这条已撤销授权记录？操作历史仍会保留。")) return;
+    setBusy(id);
+    setError("");
+    try {
+      await api(`/ai/connections/${id}/delete`, {});
+      await load();
+    } catch (e) {
+      setError(describeError(e));
+    } finally {
+      setBusy(undefined);
+    }
+  }
   return (
     <>
       <div className="page-intro">
@@ -138,6 +151,13 @@ export function AiConnections() {
                   {guide === connection.id && (
                     <AiConnectionGuide scopes={connection.scopes} reconnect />
                   )}
+                  <button
+                    className="text-button danger"
+                    disabled={!!busy}
+                    onClick={() => void deleteRevoked(connection.id)}
+                  >
+                    删除记录
+                  </button>
                 </>
               ) : (
                 <>

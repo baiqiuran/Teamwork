@@ -174,5 +174,15 @@
     "automatic": true,
     "kind": "runtime",
     "description": "授权仓储读写各连接的成功只读查询时间；只保存连接 ID 和时间，不保存 Key 或查询内容，原有成员范围及撤销行为保持不变。"
+  },
+  "751ea53fb5e5c42e0752d1b5123f952c36394694": {
+    "automatic": true,
+    "kind": "additive",
+    "description": "v10 迁移：为 ai_grants 增加可空的删除时间；旧授权初始为空，凭证及操作历史保持原样，迁移失败整体回滚。"
+  },
+  "f243af71cde95d2f3af55929cc8b67dce7874599": {
+    "automatic": true,
+    "kind": "runtime",
+    "description": "已撤销授权可从连接列表隐藏，并清除关联的授权码、访问令牌、刷新令牌及 Key 摘要；保留授权行供操作历史关联，其他连接与历史数据不变。"
   }
 }

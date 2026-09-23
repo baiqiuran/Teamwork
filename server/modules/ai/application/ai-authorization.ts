@@ -55,6 +55,7 @@ export class AiAuthorization {
         lastUsedAt: this.runtime.now(),
         lastReadSucceededAt: null,
         revokedAt: null,
+        deletedAt: null,
         credentialType: "oauth" as const,
         name: null,
       };
@@ -172,6 +173,7 @@ export class AiAuthorization {
         lastUsedAt: this.runtime.now(),
         lastReadSucceededAt: null,
         revokedAt: null,
+        deletedAt: null,
       };
       const key = `dfk_${this.security.secret()}`;
       this.repo.saveGrant(grant);
@@ -185,10 +187,26 @@ export class AiAuthorization {
   revoke(memberId: string, id: string) {
     return this.runtime.transaction(() => {
       const grant = this.repo.grant(id);
-      if (!grant || grant.memberId !== memberId)
+      if (!grant || grant.memberId !== memberId || grant.deletedAt !== null)
         throw new AuthorizationError("not_found", "未找到连接。", 404);
       if (grant.revokedAt === null)
         this.repo.saveGrant({ ...grant, revokedAt: this.runtime.now() });
+      return { ok: true };
+    });
+  }
+  deleteRevoked(memberId: string, id: string) {
+    return this.runtime.transaction(() => {
+      const grant = this.repo.grant(id);
+      if (!grant || grant.memberId !== memberId || grant.deletedAt !== null)
+        throw new AuthorizationError("not_found", "未找到连接。", 404);
+      if (grant.revokedAt === null)
+        throw new AuthorizationError(
+          "active_connection",
+          "请先撤销授权，再删除记录。",
+          409,
+        );
+      if (!this.repo.removeRevokedGrant(id, this.runtime.now()))
+        throw new AuthorizationError("not_found", "未找到连接。", 404);
       return { ok: true };
     });
   }
@@ -245,6 +263,7 @@ export class AiAuthorization {
       !grant ||
       grant.credentialType !== (isKey ? "api-key" : "oauth") ||
       grant.revokedAt !== null ||
+      grant.deletedAt !== null ||
       grant.resource !== resource ||
       !member
     )
