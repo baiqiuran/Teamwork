@@ -91,19 +91,29 @@ async function issueKey(page: Page, origin: string, label: string) {
   await panel.getByRole("button", { name: "复制 Key", exact: true }).click();
   await expect(panel.getByRole("status").first()).toContainText("已复制Key");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(key);
-  await panel.getByLabel("服务地址", { exact: true }).waitFor();
-  expect(await panel.getByLabel("服务地址", { exact: true }).inputValue()).toBe(
-    `${origin}/mcp`,
-  );
+  const address = panel.getByLabel("服务地址", { exact: true });
+  await expect(address).toHaveValue(`${origin}/mcp`);
   await panel
     .getByLabel("本地包路径")
     .fill("C:/tools/daily-flow-mcp-0.1.0.tgz");
-  const configuration = await panel
-    .getByLabel("Codex 配置", { exact: true })
-    .inputValue();
-  await panel
-    .getByRole("button", { name: "复制 Codex 配置", exact: true })
-    .click();
+  const configurationField = panel.getByLabel("Codex 配置", { exact: true });
+  const copyConfiguration = panel.getByRole("button", {
+    name: "复制 Codex 配置",
+    exact: true,
+  });
+  await address.fill("https://daily.example.test");
+  await expect(configurationField).toHaveValue(
+    /DAILY_FLOW_URL = "https:\/\/daily\.example\.test\/mcp"/,
+  );
+  await expect(panel.getByText(/会发送到此地址/)).toBeVisible();
+  await address.fill("http://daily.example.test/mcp");
+  await expect(address).toHaveAttribute("aria-invalid", "true");
+  await expect(configurationField).toHaveValue("请先填写有效的服务地址。");
+  await expect(copyConfiguration).toBeDisabled();
+  await address.fill(`${origin}/mcp`);
+  await expect(copyConfiguration).toBeEnabled();
+  const configuration = await configurationField.inputValue();
+  await copyConfiguration.click();
   await expect(panel.getByRole("status").first()).toContainText(
     "已复制Codex 配置",
   );

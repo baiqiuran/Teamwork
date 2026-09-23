@@ -16,6 +16,27 @@ const advancedDescriptions: Record<string, string> = {
   "shares:manage": "创建或关闭本人公开链接，让持链接者查看所选范围。",
 };
 
+function remoteMcpUrl(value: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(value.trim());
+  } catch {
+    return null;
+  }
+  const local = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
+  if (
+    (url.protocol !== "https:" && !(url.protocol === "http:" && local)) ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.hash ||
+    !["/", "/mcp", "/mcp/"].includes(url.pathname)
+  )
+    return null;
+  url.pathname = "/mcp";
+  return url.href;
+}
+
 export function AiKeyCreate({
   reloadConnections,
   connections,
@@ -48,6 +69,12 @@ export function AiKeyCreate({
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [packagePath, setPackagePath] = useState("");
+  const [serviceAddress, setServiceAddress] = useState(
+    `${window.location.origin}/mcp`,
+  );
+  const targetUrl = remoteMcpUrl(serviceAddress);
+  const differentOrigin =
+    targetUrl !== null && new URL(targetUrl).origin !== window.location.origin;
   const connected = connections.some(
     (connection) =>
       connection.id === keyId && connection.lastReadSucceededAt !== null,
@@ -58,7 +85,7 @@ export function AiKeyCreate({
     `args = ${JSON.stringify(["/c", "npx", "--yes", `--package=${packagePath.trim().replaceAll("\\", "/")}`, "daily-flow-mcp"])}`,
     "",
     "[mcp_servers.daily_flow_node.env]",
-    `DAILY_FLOW_URL = ${JSON.stringify(`${window.location.origin}/mcp`)}`,
+    `DAILY_FLOW_URL = ${JSON.stringify(targetUrl)}`,
     `DAILY_FLOW_API_KEY = ${JSON.stringify(key)}`,
   ].join("\n");
   async function create() {
@@ -158,13 +185,30 @@ export function AiKeyCreate({
               <Message>{feedback}</Message>
               <label>
                 服务地址
-                <input readOnly value={`${window.location.origin}/mcp`} />
+                <input
+                  value={serviceAddress}
+                  onChange={(event) => setServiceAddress(event.target.value)}
+                  placeholder="https://你的日序站点/mcp"
+                  spellCheck={false}
+                  aria-invalid={targetUrl === null}
+                />
               </label>
               <p className="field-hint">
-                上面的地址是远程日序 MCP 地址，决定连接哪个服务。Codex 启动本地
-                Node 包，该包通过配置中的 <code>DAILY_FLOW_URL</code>
-                连接此地址；Codex 所在电脑需要能访问它。
+                填写 Codex 所在电脑能访问的日序地址或 /mcp 地址。Codex 启动本地
+                Node 包，通过 <code>DAILY_FLOW_URL</code> 连接此地址。
               </p>
+              {targetUrl === null && (
+                <p className="field-hint" role="alert">
+                  请填写 HTTPS 日序地址或 /mcp 地址；仅本机地址可使用
+                  HTTP，不能包含账号、查询参数或片段。
+                </p>
+              )}
+              {differentOrigin && (
+                <p className="field-hint">
+                  请确认这是当前日序服务的可访问地址。授权 Key
+                  会发送到此地址，其他服务不能使用这个 Key。
+                </p>
+              )}
               <label>
                 本地包路径
                 <input
@@ -188,14 +232,18 @@ export function AiKeyCreate({
                 id="node-mcp-configuration"
                 readOnly
                 value={
-                  packagePath.trim() ? configuration : "请先填写本地包路径。"
+                  !packagePath.trim()
+                    ? "请先填写本地包路径。"
+                    : targetUrl === null
+                      ? "请先填写有效的服务地址。"
+                      : configuration
                 }
                 rows={8}
                 spellCheck={false}
               />
               <button
                 className="primary"
-                disabled={!packagePath.trim()}
+                disabled={!packagePath.trim() || targetUrl === null}
                 onClick={() => void copy(configuration, "Codex 配置")}
               >
                 复制 Codex 配置
