@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../../shared/api";
 import { describeError } from "../../shared/errors";
 import { Message } from "../../shared/components/Message";
+import { remoteMcpUrl } from "./remoteMcpUrl";
 
 const options = [
   ["progress:read", "查询团队工作进展"],
@@ -15,27 +16,6 @@ const advancedDescriptions: Record<string, string> = {
   "tasks:write": "创建任务或更新状态，可能改变公开任务列表。",
   "shares:manage": "创建或关闭本人公开链接，让持链接者查看所选范围。",
 };
-
-function remoteMcpUrl(value: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(value.trim());
-  } catch {
-    return null;
-  }
-  const local = ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname);
-  if (
-    (url.protocol !== "https:" && !(url.protocol === "http:" && local)) ||
-    url.username ||
-    url.password ||
-    url.search ||
-    url.hash ||
-    !["/", "/mcp", "/mcp/"].includes(url.pathname)
-  )
-    return null;
-  url.pathname = "/mcp";
-  return url.href;
-}
 
 export function AiKeyCreate({
   reloadConnections,

@@ -36,7 +36,7 @@
 
 已验证版本：Codex CLI/app-server **0.145.0**，MCP TypeScript server/node/client SDK **2.0.0**，Node **24.15.0**。实际 Codex 经过浏览器授权、工具调用、完整工作流程、15 分钟到期自动续期和撤销验证；测试使用独立 Codex 配置及隔离团队。服务不开放动态客户端注册。
 
-在自己的 Codex `config.toml` 增加（替换域名）：
+网页「AI 连接 → 连接 Codex」会生成下面的服务器配置和授权命令。远程 MCP 地址默认是当前站点的 `/mcp`；若 Codex 在另一台电脑上，请填入该电脑可访问的同一日序服务 HTTPS 地址。将配置加入自己的 Codex `config.toml`（或按下面示例手动替换域名）：
 
 ```toml
 [mcp_servers.daily_flow]
