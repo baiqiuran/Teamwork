@@ -36,6 +36,8 @@ const SHA = /^[a-f0-9]{40}$/,
   ID = /^[a-zA-Z0-9_-]{1,80}$/;
 const HELP = `Local manual release (no business tests or migration-note gate)
   node scripts/manual-release.mjs --config /external/config.json --capture-baseline
+  node scripts/manual-release.mjs --config /external/config.json --package-only
+  node scripts/manual-release.mjs --config /external/config.json --package ID
   node scripts/manual-release.mjs --config /external/config.json
   node scripts/manual-release.mjs --config /external/config.json --resume ID
 
@@ -59,6 +61,10 @@ next release diffs against it. Resuming an older completion never rewrites a new
 observation.
 SQLite changes across the full baseline..HEAD history require typing the exact
 MIGRATE <baseline> <commit> phrase in a terminal. No changes means no prompt.
+
+--package-only refreshes origin/main and builds a baseline-bound bundle without
+contacting production. --package ID verifies and uploads those exact saved bytes,
+then checks the live baseline before release; it never rebuilds the package.
 
 An ID and immutable bundle digest are saved before upload. Keep both external
 outputDir/ID and recordsDir/ID.json to resume (including on another machine).
@@ -484,8 +490,9 @@ export async function captureBaseline({
   return observation;
 }
 
-/** Public protocol boundary. A gateway sends only whitelisted verbs and returns
- * the sanitized server record. Resume never reads source or invokes a build. */
+/** Public protocol boundary for a saved package or interrupted release. A
+ * gateway sends only whitelisted verbs and returns the sanitized server record.
+ * This path verifies saved bytes and never reads source or rebuilds. */
 export async function resumeSavedRelease({
   config,
   id,
@@ -686,22 +693,36 @@ export async function runManualRelease({
   configPath,
   capture = false,
   resume,
+  packageOnly = false,
+  packageId,
   repository = repositoryDefault,
   workspace = workspaceDefault,
   gateway,
   onStep = console.log,
 }) {
   const config = await loadManualConfig(configPath, { workspace });
-  gateway ??= sshGateway(config);
+  if (
+    [capture, Boolean(resume), packageOnly, Boolean(packageId)].filter(Boolean)
+      .length > 1
+  )
+    fail("USAGE_INVALID: choose one release mode");
   if (capture) {
-    const value = await captureBaseline({ config, gateway });
+    const value = await captureBaseline({
+      config,
+      gateway: gateway ?? sshGateway(config),
+    });
     onStep(
       `Captured read-only baseline ${value.commit} (${value.node}, ${value.platform}/${value.architecture}); busy=${value.busy}, frozen=${value.frozen}, maintenance=${value.maintenance}`,
     );
     return value;
   }
-  if (resume)
-    return resumeSavedRelease({ config, id: resume, gateway, onStep });
+  if (resume || packageId)
+    return resumeSavedRelease({
+      config,
+      id: resume ?? packageId,
+      gateway: gateway ?? sshGateway(config),
+      onStep,
+    });
   let recorded;
   try {
     recorded = await json(config.baselineRecord);
@@ -809,8 +830,14 @@ export async function runManualRelease({
   await durableJson(resolve(config.recordsDir, `${id}.json`), state, {
     exclusive: true,
   });
-  onStep(`Saved release ${id}; all server actions use this immutable bundle.`);
-  return resumeSavedRelease({ config, id, gateway, onStep });
+  onStep(`Saved release ${id}; bundle SHA256 ${artifact.bundleSha256}.`);
+  if (packageOnly) return { id, ...artifact };
+  return resumeSavedRelease({
+    config,
+    id,
+    gateway: gateway ?? sshGateway(config),
+    onStep,
+  });
 }
 
 async function main() {
@@ -823,11 +850,18 @@ async function main() {
   while (args.length) {
     const flag = args.shift();
     if (
-      !["--config", "--resume", "--capture-baseline"].includes(flag) ||
+      ![
+        "--config",
+        "--resume",
+        "--capture-baseline",
+        "--package-only",
+        "--package",
+      ].includes(flag) ||
       Object.hasOwn(options, flag)
     )
       fail("USAGE_INVALID: use --help");
-    if (flag === "--capture-baseline") options[flag] = true;
+    if (["--capture-baseline", "--package-only"].includes(flag))
+      options[flag] = true;
     else {
       const value = args.shift();
       if (!value || value.startsWith("--")) fail("USAGE_INVALID: use --help");
@@ -836,14 +870,20 @@ async function main() {
   }
   if (
     !options["--config"] ||
-    (options["--resume"] &&
-      (!ID.test(options["--resume"]) || options["--capture-baseline"]))
+    ["--resume", "--package"].some(
+      (flag) => options[flag] && !ID.test(options[flag]),
+    ) ||
+    ["--resume", "--package", "--package-only", "--capture-baseline"].filter(
+      (flag) => options[flag],
+    ).length > 1
   )
     fail("USAGE_INVALID: use --help");
   await runManualRelease({
     configPath: options["--config"],
     resume: options["--resume"],
     capture: options["--capture-baseline"],
+    packageOnly: options["--package-only"],
+    packageId: options["--package"],
   });
 }
 if (

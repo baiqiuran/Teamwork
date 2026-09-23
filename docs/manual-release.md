@@ -48,16 +48,19 @@
 
 ```sh
 node scripts/manual-release.mjs --config <外部配置.json> --capture-baseline
-node scripts/manual-release.mjs --config <外部配置.json>
+npm run package:manual -- --config <外部配置.json>
+npm run release:manual -- --config <外部配置.json> --package <打包输出的ID>
 ```
 
-首次或显式更新基线才执行第一行。它只调用 `manual-baseline`，以服务器受限 runtime 记录、当前目录和活跃服务的自报版本交叉核对后写入本机记录。日常第二行是一条发布命令：
+首次或显式更新基线才执行第一行。它只调用 `manual-baseline`，以服务器受限 runtime 记录、当前目录和活跃服务的自报版本交叉核对后写入本机记录。日常先打包，再按打包输出的 ID 发布。打包命令刷新 `origin/main`、读取本机已捕获的基线，并在本机完成构建与临时数据库预检，**不连接生产服务器**；它在外部 `outputDir/<ID>/` 保存 `application.tar.gz`、`receipt.json`、`bundle.tar.gz`，在 `recordsDir/<ID>.json` 保存目标、提交和 SHA-256 摘要。发布命令先核验原包与记录，再查询实际生产基线；变化即拒绝上传，绝不重建此 ID。若需要一次命令完成构建与发布，仍可运行 `npm run release:manual -- --config <外部配置.json>`。
+
+日常步骤：
 
 1. 读取已捕获的基线，重新 fetch origin/main；拒绝脏工作树、未推送或与基线无祖先关系的提交。
 2. 检查整个 baseline..HEAD 历史是否触及 `server/infrastructure/sqlite/`，包含删除、改名及改后撤回。命中时列出路径，并要求输入绑定两个完整提交的 `MIGRATE ... ...`；未确认或非交互终端即停止。无命中不询问。
 3. 从固定提交导出临时源码，本机安装依赖并只执行 `npm run build`。不跑应用接口/页面回归，不跑旧迁移说明门禁。
 4. 本机同版本 Node 在全新临时库中完成启动、版本、结构和完整性预检，退出并删除临时库；失败不连接服务器。运行依赖安装禁止安装脚本和 bin 链接，再核验归档安全。
-5. 保存唯一发布 ID、原始 bundle 摘要和本机记录；此后重新查询实际生产基线，变化即拒绝上传。通过 stdin 上传固定两个文件，不用 scp 或远程路径参数。
+5. 保存唯一发布 ID、原始 bundle 摘要和本机记录；发布时重新查询实际生产基线，变化即拒绝上传。通过 stdin 上传固定两个文件，不用 scp 或远程路径参数。
 6. `manual-release` 把工作交给独立 systemd 单元，SSH 断开不杀服务器操作。服务器独占操作锁，预检产物，进入维护、停服、持有数据锁生成配套快照，然后换版、启动和验收。
 7. 成功后取回服务器的脱敏记录。本机无法写记录不报成功。`recordsDir/ID.json` 的 `server` 部分是服务器返回的记录；其余是本机用于续看和验证的目标及包摘要。
 8. 完成记录必须同时带回实际提交、快照标识、各项判据、维护开始与结束时间及实测维护耗时，任一缺失或不匹配都不算验收通过。维护耗时从进入维护态算到重新开放并确认登录页可访问；之后的公网就绪复核和日志读取仍须通过，但不计入对外不可用时长。只有全部吻合时，这条记录才改写基线文件，成为下一次发布的差异判定基准；用 `--resume` 重看一次更早的已完成发布不会把基线倒回去。

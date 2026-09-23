@@ -15,7 +15,7 @@ import {
 } from "./manual-release.mjs";
 
 const cli = fileURLToPath(new URL("manual-release.mjs", import.meta.url));
-test("CLI help is offline and documents capture, release, resume and matching local Node", () => {
+test("CLI help is offline and documents capture, package, release, resume and matching local Node", () => {
   const result = spawnSync(process.execPath, [cli, "--help"], {
     encoding: "utf8",
     timeout: 10000,
@@ -24,6 +24,8 @@ test("CLI help is offline and documents capture, release, resume and matching lo
   for (const word of [
     "--config",
     "--capture-baseline",
+    "--package-only",
+    "--package",
     "--resume",
     "runtimeNode",
     "Windows",
@@ -37,6 +39,12 @@ test("CLI help is offline and documents capture, release, resume and matching lo
     { encoding: "utf8" },
   );
   assert.notEqual(invalid.status, 0);
+  const conflicting = spawnSync(
+    process.execPath,
+    [cli, "--config", "unused", "--package-only", "--package", "one"],
+    { encoding: "utf8" },
+  );
+  assert.match(conflicting.stderr, /USAGE_INVALID/);
 });
 
 test("config in the whole workspace is refused without revealing its path", async () => {
@@ -390,7 +398,7 @@ test("a recorded failure cannot be replayed even if the server later loses its r
   assert.deepEqual(JSON.parse(await readFile(f.file, "utf8")).server, f.status);
 });
 
-async function localReleaseFixture(t) {
+async function localReleaseFixture(t, { runnable = false } = {}) {
   const root = await mkdtemp(resolve(tmpdir(), "manual-cli-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const workspace = resolve(root, "workspace"),
@@ -455,7 +463,10 @@ async function localReleaseFixture(t) {
   const pkg = {
     name: "fixture",
     version: "1.0.0",
-    scripts: { build: 'node -e "process.exit(73)"' },
+    type: "module",
+    scripts: {
+      build: runnable ? "node build.mjs" : 'node -e "process.exit(73)"',
+    },
   };
   await writeFile(resolve(repository, "package.json"), JSON.stringify(pkg));
   await writeFile(
@@ -467,7 +478,41 @@ async function localReleaseFixture(t) {
       packages: { "": pkg },
     }),
   );
-  git("add", "package.json", "package-lock.json");
+  if (runnable) {
+    await writeFile(
+      resolve(repository, "build.mjs"),
+      `import { mkdirSync, copyFileSync, writeFileSync } from 'node:fs';
+       mkdirSync('build/server', { recursive: true });
+       mkdirSync('dist');
+       copyFileSync('app.mjs', 'build/server/main.js');
+       writeFileSync('dist/index.html', '<html>fixture</html>');`,
+    );
+    await writeFile(
+      resolve(repository, "app.mjs"),
+      `import { createServer } from 'node:http';
+       import { readFileSync } from 'node:fs';
+       import { DatabaseSync } from 'node:sqlite';
+       const db = new DatabaseSync(process.env.DAILY_DATABASE_PATH);
+       db.exec('CREATE TABLE fresh(id INTEGER); PRAGMA user_version=7');
+       const version = JSON.parse(readFileSync('release.json')).commit;
+       const server = createServer((request, response) => {
+         if (request.method !== 'GET' || !['/health/ready', '/internal/health'].includes(request.url)) {
+           response.writeHead(405); response.end(); return;
+         }
+         const deep = request.url === '/internal/health';
+         if (deep && request.headers['x-daily-health'] !== process.env.DAILY_HEALTH_TOKEN) {
+           response.writeHead(404); response.end(); return;
+         }
+         response.setHeader('content-type', 'application/json');
+         response.end(JSON.stringify({ ready: true, version, ...(deep ? {
+           schema: db.prepare('PRAGMA user_version').get().user_version,
+           integrity: 'ok', initialized: false, attachmentsAccessible: true
+         } : {}) }));
+       }).listen(Number(process.env.PORT), '127.0.0.1');
+       process.on('SIGTERM', () => server.close(() => { db.close(); process.exit(0); }));`,
+    );
+  }
+  git("add", ".");
   git("commit", "-m", "fixture baseline");
   const baseline = git("rev-parse", "HEAD");
   const origin = resolve(root, "origin.git");
@@ -501,6 +546,124 @@ async function localReleaseFixture(t) {
     origin,
   };
 }
+
+test("package-only avoids production and a later release uploads the same saved bundle", async (t) => {
+  const f = await localReleaseFixture(t, { runnable: true });
+  const steps = [];
+  const packaged = await runManualRelease({
+    ...f,
+    packageOnly: true,
+    gateway: () => assert.fail("packaging must not contact production"),
+    onStep: (step) => steps.push(step),
+  });
+  assert.ok(packaged.id.startsWith("manual-"));
+  assert.ok(steps.some((step) => step.includes(packaged.bundleSha256)));
+  assert.equal(await fileSha256(packaged.bundle), packaged.bundleSha256);
+  const record = JSON.parse(
+    await readFile(resolve(f.config.recordsDir, `${packaged.id}.json`), "utf8"),
+  );
+  assert.equal(record.server, null);
+  assert.equal(record.bundleSha256, packaged.bundleSha256);
+  assert.equal(record.receipt.commit, f.baseline);
+  await writeFile(
+    resolve(f.repository, "app.mjs"),
+    "throw new Error('changed')",
+  );
+
+  let uploaded = false;
+  const staleGateway = async (verb, id) => {
+    if (verb === "manual-status") {
+      assert.equal(id, packaged.id);
+      return { id, phase: "absent" };
+    }
+    assert.equal(verb, "manual-baseline");
+    return {
+      commit: "c".repeat(40),
+      node: process.version,
+      platform: "linux",
+      architecture: "x64",
+      busy: false,
+      frozen: false,
+      maintenance: false,
+    };
+  };
+  await assert.rejects(
+    runManualRelease({
+      ...f,
+      packageId: packaged.id,
+      gateway: staleGateway,
+      onStep: () => {},
+    }),
+    /LIVE_BASELINE_CHANGED/,
+  );
+  assert.equal(uploaded, false);
+
+  const identity = {
+    id: packaged.id,
+    commit: record.receipt.commit,
+    baseline: record.receipt.baseline,
+    bundleSha256: packaged.bundleSha256,
+    artifactSha256: record.receipt.sha256,
+    expectedSchema: record.receipt.expectedSchema,
+  };
+  const gateway = async (verb, id, value, { bundle } = {}) => {
+    if (verb === "manual-status") return { id, phase: "absent" };
+    if (verb === "manual-baseline")
+      return {
+        commit: f.baseline,
+        node: process.version,
+        platform: "linux",
+        architecture: "x64",
+        busy: false,
+        frozen: false,
+        maintenance: false,
+      };
+    assert.equal(id, packaged.id);
+    if (verb === "manual-upload") {
+      assert.equal(value, packaged.bundleSha256);
+      assert.equal(await fileSha256(bundle), packaged.bundleSha256);
+      uploaded = true;
+      return { ...identity, phase: "uploaded" };
+    }
+    assert.equal(verb, "manual-release");
+    assert.equal(value, f.baseline);
+    assert.equal(uploaded, true);
+    const at = Date.now();
+    return {
+      ...identity,
+      phase: "completed",
+      actualCommit: identity.commit,
+      criteria: {
+        processActive: true,
+        ready: true,
+        version: identity.commit,
+        schema: identity.expectedSchema,
+        integrity: "ok",
+        attachmentsAccessible: true,
+        readOnlyPage: true,
+        errorResponses: { errors: 0, requests: 1 },
+      },
+      snapshotId: "package-snapshot",
+      maintenanceAt: new Date(at).toISOString(),
+      maintenanceEndedAt: new Date(at + 1000).toISOString(),
+      maintenanceMilliseconds: 1000,
+      finishedAt: new Date(at + 2000).toISOString(),
+    };
+  };
+  const result = await runManualRelease({
+    ...f,
+    packageId: packaged.id,
+    gateway,
+    onStep: () => {},
+  });
+  assert.equal(result.phase, "completed");
+  assert.equal(uploaded, true);
+  assert.equal(await fileSha256(packaged.bundle), packaged.bundleSha256);
+  assert.equal(
+    JSON.parse(await readFile(f.config.baselineRecord, "utf8")).releaseId,
+    packaged.id,
+  );
+});
 
 test("release uses explicit captured evidence, refreshes the actual origin and fails its build before any SSH", async (t) => {
   const f = await localReleaseFixture(t);

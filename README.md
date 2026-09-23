@@ -380,6 +380,8 @@ data/
 
 应用由单个 Node.js 进程提供前端和 API，SQLite 与附件依赖本地持久磁盘。现有 ECS 使用 systemd、Nginx 和公网 IP HTTPS。2026-09-22 只读实测时仍由 blue 槽提供服务；自动发布与切槽链路已停用，GitHub workflow 定义及相关部署配置也已移除。受管备份与保留链路仍在使用。单实例手工发布已完成本机和隔离环境验证，但尚未安装到生产；首次切换及真实发布仍待现场执行与验收。操作顺序见[手工发布与人工恢复](docs/manual-release.md)，旧接管过程见[CI/CD 生产记录](docs/cicd-production.md)，首次建站历史见[部署手册](docs/deployment.md)。
 
+首次切换并捕获生产基线后，可在本机用 `npm run package:manual -- --config <外部配置.json>` 生成绑定该基线的候选包，再用 `npm run release:manual -- --config <外部配置.json> --package <ID>` 发布同一份包。打包阶段不会连接生产服务器；具体前提和故障续看见手工发布手册。
+
 在新环境重建公网部署时，需要落实以下配置（操作步骤见[部署手册](docs/deployment.md)）：
 
 - 域名、HTTPS、反向代理及进程托管。
