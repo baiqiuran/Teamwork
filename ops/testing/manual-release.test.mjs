@@ -301,6 +301,73 @@ test("a lost acknowledgement of the durable opening marker preserves new data an
   );
 });
 
+test("a post-opening log failure keeps the recorded maintenance interval consistent", async (t) => {
+  const f = await manualFixture(t);
+  const candidate = await f.candidate("post-open-log");
+  const hook = `${f.root}/post-open-log-fault.mjs`;
+  await writeFile(
+    hook,
+    `import fs from 'node:fs/promises';import{syncBuiltinESMExports}from'node:module';const rm=fs.rm,open=fs.open;let opened=false;fs.rm=async function(path,...args){const result=await rm(path,...args);if(path===${JSON.stringify(f.config.maintenance)})opened=true;return result;};fs.open=async function(path,...args){if(opened&&path===${JSON.stringify(f.config.manualAccessLog)})throw new Error('INJECTED_POST_OPEN_LOG_FAILURE');return open(path,...args);};syncBuiltinESMExports();`,
+  );
+  const result = await f.controlWith(
+    ["--import", hook],
+    "manual-release",
+    "--id",
+    "post-open-log",
+    "--candidate",
+    candidate,
+    "--baseline",
+    f.baseline,
+  );
+  assert.equal(result.code, 1, result.output + result.error);
+  const record = await json(
+    `${f.config.stateDir}/operations/post-open-log.json`,
+  );
+  assert.match(record.failure, /INJECTED_POST_OPEN_LOG_FAILURE/);
+  assert.equal(record.recovery, "preserved-new-data");
+  assert.equal(
+    record.maintenanceMilliseconds,
+    Date.parse(record.maintenanceEndedAt) - Date.parse(record.maintenanceAt),
+  );
+  assert.equal((await fetch(`${f.origin}/login`)).status, 503);
+});
+
+test("a budget miss discovered after reopening records an incident without closing a healthy site", async (t) => {
+  const f = await manualFixture(t);
+  const candidate = await f.candidate("late-opening");
+  const hook = `${f.root}/late-opening-clock.mjs`;
+  await writeFile(
+    hook,
+    `import fs from 'node:fs/promises';import{syncBuiltinESMExports}from'node:module';const rm=fs.rm,RealDate=Date;fs.rm=async function(path,...args){const result=await rm(path,...args);if(path===${JSON.stringify(f.config.maintenance)})globalThis.Date=class extends RealDate{constructor(...values){super(...(values.length?values:[RealDate.now()+180001]));}static now(){return RealDate.now()+180001;}};return result;};syncBuiltinESMExports();`,
+  );
+  const result = await f.controlWith(
+    ["--import", hook],
+    "manual-release",
+    "--id",
+    "late-opening",
+    "--candidate",
+    candidate,
+    "--baseline",
+    f.baseline,
+  );
+  assert.equal(result.code, 1, result.output + result.error);
+  const record = await json(
+    `${f.config.stateDir}/operations/late-opening.json`,
+  );
+  assert.equal(record.failure, "MAINTENANCE_BUDGET_EXCEEDED");
+  assert.equal(record.recovery, "preserved-new-data");
+  assert.ok(record.maintenanceMilliseconds > 180000);
+  assert.equal(
+    record.maintenanceMilliseconds,
+    Date.parse(record.maintenanceEndedAt) - Date.parse(record.maintenanceAt),
+  );
+  assert.equal((await fetch(`${f.origin}/login`)).status, 200);
+  assert.equal(
+    (await json(`${f.config.stateDir}/incident.json`)).id,
+    "late-opening",
+  );
+});
+
 test("an actual proxy 5xx during acceptance prevents opening and restores the paired baseline", async (t) => {
   const f = await manualFixture(t);
   const candidate = await f.candidate("proxy-error");

@@ -370,7 +370,9 @@ export async function manualRelease(configPath, config, operation) {
         errorResponses: await errorResponses(config, operation.logCursor),
       },
     });
-    assert.ok(Date.now() < deadline, "MAINTENANCE_BUDGET_EXCEEDED");
+    // Opening includes a proxy login probe with a five-second timeout. Leave
+    // room for that probe before making the irreversible opening decision.
+    assert.ok(Date.now() + 10000 < deadline, "MAINTENANCE_BUDGET_EXCEEDED");
     await save({
       phase: "may-be-open",
       mayHaveOpenedAt: new Date().toISOString(),
@@ -380,7 +382,6 @@ export async function manualRelease(configPath, config, operation) {
     const maintenanceMilliseconds =
       Date.parse(maintenanceEndedAt) - Date.parse(operation.maintenanceAt);
     await save({ maintenanceEndedAt, maintenanceMilliseconds });
-    assert.ok(maintenanceMilliseconds <= 180000, "MAINTENANCE_BUDGET_EXCEEDED");
     await publicReady(config, target.commit);
     await save({
       criteria: {
@@ -388,6 +389,7 @@ export async function manualRelease(configPath, config, operation) {
         errorResponses: await errorResponses(config, operation.logCursor),
       },
     });
+    assert.ok(maintenanceMilliseconds <= 180000, "MAINTENANCE_BUDGET_EXCEEDED");
     await save({
       phase: "completed",
       actualCommit: target.commit,
@@ -407,19 +409,26 @@ export async function manualRelease(configPath, config, operation) {
         recovery = "manual-intervention";
       }
     } else if (entered) recovery = "preserved-new-data";
+    // A budget miss discovered after reopening cannot be repaired by taking
+    // a healthy site offline again. Keep the incident and block new releases.
+    const openBudgetMiss =
+      error.message === "MAINTENANCE_BUDGET_EXCEEDED" &&
+      !!operation.maintenanceEndedAt;
     await freeze(
       config,
       operation,
       error.message,
-      entered && recovery !== "baseline-restored",
+      entered && recovery !== "baseline-restored" && !openBudgetMiss,
     );
     await save({
       phase: "failed",
       failure: error.message,
       recovery,
-      maintenanceMilliseconds: operation.maintenanceAt
-        ? Date.now() - Date.parse(operation.maintenanceAt)
-        : undefined,
+      maintenanceMilliseconds: operation.maintenanceEndedAt
+        ? operation.maintenanceMilliseconds
+        : operation.maintenanceAt
+          ? Date.now() - Date.parse(operation.maintenanceAt)
+          : undefined,
       nextAction:
         "Inspect current version and data, then resolve-incident explicitly; do not delete locks or replay this ID.",
       finishedAt: new Date().toISOString(),

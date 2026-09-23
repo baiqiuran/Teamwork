@@ -15,7 +15,7 @@ Date: 2026-09-21
 
 ## Consequences
 
-- 双槽与 owner 守卫不再参与生产：`ops/systemd/daily-flow@.service`、`daily-flow-reconcile.service`、`ops/control.mjs` 的发布与切槽链路、`.github/workflows/` 两个作业全部保留在仓库但不再执行，也不删。
+- 双槽与 owner 守卫不再参与生产：`ops/systemd/daily-flow@.service`、`daily-flow-reconcile.service`、`ops/control.mjs` 的发布与切槽链路、`.github/workflows/` 两个作业全部保留在仓库但不再执行，也不删。（这是 2026-09-21 的决定；workflow 的后续处置见文末。）
 - **备份与保留链路仍是活代码**，不能随控制器一起废弃：每日自动备份继续用 `daily-flow-backup.timer` 的受管一致快照，`ops/dispatch.mjs`、`ops/snapshots.mjs`、`ops/retention.mjs` 都要留。代价是它的停服目标从活动槽改为单实例，需要相应修改。
 - 失去"重载 Nginx 即回到旧版"的能力。回滚改为恢复本次发布前的一致快照，且必须同时恢复数据与配套旧代码——数据库迁移只有 additive、没有 down，只还原其中一半会造成代码与库结构错配。
 - 恢复副本数量与寿命由受管保留策略决定（每日 7 天 + 最近一次发布前 + 保护点不因腾空间删除），不再遵循"每次发布覆盖上一份备份"。
@@ -30,3 +30,11 @@ Date: 2026-09-21
 上文"代价是它的停服目标从活动槽改为单实例，需要相应修改"经隔离环境实测**部分成立**：主路径不用改——`ops/host.mjs` 的停服与启动本来就只打 `config.unit` 一个字段，槽位专属动作（owner 许可、版本槽链接切换）都在 `if (config.slots)` 之后，所以一份不含 `slots` 的配置就是单实例形态，每日备份、保留判定与配套恢复在改造前已经可用（`backup.test.mjs` 用的基础夹具本来就没有槽位）。需要改的是**善后路径**，它们无条件解引用槽位，因而单实例下每次都会抛 `TypeError`：核对入口 `reconcile.mjs` 因此无法解除"上次操作被打断"的冻结（`control.mjs` 只接受经它处理），人工解除事故冻结的 `resolve-incident` 同样进不去。这两处已修，并由 `ops/testing/single-instance.test.mjs` 覆盖。
 
 同次补上的还有两件：单实例的应用单元此前只以正文形式躺在 `docs/deployment.md` 且**不带数据锁**，现在落成 `ops/systemd/daily-flow.service` 并让该文档改为安装这个文件；`ops/config.example.json` 原先只描述双槽形态，现在描述当前生产形态（不含 `slots`/`activeSlot`/`upstreamFile`）。另外收紧 `snapshots.mjs` 写入 `runtime.json` 的条件为 `config.slots && config.activeSlot`，避免"删掉 slots 但留着 activeSlot"时记下一个并不存在的槽位。
+
+## 2026-09-22 workflow 后续处置
+
+上述“workflow 保留在仓库”的 2026-09-21 决定已被后续操作修改：`.github/workflows/{ci,deploy,inspection}.yml` 于 2026-09-22 从仓库删除，相关 GitHub Variable 和 Environment 也已清理；提交为 `4c50c48`。旧 `ops/` 与 `scripts/` 控制和测试代码仍保留，受管备份链路仍在使用。删除过程及恢复依据见 [CI/CD 接管历史](../cicd-production.md#2026-09-22-移除-workflow-定义与-github-侧配置)。
+
+## 2026-09-23 维护预算越界时的处置细化
+
+单实例发布在开流量前为 `/login` 探测预留时间。若开放后确认的实际维护时长仍超过 180 秒，且公开就绪与访问日志判据均已通过，则记录失败和事故、冻结后续发布，保留当前代码与数据及已开放的服务；再次关站无法消除已经发生的超时，只会延长不可用时间。这是对“开放后失败保持维护态”的一个窄例外，仅适用于单纯预算越界；其他开放后判据失败仍重新进入维护态并人工处理。维护者须核对现场并显式解除事故。
