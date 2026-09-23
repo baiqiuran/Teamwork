@@ -160,6 +160,11 @@ export function AiKeyCreate({
                 服务地址
                 <input readOnly value={`${window.location.origin}/mcp`} />
               </label>
+              <p className="field-hint">
+                上面的地址是远程日序 MCP 地址，决定连接哪个服务。Codex 启动本地
+                Node 包，该包通过配置中的 <code>DAILY_FLOW_URL</code>
+                连接此地址；Codex 所在电脑需要能访问它。
+              </p>
               <label>
                 本地包路径
                 <input

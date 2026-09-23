@@ -11,7 +11,7 @@
 
 ## Windows Codex 接入
 
-日序网页会生成包含本地包路径、当前站点地址和本人 Key 的配置。将片段追加到 Windows 用户级 Codex 配置 `%USERPROFILE%\.codex\config.toml`，重启 Codex，然后使用 `/mcp` 查看连接。请 Codex 使用日序工具列出项目，即可进行不修改数据的连接测试。Codex OAuth 仍可用；若同时配置两条日序连接，建议只启用其中一条以免工具重复。
+日序网页会生成包含本地包路径、当前站点地址和本人 Key 的配置。`DAILY_FLOW_URL` 指定要连接的远程日序 MCP，Codex 所在电脑必须能访问这个地址。将片段追加到 Windows 用户级 Codex 配置 `%USERPROFILE%\.codex\config.toml`，重启 Codex，然后使用 `/mcp` 查看连接。请 Codex 使用日序工具列出项目，即可进行不修改数据的连接测试。Codex OAuth 仍可用；若同时配置两条日序连接，建议只启用其中一条以免工具重复。
 
 配置结构如下；实际使用时应复制网页生成的片段，不要把 Key 提交到仓库或写入日志：
 
