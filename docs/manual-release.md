@@ -52,7 +52,16 @@ npm run package:manual -- --config <外部配置.json>
 npm run release:manual -- --config <外部配置.json> --package <打包输出的ID>
 ```
 
-首次或显式更新基线才执行第一行。它只调用 `manual-baseline`，以服务器受限 runtime 记录、当前目录和活跃服务的自报版本交叉核对后写入本机记录。日常先打包，再按打包输出的 ID 发布。打包命令刷新 `origin/main`、读取本机已捕获的基线，并在本机完成构建与临时数据库预检，**不连接生产服务器**；它在外部 `outputDir/<ID>/` 保存 `application.tar.gz`、`receipt.json`、`bundle.tar.gz`，在 `recordsDir/<ID>.json` 保存目标、提交和 SHA-256 摘要。发布命令先核验原包与记录，再查询实际生产基线；变化即拒绝上传，绝不重建此 ID。若需要一次命令完成构建与发布，仍可运行 `npm run release:manual -- --config <外部配置.json>`。
+Windows PowerShell 使用 `npm.cmd` 调用 npm；本机 npm 12 的 `npm.ps1` 会把 `--config` 当作 npm 自身参数并报 `EUNKNOWNCONFIG`：
+
+```powershell
+$config = Join-Path $env:USERPROFILE 'daily-flow-private\manual-release.json'
+node scripts/manual-release.mjs --config $config --capture-baseline
+npm.cmd run package:manual -- --config $config
+npm.cmd run release:manual -- --config $config --package '打包输出的ID'
+```
+
+首次或显式更新基线才执行第一行。它只调用 `manual-baseline`，以服务器受限 runtime 记录、当前目录和活跃服务的自报版本交叉核对后写入本机记录。日常先打包，再按打包输出的 ID 发布。打包命令刷新 `origin/main`、读取本机已捕获的基线，并在本机完成构建与临时数据库预检，**不连接生产服务器**；它在外部 `outputDir/<ID>/` 保存 `application.tar.gz`、`receipt.json`、`bundle.tar.gz`，在 `recordsDir/<ID>.json` 保存目标、提交和 SHA-256 摘要。发布命令先核验原包与记录，再查询实际生产基线；变化即拒绝上传，绝不重建此 ID。若需要一次命令完成构建与发布，仍可运行 `npm run release:manual -- --config <外部配置.json>`；Windows PowerShell 使用 `npm.cmd run release:manual -- --config $config`。
 
 日常步骤：
 
