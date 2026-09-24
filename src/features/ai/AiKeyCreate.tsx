@@ -44,11 +44,15 @@ export function AiKeyCreate({
       : ["progress:read", "drafts:write"]),
   ]);
   const [key, setKey] = useState("");
+  const [showKey, setShowKey] = useState(false);
   const [keyId, setKeyId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
   const [packagePath, setPackagePath] = useState("");
+  const [keyFilePath, setKeyFilePath] = useState("");
+  const normalizedKeyFilePath = keyFilePath.trim().replaceAll("\\", "/");
+  const validKeyFilePath = /^(?:[a-z]:\/|\/)/i.test(normalizedKeyFilePath);
   const [serviceAddress, setServiceAddress] = useState(
     `${window.location.origin}/mcp`,
   );
@@ -66,7 +70,7 @@ export function AiKeyCreate({
     "",
     "[mcp_servers.daily_flow_node.env]",
     `DAILY_FLOW_URL = ${JSON.stringify(targetUrl)}`,
-    `DAILY_FLOW_API_KEY = ${JSON.stringify(key)}`,
+    `DAILY_FLOW_API_KEY_FILE = ${JSON.stringify(normalizedKeyFilePath)}`,
   ].join("\n");
   async function create() {
     setBusy(true);
@@ -90,7 +94,11 @@ export function AiKeyCreate({
       await navigator.clipboard.writeText(value);
       setFeedback(`已复制${label}。`);
     } catch {
-      setFeedback(`无法自动复制，请选中${label}手动复制。`);
+      setFeedback(
+        label === "Key"
+          ? "无法自动复制，请点击“显示 Key”后手动复制。"
+          : `无法自动复制，请选中${label}手动复制。`,
+      );
     }
   }
   async function check() {
@@ -150,15 +158,28 @@ export function AiKeyCreate({
         <>
           {key ? (
             <>
-              <p>Key 仅显示一次。关闭或刷新页面后无法再查看。</p>
               <p>
-                下面的 Codex 配置包含明文
-                Key。只保存在本机用户级配置中，不要提交到仓库或写入日志。
+                Key 仅在本次创建后可取用，默认隐藏。关闭或刷新页面后无法再查看。
               </p>
-              <label>
-                授权 Key
-                <textarea readOnly value={key} rows={2} spellCheck={false} />
-              </label>
+              <p>
+                请自行复制 Key，用本地编辑器保存为仓库外的 UTF-8
+                纯文本文件，文件只含
+                Key。不要把密钥发给模型、粘贴到命令中或写入日志。 下面的 Codex
+                配置只包含文件路径，不包含密钥正文。
+              </p>
+              {showKey && (
+                <label>
+                  授权 Key
+                  <textarea readOnly value={key} rows={2} spellCheck={false} />
+                </label>
+              )}
+              <button
+                className="secondary"
+                aria-expanded={showKey}
+                onClick={() => setShowKey((value) => !value)}
+              >
+                {showKey ? "隐藏 Key 正文" : "显示 Key"}
+              </button>
               <button className="secondary" onClick={() => void copy()}>
                 复制 Key
               </button>
@@ -198,14 +219,39 @@ export function AiKeyCreate({
                   spellCheck={false}
                 />
               </label>
+              <label>
+                密钥文件路径
+                <input
+                  value={keyFilePath}
+                  onChange={(event) => setKeyFilePath(event.target.value)}
+                  placeholder="C:/Users/你的用户名/.daily-flow/member.key"
+                  spellCheck={false}
+                  aria-invalid={keyFilePath.length > 0 && !validKeyFilePath}
+                />
+              </label>
+              <p className="field-hint">
+                填写已保存密钥文件的绝对路径，不要填写 Key 本身。路径中的 ~
+                和环境变量不会展开。
+                文件应仅供本人访问，不要放入仓库或共享目录；拥有文件读取权限的工具仍能读取密钥。
+                此网页不会创建或读取你的本地文件。
+              </p>
+              {keyFilePath.length > 0 && !validKeyFilePath && (
+                <p className="field-hint" role="alert">
+                  请填写密钥文件的绝对路径。
+                </p>
+              )}
               <p>
-                从管理员处获取 <code>daily-flow-mcp-0.1.0.tgz</code>
+                从管理员处获取支持密钥文件引用的新版{" "}
+                <code>daily-flow-mcp-0.1.0.tgz</code>
                 ，放在本机并填写绝对路径。 在 Windows 的 Codex 用户级配置{" "}
                 <code>%USERPROFILE%\.codex\config.toml</code>
                 {replacement
                   ? " 中用下面的片段替换原 daily_flow_node 配置，避免保留两个同名区块；然后重启 Codex。"
                   : " 末尾粘贴下面的片段，再重启 Codex。"}
-                首次启动可能需要联网获取依赖。
+                首次启动可能需要联网获取依赖。请移除原配置中的
+                DAILY_FLOW_API_KEY，
+                并确认启动环境中也未同时设置它；两个密钥来源同时存在时会拒绝启动。
+                保留原 Key 不会影响授权；若曾发到聊天或日志中，请换新 Key。
               </p>
               <label htmlFor="node-mcp-configuration">Codex 配置</label>
               <textarea
@@ -216,14 +262,18 @@ export function AiKeyCreate({
                     ? "请先填写本地包路径。"
                     : targetUrl === null
                       ? "请先填写有效的服务地址。"
-                      : configuration
+                      : !validKeyFilePath
+                        ? "请先填写密钥文件的绝对路径。"
+                        : configuration
                 }
                 rows={8}
                 spellCheck={false}
               />
               <button
                 className="primary"
-                disabled={!packagePath.trim() || targetUrl === null}
+                disabled={
+                  !packagePath.trim() || targetUrl === null || !validKeyFilePath
+                }
                 onClick={() => void copy(configuration, "Codex 配置")}
               >
                 复制 Codex 配置
@@ -247,9 +297,11 @@ export function AiKeyCreate({
                 检查查询结果
               </button>
               <p>
-                仍显示待测试？请确认 Node 包能启动、已重启
-                Codex、服务地址和网络可达，且配置中的 Key
-                与当前显示的一致。修正配置后可再次列出项目，现有 Key 仍可使用。
+                仍显示待测试？请确认 Node 包支持文件引用、已重启
+                Codex、服务地址和网络可达，
+                并自行核对文件路径与权限，确保使用本次生成的
+                Key。不要向模型发送文件内容或环境变量值。
+                修正配置后可再次列出项目，现有 Key 仍可使用。
               </p>
             </>
           )}

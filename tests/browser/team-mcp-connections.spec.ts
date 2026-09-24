@@ -86,8 +86,18 @@ async function issueKey(page: Page, origin: string, label: string) {
     .getByRole("button", { name: "生成授权 Key", exact: true })
     .click();
   const field = panel.getByRole("textbox", { name: "授权 Key", exact: true });
+  await expect(
+    panel.getByRole("button", { name: "显示 Key", exact: true }),
+  ).toBeVisible();
+  await expect(field).toHaveCount(0);
+  await panel.getByRole("button", { name: "显示 Key", exact: true }).click();
   await expect(field).toHaveValue(/^dfk_/);
   const key = await field.inputValue();
+  await panel
+    .getByRole("button", { name: "隐藏 Key 正文", exact: true })
+    .click();
+  await expect(field).toHaveCount(0);
+  expect(await page.content()).not.toContain(key);
   await panel.getByRole("button", { name: "复制 Key", exact: true }).click();
   await expect(panel.getByRole("status").first()).toContainText("已复制Key");
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(key);
@@ -96,6 +106,9 @@ async function issueKey(page: Page, origin: string, label: string) {
   await panel
     .getByLabel("本地包路径")
     .fill("C:/tools/daily-flow-mcp-0.1.0.tgz");
+  await panel
+    .getByLabel("密钥文件路径", { exact: true })
+    .fill("C:/Users/本地 成员/.daily-flow/member.key");
   const configurationField = panel.getByLabel("Codex 配置", { exact: true });
   const copyConfiguration = panel.getByRole("button", {
     name: "复制 Codex 配置",
@@ -125,7 +138,13 @@ async function issueKey(page: Page, origin: string, label: string) {
     "--package=C:/tools/daily-flow-mcp-0.1.0.tgz",
   );
   expect(configuration).toContain(`DAILY_FLOW_URL = "${origin}/mcp"`);
-  expect(configuration).toContain(`DAILY_FLOW_API_KEY = "${key}"`);
+  expect(configuration).toContain(
+    'DAILY_FLOW_API_KEY_FILE = "C:/Users/本地 成员/.daily-flow/member.key"',
+  );
+  expect(configuration).not.toContain("DAILY_FLOW_API_KEY =");
+  expect(configuration).not.toContain(key);
+  expect(copied).not.toContain(key);
+  expect(await page.content()).not.toContain(key);
   await expect(panel.getByLabel("本地包路径")).toBeVisible();
   return { panel, key };
 }

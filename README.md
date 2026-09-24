@@ -95,7 +95,7 @@ npm start
 | AI 连接  | <http://127.0.0.1:4310/ai>，管理本人授权和操作记录               |
 | MCP      | `http://127.0.0.1:4310/mcp`，供支持 Streamable HTTP 的客户端连接 |
 
-直接在未认证浏览器中打开 `/mcp` 返回 401 属于预期行为；网页登录使用 Cookie，MCP 使用单独的 OAuth 凭证。
+直接在未认证浏览器中打开 `/mcp` 返回 401 属于预期行为；网页登录使用 Cookie，MCP 使用成员 OAuth 凭证或授权 Key。
 
 ## 配置
 
@@ -131,6 +131,8 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 ## Codex 接入
 
 网页和 MCP 共用业务数据与规则。默认授权查询和本人草稿，提交、任务和分享须由成员明确勾选；授权持续到主动撤销。AI 更新内容后，网页重新读取即可看到结果；旧版本写入返回冲突。
+
+当前仓库还提供[本机开发用 Codex 插件](plugins/daily-flow/README.md)：插件通过成员授权 Key 连接本机 `/mcp`，与下面的 OAuth 接入并列。已有线上连接时请先确认本次操作使用的服务和团队。
 
 ### 本机连接步骤
 

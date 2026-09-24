@@ -5,12 +5,44 @@ import {
 } from "@modelcontextprotocol/client";
 import { Server } from "@modelcontextprotocol/server";
 import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { readFileSync } from "node:fs";
+import { isAbsolute } from "node:path";
 
 // Configuration is never included in errors, stderr, or tool output.
 function configuration() {
-  const key = process.env.DAILY_FLOW_API_KEY;
-  if (!key || !/^dfk_[A-Za-z0-9_-]+$/.test(key))
-    throw new Error("请设置有效的 DAILY_FLOW_API_KEY。");
+  const hasKey = Object.hasOwn(process.env, "DAILY_FLOW_API_KEY");
+  const hasFile = Object.hasOwn(process.env, "DAILY_FLOW_API_KEY_FILE");
+  if (hasKey && hasFile)
+    throw new Error(
+      "DAILY_FLOW_API_KEY_FILE 与 DAILY_FLOW_API_KEY 不能同时设置（包括空值）。",
+    );
+  if (!hasKey && !hasFile)
+    throw new Error(
+      "请设置 DAILY_FLOW_API_KEY_FILE（推荐）或 DAILY_FLOW_API_KEY，且仅设置其中一个。",
+    );
+  let key;
+  if (hasFile) {
+    const file = process.env.DAILY_FLOW_API_KEY_FILE;
+    if (!file || !isAbsolute(file))
+      throw new Error("DAILY_FLOW_API_KEY_FILE 须为非空的本机绝对路径。");
+    try {
+      // Read only at startup; never surface native errors containing the path.
+      key = readFileSync(file, "utf8");
+    } catch {
+      throw new Error("无法读取 Key 文件，请检查文件是否存在且可读。");
+    }
+    if (!key.trim()) throw new Error("Key 文件不能为空或仅含空白。");
+    // Editors may append LF or CRLF, but other whitespace is not part of a Key.
+    key = key.replace(/(?:\r?\n)+$/, "");
+  } else {
+    key = process.env.DAILY_FLOW_API_KEY;
+  }
+  if (!key || key.trim() !== key || !/^dfk_[A-Za-z0-9_-]+$/.test(key))
+    throw new Error(
+      hasFile
+        ? "Key 文件格式无效，请仅保存成员授权 Key（允许末尾换行）。"
+        : "请设置有效的 DAILY_FLOW_API_KEY。",
+    );
   let url;
   try {
     url = new URL(process.env.DAILY_FLOW_URL);

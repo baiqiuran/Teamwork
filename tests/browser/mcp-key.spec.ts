@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { createApp } from "../application.ts";
 import { mcpClient } from "../mcp-support.ts";
 
-test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page }) => {
+test("网页创建 Key 默认隐藏、配置仅引用文件并可撤销", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("pageerror", (error) => consoleErrors.push(error.message));
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
   const directory = await mkdtemp(join(tmpdir(), "daily-key-ui-"));
   const app = await createApp({
     databasePath: join(directory, "test.sqlite"),
@@ -46,11 +51,37 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
       .getByRole("button", { name: "生成授权 Key", exact: true })
       .click();
     await expect(
+      panel.getByRole("button", { name: "显示 Key", exact: true }),
+    ).toBeVisible();
+    await expect(
+      panel.getByRole("textbox", { name: "授权 Key", exact: true }),
+    ).toHaveCount(0);
+    await page.evaluate(() => {
+      navigator.clipboard.writeText = async () => {
+        throw new DOMException("Clipboard access denied", "NotAllowedError");
+      };
+    });
+    await panel.getByRole("button", { name: "复制 Key", exact: true }).click();
+    await expect(panel.getByRole("status")).toHaveText(
+      "无法自动复制，请点击“显示 Key”后手动复制。",
+    );
+    await expect(
+      panel.getByRole("textbox", { name: "授权 Key", exact: true }),
+    ).toHaveCount(0);
+    await panel.getByRole("button", { name: "显示 Key", exact: true }).click();
+    await expect(
       panel.getByRole("textbox", { name: "授权 Key", exact: true }),
     ).toHaveValue(/^dfk_/);
     const key = await panel
       .getByRole("textbox", { name: "授权 Key", exact: true })
       .inputValue();
+    await panel
+      .getByRole("button", { name: "隐藏 Key 正文", exact: true })
+      .click();
+    await expect(
+      panel.getByRole("textbox", { name: "授权 Key", exact: true }),
+    ).toHaveCount(0);
+    expect(await page.content()).not.toContain(key);
     await expect(
       page.getByRole("heading", { name: "我的桌面助手", exact: true }),
     ).toBeVisible();
@@ -64,7 +95,31 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
       panel.getByRole("button", { name: "复制 Codex 配置" }),
     ).toBeDisabled();
     await packagePath.fill("C:/tools/daily-flow-mcp-0.1.0.tgz");
-    await expect(panel.getByText(/包含明文 Key/)).toBeVisible();
+    await expect(panel.getByText(/不包含密钥正文/)).toBeVisible();
+    const filePath = panel.getByLabel("密钥文件路径", { exact: true });
+    const copyConfiguration = panel.getByRole("button", {
+      name: "复制 Codex 配置",
+    });
+    await expect(copyConfiguration).toBeDisabled();
+    await expect(panel.getByLabel("Codex 配置", { exact: true })).toHaveValue(
+      "请先填写密钥文件的绝对路径。",
+    );
+    for (const invalidPath of [
+      "./member.key",
+      "~/member.key",
+      "%USERPROFILE%/member.key",
+      key,
+    ]) {
+      await filePath.fill(invalidPath);
+      await expect(filePath).toHaveAttribute("aria-invalid", "true");
+      await expect(copyConfiguration).toBeDisabled();
+      expect(
+        await panel.getByLabel("Codex 配置", { exact: true }).inputValue(),
+      ).not.toContain(key);
+    }
+    await filePath.fill("C:\\Users\\本地 成员\\.daily-flow\\member.key");
+    await expect(filePath).toHaveAttribute("aria-invalid", "false");
+    await expect(copyConfiguration).toBeEnabled();
     const configuration = await panel
       .getByLabel("Codex 配置", { exact: true })
       .inputValue();
@@ -74,7 +129,12 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
       'args = ["/c","npx","--yes","--package=C:/tools/daily-flow-mcp-0.1.0.tgz","daily-flow-mcp"]',
     );
     expect(configuration).toContain(`DAILY_FLOW_URL = "${origin}/mcp"`);
-    expect(configuration).toContain(`DAILY_FLOW_API_KEY = "${key}"`);
+    expect(configuration).toContain(
+      'DAILY_FLOW_API_KEY_FILE = "C:/Users/本地 成员/.daily-flow/member.key"',
+    );
+    expect(configuration).not.toContain("DAILY_FLOW_API_KEY =");
+    expect(configuration).not.toContain(key);
+    expect(await page.content()).not.toContain(key);
     expect(
       (await client.listTools()).tools.some(
         (tool) => tool.name === "create_draft",
@@ -114,6 +174,15 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
     await replacement.getByText("更多权限").click();
     await replacement.getByLabel("创建任务和更新任务状态").check();
     await replacement.getByRole("button", { name: "生成授权 Key" }).click();
+    await expect(
+      replacement.getByRole("button", { name: "显示 Key", exact: true }),
+    ).toBeVisible();
+    await expect(
+      replacement.getByRole("textbox", { name: "授权 Key", exact: true }),
+    ).toHaveCount(0);
+    await replacement
+      .getByRole("button", { name: "显示 Key", exact: true })
+      .click();
     const replacementKey = await replacement
       .getByRole("textbox", { name: "授权 Key", exact: true })
       .inputValue();
@@ -122,6 +191,10 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
     ).toBeVisible();
     expect(replacementKey).toMatch(/^dfk_/);
     expect(replacementKey).not.toBe(key);
+    await replacement
+      .getByRole("button", { name: "隐藏 Key 正文", exact: true })
+      .click();
+    expect(await page.content()).not.toContain(replacementKey);
     expect(
       (await client.callTool({ name: "list_projects", arguments: {} })).isError,
     ).not.toBe(true);
@@ -179,5 +252,6 @@ test("网页创建 Key、默认能力、一次性展示和撤销", async ({ page
     await replacementClient?.close();
     await app.close();
     await rm(directory, { recursive: true, force: true });
+    expect(consoleErrors).toEqual([]);
   }
 });

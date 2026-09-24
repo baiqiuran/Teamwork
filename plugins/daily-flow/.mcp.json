@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "daily_flow_local": {
+      "type": "http",
+      "url": "http://127.0.0.1:4310/mcp",
+      "bearer_token_env_var": "DAILY_FLOW_API_KEY"
+    }
+  }
+}
