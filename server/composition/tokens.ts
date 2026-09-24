@@ -7,5 +7,4 @@ export const MEMBERS = Symbol("MembershipRepository"),
   SECURITY = Symbol("Security"),
   FILES = Symbol("FileStorage"),
   AI = Symbol("AiAuthorizationRepository"),
-  AI_KEY_CIPHER = Symbol("AiKeyCipher"),
   AI_OPERATIONS = Symbol("AiOperationRepository");

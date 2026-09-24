@@ -15,7 +15,6 @@ type Connection = {
   revokedAt: number | null;
   credentialType: "oauth" | "api-key";
   name: string | null;
-  canRevealKey: boolean;
 };
 const labels: Record<string, string> = {
   "progress:read": "查询团队工作进展",
@@ -41,16 +40,9 @@ export function AiConnections() {
   const focused = useRef<HTMLElement>(null);
   const returnTo = useRef<string | undefined>(undefined);
   const selected = connections.find((connection) =>
-    [
-      connection.id,
-      `view:${connection.id}`,
-      `replace:${connection.id}`,
-    ].includes(guide ?? ""),
+    [connection.id, `replace:${connection.id}`].includes(guide ?? ""),
   );
-  const keyGuide =
-    guide === "key" ||
-    guide?.startsWith("view:") ||
-    guide?.startsWith("replace:");
+  const keyGuide = guide === "key" || guide?.startsWith("replace:");
   function closeGuide() {
     returnTo.current = guide;
     setGuide(undefined);
@@ -97,7 +89,7 @@ export function AiConnections() {
             : connection,
         ),
       );
-      if (closeConfiguration || guide === `view:${id}`) closeGuide();
+      if (closeConfiguration) closeGuide();
       await load().catch(() => {});
     } catch (e) {
       setError(describeError(e));
@@ -228,14 +220,12 @@ export function AiConnections() {
                 key={guide}
                 reloadConnections={load}
                 connections={connections}
-                existing={guide.startsWith("view:") ? selected : undefined}
                 replacement={
                   guide.startsWith("replace:") ? selected : undefined
                 }
                 onRevokeOld={revoke}
                 onRevoke={(id) => revoke(id, true)}
                 revoking={!!busy}
-                active={tab === "management"}
                 onClose={closeGuide}
               />
             ) : (
@@ -323,34 +313,16 @@ export function AiConnections() {
                         )}
                       </p>
                       {connection.credentialType === "api-key" &&
-                        connection.revokedAt === null &&
-                        !connection.canRevealKey && (
-                          <p>
-                            旧版 Key 没有可恢复正文，仍可使用；需要回看请更换
-                            Key。
-                          </p>
+                        connection.revokedAt !== null && (
+                          <p>需要再次连接时，请生成新的授权 Key。</p>
                         )}
                       {connection.credentialType === "api-key" &&
-                        (connection.revokedAt !== null ? (
-                          <p>需要再次连接时，请生成新的授权 Key。</p>
-                        ) : (
-                          connection.lastReadSucceededAt === null && (
-                            <p>请让 Codex 列出项目，再刷新连接。</p>
-                          )
-                        ))}
+                        connection.revokedAt === null &&
+                        connection.lastReadSucceededAt === null && (
+                          <p>请让 Codex 列出项目，再刷新连接。</p>
+                        )}
                     </div>
                     <div className="ai-connection-row-actions">
-                      {connection.canRevealKey &&
-                        connection.revokedAt === null && (
-                          <button
-                            className="secondary"
-                            disabled={!!busy || loading}
-                            id={`ai-open-view:${connection.id}`}
-                            onClick={() => setGuide(`view:${connection.id}`)}
-                          >
-                            查看 Key / 配置
-                          </button>
-                        )}
                       {connection.revokedAt !== null ? (
                         <>
                           {connection.credentialType === "oauth" && (

@@ -13,7 +13,6 @@ import {
 import * as security from "../infrastructure/security.ts";
 import { aiAuthorizationRepository } from "../modules/ai/infrastructure/sqlite/ai-authorization-repository.ts";
 import { aiOperationRepository } from "../modules/ai/infrastructure/sqlite/ai-operation-repository.ts";
-import { aiKeyCipher } from "../modules/ai/infrastructure/key-cipher.ts";
 import type { Runtime, Security } from "../shared/application/ports.ts";
 import type { MembershipRepository } from "../modules/membership/application/ports.ts";
 import type { DiaryRepository } from "../modules/journal/application/ports.ts";
@@ -26,7 +25,6 @@ import type {
 import type {
   AiAuthorizationRepository,
   AiOperationRepository,
-  AiKeyCipher,
 } from "../modules/ai/application/ports.ts";
 
 export interface AppOptions {
@@ -40,7 +38,6 @@ export interface AppOptions {
   mcpMaxBodyBytes?: number;
   releaseCommit?: string;
   healthToken?: string;
-  aiKeyMasterFile?: string;
 }
 
 /** The composition root exposes ports, never concrete adapter return types. */
@@ -52,7 +49,6 @@ export interface Resources {
   attachments: AttachmentRepository;
   ai: AiAuthorizationRepository;
   aiOperations: AiOperationRepository;
-  aiKeyCipher: AiKeyCipher;
   runtime: Runtime;
   security: Security;
   files: FileStorage;
@@ -114,7 +110,6 @@ export function createResources(options: AppOptions): Resources {
     return {
       ai: aiAuthorizationRepository(database.db, redirects),
       aiOperations: aiOperationRepository(database.db),
-      aiKeyCipher: aiKeyCipher(options.aiKeyMasterFile),
       publicUrl: options.publicUrl,
       mcpMemberLimit: options.mcpMemberLimit,
       mcpGrantLimit: options.mcpGrantLimit,

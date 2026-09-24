@@ -121,9 +121,10 @@ export function migrateAi(db: DatabaseSync) {
         ALTER TABLE ai_grants ADD COLUMN deleted_at INTEGER;
         INSERT INTO schema_migrations (version) VALUES (10);
       `);
+    // v11 once added an encrypted Key body; the capability was withdrawn before
+    // release, and the version number stays so already-migrated databases work.
     if (current < 11)
       db.exec(`
-        ALTER TABLE ai_api_keys ADD COLUMN encrypted_key TEXT;
         INSERT INTO schema_migrations (version) VALUES (11);
       `);
     if (db.prepare("PRAGMA foreign_key_check").get())

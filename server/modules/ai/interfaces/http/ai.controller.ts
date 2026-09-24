@@ -198,21 +198,6 @@ export class AiController {
   connections(@CurrentMember() member: Member) {
     return this.auth.connections(member.id);
   }
-  @Post("api/ai/connections/:id/key")
-  revealKey(
-    @CurrentMember() member: Member,
-    @Param("id") id: string,
-    @Res() response: Response,
-  ) {
-    response.set("Cache-Control", "no-store");
-    try {
-      response
-        .status(200)
-        .json(this.auth.revealKey(member.id, member.teamId, id));
-    } catch (error) {
-      oauthFailure(response, error);
-    }
-  }
   @Post("api/ai/keys")
   createKey(
     @CurrentMember() member: Member,

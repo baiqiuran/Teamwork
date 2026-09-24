@@ -1,20 +1,8 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { api, ApiError } from "../../shared/api";
+import { api } from "../../shared/api";
 import { describeError } from "../../shared/errors";
 import { Message } from "../../shared/components/Message";
 import { remoteMcpUrl } from "./remoteMcpUrl";
-
-function keyError(error: unknown) {
-  if (error instanceof ApiError) {
-    if (error.status === 503)
-      return "成员 Key 服务暂不可用，请联系管理员检查主密钥及存储，稍后重试。";
-    if (error.status === 404)
-      return "连接已不可用，请刷新连接；已撤销或删除的 Key 不能回看。";
-    if (error.status === 409)
-      return "旧版 Key 没有可恢复正文，请主动更换 Key。";
-  }
-  return describeError(error);
-}
 
 const options = [
   ["progress:read", "查询团队工作进展"],
@@ -36,8 +24,6 @@ export function AiKeyCreate({
   onRevokeOld,
   onRevoke,
   revoking = false,
-  existing,
-  active = true,
   onClose,
 }: {
   reloadConnections: () => Promise<unknown>;
@@ -52,8 +38,6 @@ export function AiKeyCreate({
   }>;
   onRevoke?: (id: string) => Promise<unknown>;
   revoking?: boolean;
-  existing?: { id: string; name: string | null };
-  active?: boolean;
   onClose?: () => void;
   replacement?: {
     id: string;
@@ -74,11 +58,12 @@ export function AiKeyCreate({
       : ["progress:read", "drafts:write"]),
   ]);
   const [key, setKey] = useState("");
-  const [keyId, setKeyId] = useState(existing?.id ?? "");
+  const [showKey, setShowKey] = useState(false);
+  const [keyId, setKeyId] = useState("");
   const saveHeading = useRef<HTMLHeadingElement>(null);
   useLayoutEffect(() => {
-    if (keyId && !existing?.id) saveHeading.current?.focus();
-  }, [keyId, existing?.id]);
+    if (keyId) saveHeading.current?.focus();
+  }, [keyId]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -88,28 +73,6 @@ export function AiKeyCreate({
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState("");
   const [checked, setChecked] = useState(false);
-  const requestVersion = useRef(0);
-  const revoked = connections.some(
-    (connection) => connection.id === keyId && connection.revokedAt !== null,
-  );
-  const showKey = active && !revoked && key !== "";
-  function hideKey() {
-    requestVersion.current++;
-    setKey("");
-    setBusy(false);
-    setFeedback("");
-  }
-  useLayoutEffect(() => {
-    hideKey();
-    const onVisibility = () => {
-      if (document.hidden) hideKey();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      requestVersion.current++;
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [active, revoked, existing?.id]);
   const [packagePath, setPackagePath] = useState("");
   const [keyFilePath, setKeyFilePath] = useState("");
   const normalizedKeyFilePath = keyFilePath.trim().replaceAll("\\", "/");
@@ -121,8 +84,8 @@ export function AiKeyCreate({
   const differentOrigin =
     targetUrl !== null && new URL(targetUrl).origin !== window.location.origin;
   const current = connections.find((connection) => connection.id === keyId);
-  const connected = !revoked && current?.lastReadSucceededAt != null;
-  const status = revoked ? "已撤销" : connected ? "已连接" : "待测试";
+  const connected = current?.lastReadSucceededAt != null;
+  const status = connected ? "已连接" : "待测试";
   const configuration = [
     "[mcp_servers.daily_flow_node]",
     'command = "cmd"',
@@ -133,63 +96,40 @@ export function AiKeyCreate({
     `DAILY_FLOW_API_KEY_FILE = ${JSON.stringify(normalizedKeyFilePath)}`,
   ].join("\n");
   async function create() {
-    const version = ++requestVersion.current;
     setBusy(true);
     setError("");
     try {
-      // The creation response is not retained as a browser credential cache.
-      const result = await api<{ id: string }>("/ai/keys", { name, scopes });
-      if (version !== requestVersion.current) return;
+      const result = await api<{ key: string; id: string }>("/ai/keys", {
+        name,
+        scopes,
+      });
+      setKey(result.key);
       setKeyId(result.id);
       await reloadConnections();
     } catch (e) {
-      if (version === requestVersion.current) setError(keyError(e));
+      setError(describeError(e));
     } finally {
-      if (version === requestVersion.current) setBusy(false);
-    }
-  }
-  async function obtainKey(copyToClipboard: boolean) {
-    const version = ++requestVersion.current;
-    setKey("");
-    setFeedback("");
-    setClipboardError(false);
-    setError("");
-    setBusy(true);
-    try {
-      const result = await api<{ key: string }>(
-        `/ai/connections/${keyId}/key`,
-        {},
-      );
-      if (version !== requestVersion.current || document.hidden) return;
-      if (!copyToClipboard) {
-        setKey(result.key);
-      } else {
-        try {
-          await navigator.clipboard.writeText(result.key);
-          if (version === requestVersion.current) setFeedback("已复制Key。");
-        } catch {
-          if (version === requestVersion.current) {
-            setClipboardError(true);
-            setFeedback("无法自动复制，请点击“显示 Key”后手动复制。");
-          }
-        }
-      }
-    } catch (e) {
-      if (version === requestVersion.current) setError(keyError(e));
-    } finally {
-      if (version === requestVersion.current) setBusy(false);
+      setBusy(false);
     }
   }
   async function copy(value: string, label: string) {
     setFeedback("");
+    setClipboardError(false);
     setConfigurationFeedback("");
     setConfigurationError(false);
     try {
       await navigator.clipboard.writeText(value);
-      setConfigurationFeedback(`已复制${label}。`);
+      if (label === "Key") setFeedback("已复制Key。");
+      else setConfigurationFeedback(`已复制${label}。`);
     } catch {
-      setConfigurationError(true);
-      setConfigurationFeedback(`无法自动复制，请选中${label}手动复制。`);
+      if (label === "Key") {
+        setClipboardError(true);
+        setShowKey(true);
+        setFeedback("无法自动复制，已展开 Key 正文，请手动选中复制。");
+      } else {
+        setConfigurationError(true);
+        setConfigurationFeedback(`无法自动复制，请选中${label}手动复制。`);
+      }
     }
   }
   async function check() {
@@ -234,32 +174,14 @@ export function AiKeyCreate({
   return (
     <section
       className="ai-connection-guide ai-key-setup"
-      aria-label={
-        existing
-          ? "查看 Node 授权 Key"
-          : replacement
-            ? "更换 Node 授权 Key"
-            : "Node 授权 Key"
-      }
+      aria-label={replacement ? "更换 Node 授权 Key" : "Node 授权 Key"}
     >
       {onClose && (
-        <button
-          className="secondary"
-          onClick={() => {
-            hideKey();
-            onClose();
-          }}
-        >
+        <button className="secondary" onClick={onClose}>
           返回连接管理
         </button>
       )}
-      <h2>
-        {keyId
-          ? (current?.name ?? existing?.name ?? name)
-          : replacement
-            ? "更换 Key / 调整能力"
-            : "通过 Node 连接"}
-      </h2>
+      <h2>{keyId ? (current?.name ?? name) : "通过 Node 连接"}</h2>
       {current && (
         <div className="ai-connection-info">
           <div className="ai-connection-primary">
@@ -309,62 +231,55 @@ export function AiKeyCreate({
             <h3 id="ai-save-key" ref={saveHeading} tabIndex={-1}>
               保存密钥
             </h3>
-            {!revoked ? (
-              <>
-                <p>
-                  Key
-                  默认隐藏，以你的身份访问，直到撤销。本人登录后可再次查看或复制；隐藏、返回或刷新不会销毁
-                  Key。
-                </p>
-                <p className="ai-setup-hint">
-                  请自行复制 Key，用本地编辑器保存为仓库外的 UTF-8
-                  纯文本文件，文件只含
-                  Key。不要把密钥发给模型、粘贴到命令中或写入日志。
-                </p>
-                <details>
-                  <summary>密钥保管与回看说明</summary>
-                  <p>
-                    文件应仅供本人访问，不要放入仓库或共享目录；拥有文件读取权限的工具仍能读取密钥。此网页不会创建或读取你的本地文件。撤销后不再提供正文，但不会清除你已复制或保存的副本。
-                  </p>
-                </details>
-                {showKey && (
-                  <label>
-                    授权 Key
-                    <textarea
-                      readOnly
-                      value={key}
-                      rows={2}
-                      spellCheck={false}
-                    />
-                  </label>
-                )}
-                <div className="ai-setup-actions">
-                  <button
-                    className="secondary"
-                    aria-expanded={showKey}
-                    disabled={busy && !showKey}
-                    onClick={() =>
-                      showKey ? hideKey() : void obtainKey(false)
-                    }
-                  >
-                    {showKey ? "隐藏 Key 正文" : "显示 Key"}
-                  </button>
-                  <button
-                    className="secondary"
-                    disabled={busy}
-                    onClick={() => void obtainKey(true)}
-                  >
-                    复制 Key
-                  </button>
-                  <button className="secondary" onClick={hideKey}>
-                    我已保存，隐藏 Key
-                  </button>
-                </div>
-                <Message error={clipboardError}>{feedback}</Message>
-              </>
-            ) : (
-              <p>Key 已撤销，不能再查看或复制。</p>
+            <p>
+              Key
+              默认隐藏，以你的身份访问，直到撤销。关闭、刷新或离开本页后无法再次取回，
+              请先保存；需要重新配置时更换 Key。
+            </p>
+            <p className="ai-setup-hint">
+              请自行复制 Key，用本地编辑器保存为仓库外的 UTF-8
+              纯文本文件，文件只含
+              Key。不要把密钥发给模型、粘贴到命令中或写入日志。
+            </p>
+            <details>
+              <summary>密钥保管说明</summary>
+              <p>
+                文件应仅供本人访问，不要放入仓库或共享目录；拥有文件读取权限的工具仍能读取密钥。此网页不会创建或读取你的本地文件。服务端只保存凭证摘要，因此不提供正文回看；忘记或泄露时创建新
+                Key，验证后再撤销旧 Key。
+              </p>
+            </details>
+            {showKey && (
+              <label>
+                授权 Key
+                <textarea readOnly value={key} rows={2} spellCheck={false} />
+              </label>
             )}
+            <div className="ai-setup-actions">
+              <button
+                className="secondary"
+                aria-expanded={showKey}
+                onClick={() => setShowKey((value) => !value)}
+              >
+                {showKey ? "隐藏 Key 正文" : "显示 Key"}
+              </button>
+              <button
+                className="secondary"
+                onClick={() => void copy(key, "Key")}
+              >
+                复制 Key
+              </button>
+              <button
+                className="secondary"
+                onClick={() => {
+                  setShowKey(false);
+                  setKey("");
+                  setFeedback("");
+                }}
+              >
+                我已保存，隐藏 Key
+              </button>
+            </div>
+            <Message error={clipboardError}>{feedback}</Message>
           </section>
           <section
             className="ai-key-region"
@@ -488,18 +403,16 @@ export function AiKeyCreate({
               使用日序工具列出项目。这是只读测试，不会修改工作数据。
             </p>
             <p>
-              {revoked
-                ? "Key 已撤销，请返回连接管理。"
-                : connected
-                  ? "已连接：这个 Key 已完成一次只读查询。"
-                  : "待测试：完成列出项目后，点击下方按钮检查结果。即使项目为空也算成功。"}
+              {connected
+                ? "已连接：这个 Key 已完成一次只读查询。"
+                : "待测试：完成列出项目后，点击下方按钮检查结果。即使项目为空也算成功。"}
             </p>
             <p className="field-hint">
               显示或复制 Key、启动、鉴权与工具发现不算连接成功。
             </p>
             <button
               className="secondary"
-              disabled={checking || revoked}
+              disabled={checking}
               onClick={() => void check()}
             >
               {checking ? "正在检查…" : "检查查询结果"}
@@ -508,26 +421,22 @@ export function AiKeyCreate({
               <p className="ai-setup-progress" role="status">
                 {checking
                   ? "正在检查最新查询状态…"
-                  : revoked
-                    ? "此连接已撤销。"
-                    : connected
-                      ? "检查完成：已检测到成功查询。"
-                      : "检查完成：尚未检测到成功查询，请让 Codex 列出项目后重试。"}
+                  : connected
+                    ? "检查完成：已检测到成功查询。"
+                    : "检查完成：尚未检测到成功查询，请让 Codex 列出项目后重试。"}
               </p>
             )}
             <Message error>{checkError}</Message>
-            {!connected && !revoked && (
-              <>
-                <details>
-                  <summary>仍待测试？检查配置与网络</summary>
-                  <p>
-                    请确认 Node 包支持文件引用、已重启
-                    Codex、服务地址和网络可达，并自行核对文件路径与权限，确保使用本次生成的
-                    Key。不要向模型发送文件内容或环境变量值。修正配置后可再次列出项目，现有
-                    Key 仍可使用。
-                  </p>
-                </details>
-              </>
+            {!connected && (
+              <details>
+                <summary>仍待测试？检查配置与网络</summary>
+                <p>
+                  请确认 Node 包支持文件引用、已重启
+                  Codex、服务地址和网络可达，并自行核对文件路径与权限，确保使用本次生成的
+                  Key。不要向模型发送文件内容或环境变量值。修正配置后可再次列出项目，现有
+                  Key 仍可使用。
+                </p>
+              </details>
             )}
             {replacement &&
               connected &&
@@ -550,7 +459,7 @@ export function AiKeyCreate({
             <p>
               若已使用 Codex OAuth 连接日序，建议只启用一条连接，以免工具重复。
             </p>
-            {!revoked && onRevoke && (
+            {onRevoke && (
               <button
                 className="text-button danger"
                 disabled={revoking}

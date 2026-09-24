@@ -14,14 +14,7 @@ import { AiHistory } from "../modules/ai/application/ai-history.ts";
 import { McpLimits } from "../modules/ai/interfaces/http/mcp-limits.ts";
 import { AiController } from "../modules/ai/interfaces/http/ai.controller.ts";
 import { SiteAddress } from "../interfaces/http/site-address.ts";
-import {
-  MEMBERS,
-  RUNTIME,
-  SECURITY,
-  AI,
-  AI_OPERATIONS,
-  AI_KEY_CIPHER,
-} from "./tokens.ts";
+import { MEMBERS, RUNTIME, SECURITY, AI, AI_OPERATIONS } from "./tokens.ts";
 
 @Module({})
 class AiModule {}
@@ -39,7 +32,6 @@ export function aiModule(
     imports: [infrastructure, reading, work, journal, sharing],
     controllers: [AiController],
     providers: [
-      { provide: AI_KEY_CIPHER, useValue: resources.aiKeyCipher },
       { provide: SiteAddress, useValue: new SiteAddress(resources.publicUrl) },
       {
         provide: McpLimits,
@@ -108,14 +100,13 @@ export function aiModule(
       },
       {
         provide: AiAuthorization,
-        inject: [AI, MEMBERS, RUNTIME, SECURITY, AI_KEY_CIPHER],
+        inject: [AI, MEMBERS, RUNTIME, SECURITY],
         useFactory: (
           repo: Resources["ai"],
           members: Resources["members"],
           runtime: Resources["runtime"],
           security: Resources["security"],
-          cipher: Resources["aiKeyCipher"],
-        ) => new AiAuthorization(repo, members, runtime, security, cipher),
+        ) => new AiAuthorization(repo, members, runtime, security),
       },
     ],
   };

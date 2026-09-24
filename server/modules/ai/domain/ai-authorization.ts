@@ -50,7 +50,6 @@ export const createApiKeyInput = z
 export interface ApiKeyCredential {
   hash: string;
   grantId: string;
-  encryptedKey: string | null;
 }
 export interface AuthorizationCode {
   hash: string;

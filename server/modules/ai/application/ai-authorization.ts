@@ -5,7 +5,7 @@ import {
   type AiGrant,
   createApiKeyInput,
 } from "../domain/ai-authorization.ts";
-import type { AiAuthorizationRepository, AiKeyCipher } from "./ports.ts";
+import type { AiAuthorizationRepository } from "./ports.ts";
 import type { MembershipRepository } from "../../membership/application/ports.ts";
 import type { Runtime, Security } from "../../../shared/application/ports.ts";
 import { beijingDate } from "../../../shared/domain/date.ts";
@@ -16,7 +16,6 @@ export class AiAuthorization {
     private readonly members: MembershipRepository,
     private readonly runtime: Runtime,
     private readonly security: Security,
-    private readonly keyCipher: AiKeyCipher,
   ) {}
   describe(input: unknown, resource: string) {
     return validateAuthorization(
@@ -155,84 +154,35 @@ export class AiAuthorization {
       revokedAt: grant.revokedAt,
       credentialType: grant.credentialType,
       name: grant.name,
-      canRevealKey:
-        grant.credentialType === "api-key" &&
-        grant.revokedAt === null &&
-        this.repo.apiKeyForGrant(grant.id)?.encryptedKey != null,
     }));
-  }
-  revealKey(memberId: string, teamId: number, id: string) {
-    return this.runtime.transaction(() => {
-      const grant = this.repo.grant(id);
-      const owner = grant && this.members.member(grant.memberId);
-      if (
-        !grant ||
-        !owner ||
-        owner.id !== memberId ||
-        owner.teamId !== teamId ||
-        grant.credentialType !== "api-key" ||
-        grant.revokedAt !== null ||
-        grant.deletedAt !== null
-      )
-        throw new AuthorizationError("not_found", "未找到可回看的连接。", 404);
-      const credential = this.repo.apiKeyForGrant(id);
-      if (credential?.encryptedKey == null)
-        throw new AuthorizationError(
-          "key_not_recoverable",
-          "旧版 Key 没有可恢复正文，请主动更换 Key。",
-          409,
-        );
-      try {
-        const key = this.keyCipher.open(credential.encryptedKey, id);
-        if (this.security.digest(key) !== credential.hash) throw new Error();
-        return { key };
-      } catch {
-        throw new AuthorizationError(
-          "key_unavailable",
-          "成员 Key 暂不可读取，请联系管理员检查主密钥及配套数据。",
-          503,
-        );
-      }
-    });
   }
   createKey(memberId: string, input: unknown, resource: string) {
     const { name, scopes } = createApiKeyInput.parse(input);
-    try {
-      return this.runtime.transaction(() => {
-        if (!this.members.member(memberId))
-          throw new AuthorizationError("access_denied", "成员不可用。", 403);
-        const grant: AiGrant = {
-          id: this.runtime.id(),
-          memberId,
-          clientId: "daily-flow-node",
-          resource,
-          scopes: [...new Set(scopes)],
-          name,
-          credentialType: "api-key",
-          createdAt: this.runtime.now(),
-          lastUsedAt: this.runtime.now(),
-          lastReadSucceededAt: null,
-          revokedAt: null,
-          deletedAt: null,
-        };
-        const key = `dfk_${this.security.secret()}`;
-        const encryptedKey = this.keyCipher.seal(key, grant.id);
-        this.repo.saveGrant(grant);
-        this.repo.saveApiKey({
-          hash: this.security.digest(key),
-          grantId: grant.id,
-          encryptedKey,
-        });
-        return { key, id: grant.id, name, scopes: grant.scopes };
+    return this.runtime.transaction(() => {
+      if (!this.members.member(memberId))
+        throw new AuthorizationError("access_denied", "成员不可用。", 403);
+      const grant: AiGrant = {
+        id: this.runtime.id(),
+        memberId,
+        clientId: "daily-flow-node",
+        resource,
+        scopes: [...new Set(scopes)],
+        name,
+        credentialType: "api-key",
+        createdAt: this.runtime.now(),
+        lastUsedAt: this.runtime.now(),
+        lastReadSucceededAt: null,
+        revokedAt: null,
+        deletedAt: null,
+      };
+      const key = `dfk_${this.security.secret()}`;
+      this.repo.saveGrant(grant);
+      this.repo.saveApiKey({
+        hash: this.security.digest(key),
+        grantId: grant.id,
       });
-    } catch (error) {
-      if (error instanceof AuthorizationError) throw error;
-      throw new AuthorizationError(
-        "key_unavailable",
-        "成员 Key 暂不可创建，请联系管理员检查主密钥及存储。",
-        503,
-      );
-    }
+      return { key, id: grant.id, name, scopes: grant.scopes };
+    });
   }
   revoke(memberId: string, id: string) {
     return this.runtime.transaction(() => {
