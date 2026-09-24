@@ -21,7 +21,13 @@ export interface AiAuthorizationRepository {
   access(hash: string): AccessCredential | undefined;
   saveAccess(access: AccessCredential): void;
   apiKey(hash: string): ApiKeyCredential | undefined;
+  apiKeyForGrant(grantId: string): ApiKeyCredential | undefined;
   saveApiKey(key: ApiKeyCredential): void;
+}
+
+export interface AiKeyCipher {
+  seal(key: string, grantId: string): string;
+  open(envelope: string, grantId: string): string;
 }
 
 export interface AiOperationRepository {

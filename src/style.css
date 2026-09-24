@@ -1038,6 +1038,7 @@ nav button.selected::before {
 }
 .ai-connection-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s-3);
   margin-top: var(--s-5);
 }
@@ -2477,9 +2478,21 @@ nav button.selected::before {
 .story-content > p {
   max-width: 28ch;
 }
+.ai-tabs {
+  display: flex;
+  gap: var(--s-2);
+  padding-bottom: var(--s-3);
+  margin-bottom: var(--s-5);
+  border-bottom: 1px solid var(--border);
+}
+.ai-tabs [aria-selected="true"] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
 .ai-connection-section,
 .ai-history {
-  margin-top: var(--s-10);
+  margin-top: var(--s-6);
 }
 .ai-connection-section > h2,
 .ai-history > h2 {
@@ -2487,8 +2500,8 @@ nav button.selected::before {
 }
 .ai-connection-list {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--s-4);
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--s-3);
 }
 .ai-connection-card,
 .ai-history-row {
@@ -2497,15 +2510,141 @@ nav button.selected::before {
   padding: var(--s-5);
 }
 .ai-connection-card {
+  padding: var(--s-4);
   display: grid;
-  align-content: start;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s-4);
+  box-shadow: none;
+}
+.ai-connection-info {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ai-connection-info > p {
+  margin-top: var(--s-1);
+  color: var(--text-muted);
+  font-size: var(--t-xs);
+}
+.ai-connection-primary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s-2) var(--s-3);
+  margin-bottom: var(--s-2);
+}
+.ai-connection-type {
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+.ai-connection-status {
+  padding: 0 var(--s-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  color: var(--text-secondary);
+  background: var(--n-50);
+  font-size: var(--t-xs);
+}
+.ai-connection-status[data-status="待测试"] {
+  color: var(--warning-fg);
+  background: var(--warning-bg);
+  border-color: var(--warning-border);
+}
+.ai-connection-status[data-status="已连接"],
+.ai-connection-status[data-status="已授权"] {
+  color: var(--success-fg);
+  background: var(--success-bg);
+  border-color: var(--success-border);
+}
+.ai-connection-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.ai-focused-configuration {
+  max-width: 880px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.ai-focused-configuration > h2,
+.ai-key-setup > h2 {
+  margin-block: var(--s-5) var(--s-3);
+  font-size: var(--t-xl);
+}
+.ai-focused-configuration .ai-connection-guide {
+  max-width: none;
+}
+.ai-focused-configuration .ai-key-setup {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+.ai-key-regions {
+  display: grid;
+  gap: var(--s-4);
+  margin-top: var(--s-5);
+}
+.ai-key-region {
+  min-width: 0;
+  padding: var(--s-5);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--surface);
+}
+.ai-key-region h3 {
+  font-size: var(--t-lg);
+  margin-bottom: var(--s-3);
+}
+.ai-key-region p,
+.ai-key-region details {
+  margin-block: var(--s-3);
+}
+.ai-key-region details {
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+.ai-key-region summary {
+  padding-block: var(--s-2);
+}
+.ai-key-region .ai-setup-hint {
+  padding: var(--s-3);
+  border-left: 3px solid var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning-fg);
+  font-size: var(--t-xs);
+}
+.ai-key-region [role="alert"].field-hint {
+  color: var(--danger-fg);
+}
+.ai-setup-progress {
+  padding: var(--s-3);
+  border: 1px solid var(--accent-soft-border);
+  border-radius: var(--r-md);
+  background: var(--accent-soft);
+  color: var(--text-secondary);
+}
+.ai-setup-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+}
+.ai-setup-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
   gap: var(--s-3);
 }
-.ai-connection-card h2 {
-  margin: 0;
+.ai-key-setup label.ai-scope-option {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s-3);
+  margin-block: var(--s-4);
 }
-.ai-connection-card > button {
-  justify-self: start;
+.ai-key-setup fieldset {
+  margin-block: var(--s-4);
+  padding: var(--s-4);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
 }
 .ai-history > p {
   color: var(--text-muted);
@@ -2611,8 +2750,8 @@ nav button.selected::before {
   .project-picker {
     grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   }
-  .ai-connection-list {
-    grid-template-columns: 1fr;
+  .ai-connection-card {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 @media (max-width: 680px) {

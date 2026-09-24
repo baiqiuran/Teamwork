@@ -19,6 +19,7 @@ const service = await createApp({
   releaseCommit: release?.commit,
   healthToken: process.env.DAILY_HEALTH_TOKEN,
   databasePath,
+  aiKeyMasterFile: process.env.DAILY_AI_KEY_MASTER_FILE,
   publicUrl: process.env.DAILY_PUBLIC_URL,
   mcpMemberLimit: process.env.DAILY_MCP_MEMBER_LIMIT
     ? Number(process.env.DAILY_MCP_MEMBER_LIMIT)

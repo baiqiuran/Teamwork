@@ -159,6 +159,7 @@ for (const viewport of [
       ).toBe(true);
 
       await page.goto(`${origin}/ai`);
+      await page.getByRole("tab", { name: "操作记录", exact: true }).click();
       const records = page.getByRole("region", { name: "AI 操作记录" });
       await expect(
         page.getByRole("heading", { name: "我的 AI 操作记录", exact: true }),
@@ -174,6 +175,13 @@ for (const viewport of [
       await expect(rows.nth(1)).toContainText("未产生可跳转对象");
       await expect(rows.nth(2)).toContainText("创建任务 · 成功");
       await expect(rows.nth(2)).toContainText("当前任务");
+      await rows.nth(1).getByText("记录详情", { exact: true }).click();
+      await expect(
+        rows.nth(1).getByText("工具：create_task", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        rows.nth(1).getByText("对象：未产生对象", { exact: true }),
+      ).toBeVisible();
       const text = await page
         .locator('section[aria-label="AI 操作记录"]')
         .innerText();
@@ -195,17 +203,52 @@ for (const viewport of [
       ).toContainText("记录内可见");
 
       await page.goto(`${origin}/ai`);
+      await page.getByRole("tab", { name: "操作记录", exact: true }).click();
       await page.getByLabel("执行结果").selectOption("failure");
       await expect(rows).toHaveCount(1);
       await expect(rows.first()).toContainText("失败");
       await page.getByLabel("执行结果").selectOption("");
       await expect(rows).toHaveCount(3);
 
+      // Keep refresh and continuation on the real paginated operation history.
+      for (let index = 0; index < 18; index++) {
+        const result = await client.callTool({
+          name: "create_task",
+          arguments: {
+            operationId: randomUUID(),
+            projectId: ownProject,
+            name: `继续加载任务 ${index + 1}`,
+            description: "分页回归",
+          },
+        });
+        expect(result.isError).not.toBe(true);
+      }
+      await records
+        .getByRole("button", { name: "刷新记录", exact: true })
+        .click();
+      await expect(rows).toHaveCount(20);
+      await records
+        .getByRole("button", { name: "加载更多", exact: true })
+        .click();
+      await expect(rows).toHaveCount(21);
+      await expect(
+        records.getByRole("button", { name: "加载更多", exact: true }),
+      ).toHaveCount(0);
+      await page.getByLabel("执行结果").selectOption("success");
+      await expect(rows).toHaveCount(19);
+      await page.getByLabel("执行结果").selectOption("failure");
+      await expect(rows).toHaveCount(1);
+      await expect(rows.first()).toContainText("错误码：not-found");
+
       await colleague.goto(`${origin}/ai`);
+      await colleague
+        .getByRole("tab", { name: "操作记录", exact: true })
+        .click();
       await expect(
         colleague.getByText("暂无操作记录。", { exact: true }),
       ).toBeVisible();
       await other.goto(`${origin}/ai`);
+      await other.getByRole("tab", { name: "操作记录", exact: true }).click();
       await expect(
         other.getByText("暂无操作记录。", { exact: true }),
       ).toBeVisible();

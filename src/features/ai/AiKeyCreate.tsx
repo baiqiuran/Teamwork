@@ -1,8 +1,20 @@
-import { useState } from "react";
-import { api } from "../../shared/api";
+import { useLayoutEffect, useRef, useState } from "react";
+import { api, ApiError } from "../../shared/api";
 import { describeError } from "../../shared/errors";
 import { Message } from "../../shared/components/Message";
 import { remoteMcpUrl } from "./remoteMcpUrl";
+
+function keyError(error: unknown) {
+  if (error instanceof ApiError) {
+    if (error.status === 503)
+      return "成员 Key 服务暂不可用，请联系管理员检查主密钥及存储，稍后重试。";
+    if (error.status === 404)
+      return "连接已不可用，请刷新连接；已撤销或删除的 Key 不能回看。";
+    if (error.status === 409)
+      return "旧版 Key 没有可恢复正文，请主动更换 Key。";
+  }
+  return describeError(error);
+}
 
 const options = [
   ["progress:read", "查询团队工作进展"],
@@ -22,9 +34,27 @@ export function AiKeyCreate({
   connections,
   replacement,
   onRevokeOld,
+  onRevoke,
+  revoking = false,
+  existing,
+  active = true,
+  onClose,
 }: {
   reloadConnections: () => Promise<unknown>;
-  connections: Array<{ id: string; lastReadSucceededAt: number | null }>;
+  connections: Array<{
+    id: string;
+    name: string | null;
+    scopes: string[];
+    createdAt: number;
+    lastUsedAt: number;
+    lastReadSucceededAt: number | null;
+    revokedAt: number | null;
+  }>;
+  onRevoke?: (id: string) => Promise<unknown>;
+  revoking?: boolean;
+  existing?: { id: string; name: string | null };
+  active?: boolean;
+  onClose?: () => void;
   replacement?: {
     id: string;
     name: string | null;
@@ -44,11 +74,42 @@ export function AiKeyCreate({
       : ["progress:read", "drafts:write"]),
   ]);
   const [key, setKey] = useState("");
-  const [showKey, setShowKey] = useState(false);
-  const [keyId, setKeyId] = useState("");
+  const [keyId, setKeyId] = useState(existing?.id ?? "");
+  const saveHeading = useRef<HTMLHeadingElement>(null);
+  useLayoutEffect(() => {
+    if (keyId && !existing?.id) saveHeading.current?.focus();
+  }, [keyId, existing?.id]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [feedback, setFeedback] = useState("");
+  const [clipboardError, setClipboardError] = useState(false);
+  const [configurationFeedback, setConfigurationFeedback] = useState("");
+  const [configurationError, setConfigurationError] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkError, setCheckError] = useState("");
+  const [checked, setChecked] = useState(false);
+  const requestVersion = useRef(0);
+  const revoked = connections.some(
+    (connection) => connection.id === keyId && connection.revokedAt !== null,
+  );
+  const showKey = active && !revoked && key !== "";
+  function hideKey() {
+    requestVersion.current++;
+    setKey("");
+    setBusy(false);
+    setFeedback("");
+  }
+  useLayoutEffect(() => {
+    hideKey();
+    const onVisibility = () => {
+      if (document.hidden) hideKey();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      requestVersion.current++;
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [active, revoked, existing?.id]);
   const [packagePath, setPackagePath] = useState("");
   const [keyFilePath, setKeyFilePath] = useState("");
   const normalizedKeyFilePath = keyFilePath.trim().replaceAll("\\", "/");
@@ -59,10 +120,9 @@ export function AiKeyCreate({
   const targetUrl = remoteMcpUrl(serviceAddress);
   const differentOrigin =
     targetUrl !== null && new URL(targetUrl).origin !== window.location.origin;
-  const connected = connections.some(
-    (connection) =>
-      connection.id === keyId && connection.lastReadSucceededAt !== null,
-  );
+  const current = connections.find((connection) => connection.id === keyId);
+  const connected = !revoked && current?.lastReadSucceededAt != null;
+  const status = revoked ? "已撤销" : connected ? "已连接" : "待测试";
   const configuration = [
     "[mcp_servers.daily_flow_node]",
     'command = "cmd"',
@@ -73,45 +133,83 @@ export function AiKeyCreate({
     `DAILY_FLOW_API_KEY_FILE = ${JSON.stringify(normalizedKeyFilePath)}`,
   ].join("\n");
   async function create() {
+    const version = ++requestVersion.current;
     setBusy(true);
     setError("");
     try {
-      const result = await api<{ key: string; id: string }>("/ai/keys", {
-        name,
-        scopes,
-      });
-      setKey(result.key);
+      // The creation response is not retained as a browser credential cache.
+      const result = await api<{ id: string }>("/ai/keys", { name, scopes });
+      if (version !== requestVersion.current) return;
       setKeyId(result.id);
       await reloadConnections();
     } catch (e) {
-      setError(describeError(e));
+      if (version === requestVersion.current) setError(keyError(e));
     } finally {
-      setBusy(false);
+      if (version === requestVersion.current) setBusy(false);
     }
   }
-  async function copy(value = key, label = "Key") {
+  async function obtainKey(copyToClipboard: boolean) {
+    const version = ++requestVersion.current;
+    setKey("");
+    setFeedback("");
+    setClipboardError(false);
+    setError("");
+    setBusy(true);
+    try {
+      const result = await api<{ key: string }>(
+        `/ai/connections/${keyId}/key`,
+        {},
+      );
+      if (version !== requestVersion.current || document.hidden) return;
+      if (!copyToClipboard) {
+        setKey(result.key);
+      } else {
+        try {
+          await navigator.clipboard.writeText(result.key);
+          if (version === requestVersion.current) setFeedback("已复制Key。");
+        } catch {
+          if (version === requestVersion.current) {
+            setClipboardError(true);
+            setFeedback("无法自动复制，请点击“显示 Key”后手动复制。");
+          }
+        }
+      }
+    } catch (e) {
+      if (version === requestVersion.current) setError(keyError(e));
+    } finally {
+      if (version === requestVersion.current) setBusy(false);
+    }
+  }
+  async function copy(value: string, label: string) {
+    setFeedback("");
+    setConfigurationFeedback("");
+    setConfigurationError(false);
     try {
       await navigator.clipboard.writeText(value);
-      setFeedback(`已复制${label}。`);
+      setConfigurationFeedback(`已复制${label}。`);
     } catch {
-      setFeedback(
-        label === "Key"
-          ? "无法自动复制，请点击“显示 Key”后手动复制。"
-          : `无法自动复制，请选中${label}手动复制。`,
-      );
+      setConfigurationError(true);
+      setConfigurationFeedback(`无法自动复制，请选中${label}手动复制。`);
     }
   }
   async function check() {
-    setError("");
+    setChecking(true);
+    setCheckError("");
+    setChecked(false);
     try {
       await reloadConnections();
+      setChecked(true);
     } catch (e) {
-      setError(describeError(e));
+      setCheckError(
+        `检查失败：${describeError(e)} 当前显示上次查询状态；请检查网络后重试。现有 Key 不会自动撤销。`,
+      );
+    } finally {
+      setChecking(false);
     }
   }
   function scopeOption([scope, label]: (typeof options)[number]) {
     return (
-      <label key={scope} style={{ display: "flex", gap: 12, marginBlock: 16 }}>
+      <label key={scope} className="ai-scope-option">
         <input
           type="checkbox"
           checked={scopes.includes(scope)}
@@ -135,10 +233,61 @@ export function AiKeyCreate({
   }
   return (
     <section
-      className="ai-connection-guide"
-      aria-label={replacement ? "更换 Node 授权 Key" : "Node 授权 Key"}
+      className="ai-connection-guide ai-key-setup"
+      aria-label={
+        existing
+          ? "查看 Node 授权 Key"
+          : replacement
+            ? "更换 Node 授权 Key"
+            : "Node 授权 Key"
+      }
     >
-      <h2>{replacement ? "更换 Key / 调整能力" : "通过 Node 连接"}</h2>
+      {onClose && (
+        <button
+          className="secondary"
+          onClick={() => {
+            hideKey();
+            onClose();
+          }}
+        >
+          返回连接管理
+        </button>
+      )}
+      <h2>
+        {keyId
+          ? (current?.name ?? existing?.name ?? name)
+          : replacement
+            ? "更换 Key / 调整能力"
+            : "通过 Node 连接"}
+      </h2>
+      {current && (
+        <div className="ai-connection-info">
+          <div className="ai-connection-primary">
+            <span className="ai-connection-type">Node · 授权 Key</span>
+            <span className="ai-connection-status" data-status={status}>
+              {status}
+            </span>
+          </div>
+          <p>
+            {current.scopes
+              .map(
+                (scope) =>
+                  options.find(([value]) => value === scope)?.[1] ?? scope,
+              )
+              .join(" · ")}
+          </p>
+          <p>
+            最近成功查询：
+            {current.lastReadSucceededAt === null
+              ? "暂无"
+              : new Date(current.lastReadSucceededAt).toLocaleString("zh-CN")}
+          </p>
+          <p>
+            创建：{new Date(current.createdAt).toLocaleString("zh-CN")} ·
+            最近活动：{new Date(current.lastUsedAt).toLocaleString("zh-CN")}
+          </p>
+        </div>
+      )}
       <Message error>{error}</Message>
       {replacement && (
         <p>
@@ -149,67 +298,107 @@ export function AiKeyCreate({
                 options.find(([value]) => value === scope)?.[1] ?? scope,
             )
             .join(" · ")}
-          。旧 Key 不会再次显示。
+          。这里签发新 Key，不修改旧 Key。
           {replacement.revokedAt === null &&
             "新 Key 测试成功前，旧 Key 仍可使用。"}
         </p>
       )}
       {keyId ? (
-        <>
-          {key ? (
-            <>
-              <p>
-                Key 仅在本次创建后可取用，默认隐藏。关闭或刷新页面后无法再查看。
+        <div className="ai-key-regions">
+          <section className="ai-key-region" aria-labelledby="ai-save-key">
+            <h3 id="ai-save-key" ref={saveHeading} tabIndex={-1}>
+              保存密钥
+            </h3>
+            {!revoked ? (
+              <>
+                <p>
+                  Key
+                  默认隐藏，以你的身份访问，直到撤销。本人登录后可再次查看或复制；隐藏、返回或刷新不会销毁
+                  Key。
+                </p>
+                <p className="ai-setup-hint">
+                  请自行复制 Key，用本地编辑器保存为仓库外的 UTF-8
+                  纯文本文件，文件只含
+                  Key。不要把密钥发给模型、粘贴到命令中或写入日志。
+                </p>
+                <details>
+                  <summary>密钥保管与回看说明</summary>
+                  <p>
+                    文件应仅供本人访问，不要放入仓库或共享目录；拥有文件读取权限的工具仍能读取密钥。此网页不会创建或读取你的本地文件。撤销后不再提供正文，但不会清除你已复制或保存的副本。
+                  </p>
+                </details>
+                {showKey && (
+                  <label>
+                    授权 Key
+                    <textarea
+                      readOnly
+                      value={key}
+                      rows={2}
+                      spellCheck={false}
+                    />
+                  </label>
+                )}
+                <div className="ai-setup-actions">
+                  <button
+                    className="secondary"
+                    aria-expanded={showKey}
+                    disabled={busy && !showKey}
+                    onClick={() =>
+                      showKey ? hideKey() : void obtainKey(false)
+                    }
+                  >
+                    {showKey ? "隐藏 Key 正文" : "显示 Key"}
+                  </button>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => void obtainKey(true)}
+                  >
+                    复制 Key
+                  </button>
+                  <button className="secondary" onClick={hideKey}>
+                    我已保存，隐藏 Key
+                  </button>
+                </div>
+                <Message error={clipboardError}>{feedback}</Message>
+              </>
+            ) : (
+              <p>Key 已撤销，不能再查看或复制。</p>
+            )}
+          </section>
+          <section
+            className="ai-key-region"
+            aria-labelledby="ai-client-configuration"
+          >
+            <h3 id="ai-client-configuration">客户端配置</h3>
+            <p>下面的 Codex 配置只包含文件路径，不包含密钥正文。</p>
+            <label>
+              服务地址
+              <input
+                value={serviceAddress}
+                onChange={(event) => setServiceAddress(event.target.value)}
+                placeholder="https://你的日序站点/mcp"
+                spellCheck={false}
+                aria-invalid={targetUrl === null}
+              />
+            </label>
+            <p className="field-hint">
+              填写 Codex 所在电脑能访问的日序地址或 /mcp 地址。Codex 启动本地
+              Node 包，通过 <code>DAILY_FLOW_URL</code> 连接此地址。
+            </p>
+            {targetUrl === null && (
+              <p className="field-hint" role="alert">
+                请填写 HTTPS 日序地址或 /mcp 地址；仅本机地址可使用
+                HTTP，不能包含账号、查询参数或片段。
               </p>
-              <p>
-                请自行复制 Key，用本地编辑器保存为仓库外的 UTF-8
-                纯文本文件，文件只含
-                Key。不要把密钥发给模型、粘贴到命令中或写入日志。 下面的 Codex
-                配置只包含文件路径，不包含密钥正文。
-              </p>
-              {showKey && (
-                <label>
-                  授权 Key
-                  <textarea readOnly value={key} rows={2} spellCheck={false} />
-                </label>
-              )}
-              <button
-                className="secondary"
-                aria-expanded={showKey}
-                onClick={() => setShowKey((value) => !value)}
-              >
-                {showKey ? "隐藏 Key 正文" : "显示 Key"}
-              </button>
-              <button className="secondary" onClick={() => void copy()}>
-                复制 Key
-              </button>
-              <Message>{feedback}</Message>
-              <label>
-                服务地址
-                <input
-                  value={serviceAddress}
-                  onChange={(event) => setServiceAddress(event.target.value)}
-                  placeholder="https://你的日序站点/mcp"
-                  spellCheck={false}
-                  aria-invalid={targetUrl === null}
-                />
-              </label>
+            )}
+            {differentOrigin && (
               <p className="field-hint">
-                填写 Codex 所在电脑能访问的日序地址或 /mcp 地址。Codex 启动本地
-                Node 包，通过 <code>DAILY_FLOW_URL</code> 连接此地址。
+                请确认这是当前日序服务的可访问地址。授权 Key
+                会发送到此地址，其他服务不能使用这个 Key。
               </p>
-              {targetUrl === null && (
-                <p className="field-hint" role="alert">
-                  请填写 HTTPS 日序地址或 /mcp 地址；仅本机地址可使用
-                  HTTP，不能包含账号、查询参数或片段。
-                </p>
-              )}
-              {differentOrigin && (
-                <p className="field-hint">
-                  请确认这是当前日序服务的可访问地址。授权 Key
-                  会发送到此地址，其他服务不能使用这个 Key。
-                </p>
-              )}
+            )}
+            <div className="ai-setup-fields">
               <label>
                 本地包路径
                 <input
@@ -227,117 +416,151 @@ export function AiKeyCreate({
                   placeholder="C:/Users/你的用户名/.daily-flow/member.key"
                   spellCheck={false}
                   aria-invalid={keyFilePath.length > 0 && !validKeyFilePath}
+                  aria-describedby="ai-key-file-hint"
                 />
               </label>
-              <p className="field-hint">
-                填写已保存密钥文件的绝对路径，不要填写 Key 本身。路径中的 ~
-                和环境变量不会展开。
-                文件应仅供本人访问，不要放入仓库或共享目录；拥有文件读取权限的工具仍能读取密钥。
-                此网页不会创建或读取你的本地文件。
+            </div>
+            <p className="field-hint" id="ai-key-file-hint">
+              填写已保存密钥文件的绝对路径，不要填写 Key 本身。路径中的 ~
+              和环境变量不会展开。
+            </p>
+            {keyFilePath.length > 0 && !validKeyFilePath && (
+              <p className="field-hint" role="alert">
+                请填写密钥文件的绝对路径。
               </p>
-              {keyFilePath.length > 0 && !validKeyFilePath && (
-                <p className="field-hint" role="alert">
-                  请填写密钥文件的绝对路径。
-                </p>
-              )}
+            )}
+            <p>
+              在 Windows 的 Codex 用户级配置{" "}
+              <code>%USERPROFILE%\.codex\config.toml</code>
+              {replacement
+                ? " 中用下面的片段替换原 daily_flow_node 配置，避免保留两个同名区块；然后重启 Codex。"
+                : " 末尾粘贴下面的片段，再重启 Codex。"}
+            </p>
+            <p className="ai-setup-hint">
+              请移除原配置中的
+              DAILY_FLOW_API_KEY，并确认启动环境中也未同时设置它；两个密钥来源同时存在时会拒绝启动。
+            </p>
+            <details>
+              <summary>获取 Node 包与密钥来源说明</summary>
               <p>
                 从管理员处获取支持密钥文件引用的新版{" "}
                 <code>daily-flow-mcp-0.1.0.tgz</code>
-                ，放在本机并填写绝对路径。 在 Windows 的 Codex 用户级配置{" "}
-                <code>%USERPROFILE%\.codex\config.toml</code>
-                {replacement
-                  ? " 中用下面的片段替换原 daily_flow_node 配置，避免保留两个同名区块；然后重启 Codex。"
-                  : " 末尾粘贴下面的片段，再重启 Codex。"}
-                首次启动可能需要联网获取依赖。请移除原配置中的
-                DAILY_FLOW_API_KEY，
-                并确认启动环境中也未同时设置它；两个密钥来源同时存在时会拒绝启动。
-                保留原 Key 不会影响授权；若曾发到聊天或日志中，请换新 Key。
+                ，放在本机并填写绝对路径。首次启动可能需要联网获取依赖。仍支持环境变量来源，但与文件来源只能选一个。保留原
+                Key 不会影响授权；若曾发到聊天或日志中，请换新 Key。
               </p>
-              <label htmlFor="node-mcp-configuration">Codex 配置</label>
-              <textarea
-                id="node-mcp-configuration"
-                readOnly
-                value={
-                  !packagePath.trim()
-                    ? "请先填写本地包路径。"
-                    : targetUrl === null
-                      ? "请先填写有效的服务地址。"
-                      : !validKeyFilePath
-                        ? "请先填写密钥文件的绝对路径。"
-                        : configuration
-                }
-                rows={8}
-                spellCheck={false}
-              />
-              <button
-                className="primary"
-                disabled={
-                  !packagePath.trim() || targetUrl === null || !validKeyFilePath
-                }
-                onClick={() => void copy(configuration, "Codex 配置")}
-              >
-                复制 Codex 配置
-              </button>
-            </>
-          ) : (
-            <p>Key 已隐藏。若尚未保存配置，请重新生成一条新 Key。</p>
-          )}
-          <p>
-            在 Codex 输入 <code>/mcp</code> 确认连接，再请 Codex
-            使用日序工具列出项目。这是只读测试，不会修改工作数据。
-          </p>
-          <p>
-            {connected
-              ? "已连接：这个 Key 已完成一次只读查询。"
-              : "待测试：完成列出项目后，点击下方按钮检查结果。即使项目为空也算成功。"}
-          </p>
-          {!connected && (
-            <>
-              <button className="secondary" onClick={() => void check()}>
-                检查查询结果
-              </button>
-              <p>
-                仍显示待测试？请确认 Node 包支持文件引用、已重启
-                Codex、服务地址和网络可达，
-                并自行核对文件路径与权限，确保使用本次生成的
-                Key。不要向模型发送文件内容或环境变量值。
-                修正配置后可再次列出项目，现有 Key 仍可使用。
-              </p>
-            </>
-          )}
-          {replacement &&
-            connected &&
-            (replacement.revokedAt === null ? (
-              <>
-                <p>
-                  新 Key 已验证。请撤销旧 Key，结束两条连接同时有效的过渡期。
-                </p>
-                <button
-                  className="secondary"
-                  disabled={busy}
-                  onClick={() => void onRevokeOld?.(replacement.id)}
-                >
-                  撤销旧 Key
-                </button>
-              </>
-            ) : (
-              <p>旧 Key 已撤销，新 Key 可继续使用。</p>
-            ))}
-          <p>
-            若已使用 Codex OAuth 连接日序，建议只启用一条连接，以免工具重复。
-          </p>
-          {key && (
+            </details>
+            <label htmlFor="node-mcp-configuration">Codex 配置</label>
+            <textarea
+              id="node-mcp-configuration"
+              readOnly
+              value={
+                !packagePath.trim()
+                  ? "请先填写本地包路径。"
+                  : targetUrl === null
+                    ? "请先填写有效的服务地址。"
+                    : !validKeyFilePath
+                      ? "请先填写密钥文件的绝对路径。"
+                      : configuration
+              }
+              rows={8}
+              spellCheck={false}
+            />
+            <button
+              className="primary"
+              disabled={
+                !packagePath.trim() || targetUrl === null || !validKeyFilePath
+              }
+              onClick={() => void copy(configuration, "Codex 配置")}
+            >
+              复制 Codex 配置
+            </button>
+            <Message error={configurationError}>
+              {configurationFeedback}
+            </Message>
+          </section>
+          <section
+            className="ai-key-region"
+            aria-labelledby="ai-check-connection"
+          >
+            <h3 id="ai-check-connection">连接检查</h3>
+            <p>
+              在 Codex 输入 <code>/mcp</code> 确认连接，再请 Codex
+              使用日序工具列出项目。这是只读测试，不会修改工作数据。
+            </p>
+            <p>
+              {revoked
+                ? "Key 已撤销，请返回连接管理。"
+                : connected
+                  ? "已连接：这个 Key 已完成一次只读查询。"
+                  : "待测试：完成列出项目后，点击下方按钮检查结果。即使项目为空也算成功。"}
+            </p>
+            <p className="field-hint">
+              显示或复制 Key、启动、鉴权与工具发现不算连接成功。
+            </p>
             <button
               className="secondary"
-              onClick={() => {
-                setKey("");
-                setFeedback("");
-              }}
+              disabled={checking || revoked}
+              onClick={() => void check()}
             >
-              我已保存，隐藏 Key
+              {checking ? "正在检查…" : "检查查询结果"}
             </button>
-          )}
-        </>
+            {(checking || checked) && (
+              <p className="ai-setup-progress" role="status">
+                {checking
+                  ? "正在检查最新查询状态…"
+                  : revoked
+                    ? "此连接已撤销。"
+                    : connected
+                      ? "检查完成：已检测到成功查询。"
+                      : "检查完成：尚未检测到成功查询，请让 Codex 列出项目后重试。"}
+              </p>
+            )}
+            <Message error>{checkError}</Message>
+            {!connected && !revoked && (
+              <>
+                <details>
+                  <summary>仍待测试？检查配置与网络</summary>
+                  <p>
+                    请确认 Node 包支持文件引用、已重启
+                    Codex、服务地址和网络可达，并自行核对文件路径与权限，确保使用本次生成的
+                    Key。不要向模型发送文件内容或环境变量值。修正配置后可再次列出项目，现有
+                    Key 仍可使用。
+                  </p>
+                </details>
+              </>
+            )}
+            {replacement &&
+              connected &&
+              (replacement.revokedAt === null ? (
+                <>
+                  <p>
+                    新 Key 已验证。请撤销旧 Key，结束两条连接同时有效的过渡期。
+                  </p>
+                  <button
+                    className="secondary"
+                    disabled={busy}
+                    onClick={() => void onRevokeOld?.(replacement.id)}
+                  >
+                    撤销旧 Key
+                  </button>
+                </>
+              ) : (
+                <p>旧 Key 已撤销，新 Key 可继续使用。</p>
+              ))}
+            <p>
+              若已使用 Codex OAuth 连接日序，建议只启用一条连接，以免工具重复。
+            </p>
+            {!revoked && onRevoke && (
+              <button
+                className="text-button danger"
+                disabled={revoking}
+                onClick={() => void onRevoke(keyId)}
+              >
+                {revoking ? "正在撤销…" : "撤销连接"}
+              </button>
+            )}
+          </section>
+        </div>
       ) : (
         <>
           <label>

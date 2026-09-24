@@ -32,6 +32,17 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
     await page.goto(`${origin}/ai`);
     await page.getByRole("button", { name: "连接 Codex", exact: true }).click();
     const guide = page.getByRole("region", { name: "连接 Codex 指引" });
+    await expect(page).toHaveURL(`${origin}/ai`);
+    await expect(page.getByRole("region", { name: "已有连接" })).toHaveCount(0);
+    await page
+      .getByRole("button", { name: "返回连接管理", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "连接 Codex", exact: true }),
+    ).toBeFocused();
+    await page
+      .getByRole("button", { name: "连接 Codex", exact: true })
+      .press("Enter");
     const command = guide.getByLabel("PowerShell 连接并授权命令");
     const copyCommand = guide.getByRole("button", {
       name: "复制连接并授权命令",
@@ -145,6 +156,9 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
       arguments: { ...input, title: "冲突" },
     });
     await page.goto(`${origin}/ai`);
+    await expect(page.getByText("OAuth", { exact: true })).toBeVisible();
+    await expect(page.getByText("已授权", { exact: true })).toBeVisible();
+    await page.getByRole("tab", { name: "操作记录", exact: true }).click();
     const history = page.getByRole("region", { name: "AI 操作记录" });
     await expect(
       history.getByText("新建草稿 · 成功", { exact: true }),
@@ -166,6 +180,8 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
     await page.getByRole("button", { name: "重新授权", exact: true }).click();
     const reconnect = page.getByRole("region", { name: "重新授权 Codex" });
     await expect(reconnect).toBeVisible();
+    await expect(page).toHaveURL(`${origin}/ai`);
+    await expect(page.getByRole("region", { name: "已有连接" })).toHaveCount(0);
     await expect(reconnect.getByLabel("授权命令")).toHaveValue(
       "codex mcp login daily_flow --scopes progress:read,drafts:write",
     );
@@ -183,10 +199,17 @@ test("授权默认项、取消、真实操作记录与对象定位、撤销后�
     ).json();
     expect(revoked).toHaveLength(1);
     expect(revoked[0].revokedAt).not.toBeNull();
+    await page
+      .getByRole("button", { name: "返回连接管理", exact: true })
+      .click();
+    await expect(
+      page.getByRole("button", { name: "重新授权", exact: true }),
+    ).toBeFocused();
     await page.reload();
     await expect(
       page.getByRole("button", { name: "重新授权", exact: true }),
     ).toBeVisible();
+    await page.getByRole("tab", { name: "操作记录", exact: true }).click();
     await page.getByLabel("执行结果").selectOption("failure");
     await expect(
       history.getByText("新建草稿 · 失败", { exact: true }),

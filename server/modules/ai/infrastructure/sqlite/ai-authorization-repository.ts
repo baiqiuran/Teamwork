@@ -130,15 +130,27 @@ export function aiAuthorizationRepository(
     },
     apiKey(hash) {
       const row = db
-        .prepare("SELECT grant_id FROM ai_api_keys WHERE hash=?")
+        .prepare("SELECT grant_id,encrypted_key FROM ai_api_keys WHERE hash=?")
         .get(hash);
-      return row ? { hash, grantId: String(row.grant_id) } : undefined;
+      return row
+        ? {
+            hash,
+            grantId: String(row.grant_id),
+            encryptedKey:
+              row.encrypted_key === null ? null : String(row.encrypted_key),
+          }
+        : undefined;
+    },
+    apiKeyForGrant(grantId) {
+      const row = db
+        .prepare("SELECT hash FROM ai_api_keys WHERE grant_id=?")
+        .get(grantId);
+      return row ? repository.apiKey(String(row.hash)) : undefined;
     },
     saveApiKey(key) {
-      db.prepare("INSERT INTO ai_api_keys (hash,grant_id) VALUES (?,?)").run(
-        key.hash,
-        key.grantId,
-      );
+      db.prepare(
+        "INSERT INTO ai_api_keys (hash,grant_id,encrypted_key) VALUES (?,?,?)",
+      ).run(key.hash, key.grantId, key.encryptedKey);
     },
   };
   return repository;
