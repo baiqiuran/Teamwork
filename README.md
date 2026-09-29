@@ -380,6 +380,8 @@ data/
 
 ## 部署边界
 
+发布到新增的 `120.25.176.6` 服务器可使用 [`deploy-ecs.bat`](deploy-ecs.bat)；首次安装、私钥参数、HTTPS 与故障处理见 [SSH/SCP 发布说明](docs/deploy-ecs.md)。
+
 应用由单个 Node.js 进程提供前端和 API，SQLite 与附件依赖本地持久磁盘。现有 ECS 使用 systemd、Nginx 和公网 IP HTTPS。2026-09-23 已切为 `daily-flow.service` 单实例并完成首次手工发布；自动发布与切槽链路已停用，GitHub workflow 定义及相关部署配置也已移除。受管备份与保留链路仍在使用。当前提交、快照、判据和维护耗时见[手工发布与人工恢复](docs/manual-release.md)，旧接管过程见[CI/CD 生产记录](docs/cicd-production.md)，首次建站历史见[部署手册](docs/deployment.md)。
 
 本机已保存生产基线。后续可用 `npm run package:manual -- --config <外部配置.json>` 生成绑定该基线的候选包，再用 `npm run release:manual -- --config <外部配置.json> --package <ID>` 发布同一份包。Windows PowerShell 将这两条命令中的 `npm` 改为 `npm.cmd`，以免 `npm.ps1` 误解析 `--config`。打包阶段不会连接生产服务器；具体前提和故障续看见手工发布手册。

@@ -1,0 +1,25 @@
+[Unit]
+Description=New Chat (Daily Flow)
+After=network.target
+
+[Service]
+Type=simple
+User=new-chat
+Group=new-chat
+WorkingDirectory=/bim/new-chat/current
+Environment=NODE_ENV=production
+Environment=PORT=4312
+Environment=DAILY_DATABASE_PATH=/bim/new-chat/data/daily-flow.sqlite
+EnvironmentFile=/etc/new-chat/new-chat.env
+ExecStart=/usr/local/bin/node build/server/main.js
+Restart=no
+TimeoutStopSec=60
+UMask=0027
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/bim/new-chat/data
+
+[Install]
+WantedBy=multi-user.target

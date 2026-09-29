@@ -1,0 +1,3 @@
+deploy-ecs.bat text eol=crlf
+scripts/deploy-ecs.sh text eol=lf
+scripts/new-chat.service text eol=lf
