@@ -132,7 +132,7 @@ PORT=4320 DAILY_DATABASE_PATH=./data/daily-flow.sqlite npm start
 
 网页和 MCP 共用业务数据与规则。默认授权查询和本人草稿，提交、任务和分享须由成员明确勾选；授权持续到主动撤销。AI 更新内容后，网页重新读取即可看到结果；旧版本写入返回冲突。
 
-当前仓库还提供[本机开发用 Codex 插件](plugins/daily-flow/README.md)：插件通过成员授权 Key 连接本机 `/mcp`，与下面的 OAuth 接入并列。已有线上连接时请先确认本次操作使用的服务和团队。
+当前仓库还提供[日序 Codex 插件](plugins/daily-flow/README.md)：包含查询进展、日报、任务与分享操作技能，默认通过成员授权 Key 连接本机 `/mcp`；技能也可使用已有的日序 OAuth 或 Node 连接。插件说明包含密钥文件接入与更新步骤。已有线上连接时请先确认本次操作使用的服务和团队。
 
 ### 本机连接步骤
 

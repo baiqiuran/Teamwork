@@ -1,0 +1,4 @@
+interface:
+  display_name: "日序"
+  short_description: "查询日序团队进展，整理和提交本人日报，按授权更新任务与公开链接"
+  default_prompt: "使用 $daily-flow 汇总今天团队已提交的工作进展。"
