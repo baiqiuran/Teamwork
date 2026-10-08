@@ -2,7 +2,7 @@
 # Dedicated simple SSH/SCP release for 120.25.176.6; not the managed production host.
 set -Eeuo pipefail
 umask 027
-export PATH=/usr/local/bin:/usr/bin:/bin
+export PATH=/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin
 ROOT=/bim/new-chat
 UNIT=new-chat.service
 NODE=/usr/local/bin/node

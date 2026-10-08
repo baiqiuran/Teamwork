@@ -4,6 +4,15 @@
 
 这是为新服务器提供的简化入口，与 ADR 0005/0006 中现有生产的受控入口、固定提交及基线检查流程不同；原服务器 `8.148.245.224` 继续使用 [手工发布流程](manual-release.md)。新入口不提供维护页、自动回滚或备份定期清理，不应当作原生产流程的替代品。
 
+## 2026-09-29 首次安装记录
+
+- 已安装 Node.js v24.15.0（官方归档 SHA-256 核验通过）、账号和 systemd 单元；`new-chat.service` 正在监听 `127.0.0.1:4312`，保持未启用开机自启。
+- 发布目录为 `/bim/new-chat/releases/20260929T065114Z-3903815`，首次空数据副本位于同 ID 的 `snapshots/`。应用构建自提交 `53dda7f`；简化包未包含 `release.json`，健康接口的版本字段为 `development`，不能据此判断 Git 提交。
+- 健康接口、登录 HTML、JS/CSS 资源均通过检查；原 `Rid-Rs.service` 仍为 active，原 HTTPS 入口发布前后均返回 401。未创建业务测试数据。
+- 用户指定公网地址 `https://daily.hbads.cn`，并决定稍后再添加 DNS 解析。当前未签发该域名证书、未配置 `DAILY_PUBLIC_URL`，使用下文 SSH 隧道访问。
+- `/etc/nginx/conf.d/new-chat.conf` 仅开放证书验证路径，其他 HTTP 请求返回 503；HTTPS 草案保存在 `/etc/nginx/new-chat-https.conf.pending`，尚未启用。后续添加 A 记录指向此服务器后，再签发独立证书并启用 HTTPS 配置。
+- 为适配此服务器，脚本 PATH 补充 `/usr/sbin` 和 `/sbin`；通过 ACL 仅给 new-chat 账号增加 `/bim` 的穿越权限，未修改原项目目录权限。
+
 ## 首次准备
 
 本机需要 Node.js 24.15.0 或更新的 24.x、npm、Windows OpenSSH、tar。私钥放工作区外，默认 `%USERPROFILE%\.ssh\bim-test-2025-ecs-key.pem`，也可作为第一个参数传入。SSH 用户写作 `ecs-user@120.25.176.6`，`@` 前不用反斜杠。首次 SSH 连接时核对服务器主机指纹。
@@ -14,6 +23,7 @@
 
 ```sh
 sudo useradd --system --user-group --home-dir /bim/new-chat --shell /usr/sbin/nologin new-chat
+sudo setfacl -m u:new-chat:--x /bim
 sudo install -d -m 755 /bim/new-chat /bim/new-chat/releases
 sudo install -d -o new-chat -g new-chat -m 750 /bim/new-chat/data
 sudo install -d -m 700 /etc/new-chat /bim/new-chat/snapshots
@@ -40,16 +50,41 @@ ssh -i "%USERPROFILE%\.ssh\bim-test-2025-ecs-key.pem" -L 4312:127.0.0.1:4312 ecs
 
 公网访问需先为实际域名或 IP 配置可信 HTTPS 证书和同机 Nginx 代理，再在 `/etc/new-chat/new-chat.env` 写 `DAILY_PUBLIC_URL=https://实际站点地址`，重启 service。不能填写公网 HTTP 地址。代理到 `http://127.0.0.1:4312`，覆盖 `Host $http_host`、`X-Forwarded-Proto $scheme`、`X-Forwarded-For $remote_addr`，并用 `location ^~ /internal/ { return 404; }` 禁止外部访问内部接口。证书和 Nginx 不由本脚本安装。
 
+### 启用 daily.hbads.cn 的 HTTPS
+
+首次安装已在服务器保存 HTTP 证书验证入口和 HTTPS 草案。域名解析就绪后，在本机 `app/` 中执行以下命令，使用工作区外的实际私钥路径替换占位符：
+
+```bat
+scp -i "<私钥绝对路径>" scripts/configure-ecs-https.sh ecs-user@120.25.176.6:/tmp/new-chat-configure-https.sh
+ssh -i "<私钥绝对路径>" ecs-user@120.25.176.6 "sudo -n bash /tmp/new-chat-configure-https.sh"
+```
+
+脚本使用既有 Certbot 账号签发独立证书，保存原配置，设置公网地址，启用 HTTPS 代理并重启应用；失败会恢复原应用与代理配置。证书签发仍需真实通过域名验证，不能以“假定已解析”替代。签发前不会修改应用地址。成功后还须从本机检查公网 HTTPS 访问和证书续期。
+
+2026-09-30 此脚本已在本机准备并通过 Bash 语法检查；SSH 连接超时，尚未上传执行，不能视为 HTTPS 已启用。
+
+2026-10-08 确认 `daily.hbads.cn` 的 A 记录已指向 `120.25.176.6`，公网 HTTP 证书验证路径返回 200；HTTPS 仍出现域名与证书不匹配。两次 SSH 连接（含显式 IPv4）均在 22 端口超时，本次未上传或执行 HTTPS 配置，服务器配置未变更。继续前需恢复当前网络到服务器 SSH 端口的访问，或提供已更改的 SSH 端口。
+
+### 2026-10-08 HTTPS 启用记录
+
+随后重试 22 端口成功，已上传并执行 `configure-ecs-https.sh`。独立证书包含 `daily.hbads.cn`，有效期至 2027-01-06；已启用服务器保存的 HTTPS 草案，并设置 `DAILY_PUBLIC_URL=https://daily.hbads.cn`。HTTP 请求以 308 跳转 HTTPS，Nginx 转发到 `127.0.0.1:4312`。原配置保存在 `/etc/new-chat/https-before.8Ihpr8Uh`。
+
+公网验证：登录页面、JS/CSS 和 `/health/ready` 返回 200，`/internal/health` 返回 404；健康接口仍报告 `development`，此次仅修改证书和配置，未发布新应用版本。`new-chat.service`、`Rid-Rs.service` 和 Nginx 均为 active；原 `rid-rs.hbads.cn` 在操作前后均返回 401。证书续期 timer 为 active；应用保持未启用开机自启，服务器重启后仍需按首次准备说明检查并启动。
+
+Certbot 已保存续期后检查并重载 Nginx 的 hook。首次续期演练在 CA 二次验证中遇到 DNS `SERVFAIL`，重新执行 `certbot renew --cert-name new-chat --dry-run --non-interactive --no-random-sleep-on-renew` 后成功；现有正式证书未被演练替换，公网登录页面复查为 200。
+
 ## 每次发布
+
+首次安装和 HTTPS 已完成后，双击仓库根目录的 `deploy.bat` 即可再次发布。它使用 `E:\ridkey\bim-test-2025-ecs-key.pem`，调用现有发布脚本完成临时目录构建、上传、停服复制数据、切换版本、重启与健康检查，结束后保留窗口显示结果。不会重新安装 Node、签发证书或修改 Nginx；数据继续保存在 `/bim/new-chat/data`。这是快捷入口，须与 `deploy-ecs.bat` 和 `scripts/deploy-ecs.sh` 一起保留。
 
 在 CMD 中执行：
 
 ```bat
 cd /d C:\Users\NoOne\Documents\Codex\2026-09-16\new-chat\app
-deploy-ecs.bat "E:\keys\bim-test-2025-ecs-key.pem"
+deploy.bat
 ```
 
-PowerShell 中使用 `./deploy-ecs.bat 'E:\keys\bim-test-2025-ecs-key.pem'`。
+PowerShell 中使用 `./deploy.bat`。需要换私钥时，使用 `./deploy-ecs.bat '<私钥绝对路径>'`。
 
 脚本把构建所需源码复制到本机临时目录，安装依赖并构建，将 `build/`、`dist/`、包清单和锁文件打成压缩包，通过 SCP 上传，不改动开发目录的依赖和构建产物。服务器先在新版本目录安装 Linux 生产依赖，之后停服，在同一停服窗口复制数据库、WAL/SHM、附件和配置，记录旧版本路径，再切换链接并启动。旧版本目录完整保留；运行时只记录 Node 版本，并未复制运行时二进制。准备环境和排障时不要修改这些恢复材料。
 

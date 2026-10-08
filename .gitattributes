@@ -1,3 +1,5 @@
 deploy-ecs.bat text eol=crlf
+deploy.bat text eol=crlf
 scripts/deploy-ecs.sh text eol=lf
+scripts/configure-ecs-https.sh text eol=lf
 scripts/new-chat.service text eol=lf
