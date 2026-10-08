@@ -13,10 +13,18 @@ import { Work } from "../../application/work.ts";
 import type { Member } from "../../../membership/domain/membership.ts";
 import { dateRange } from "../../../../shared/domain/date.ts";
 import { definitionSchema } from "../../domain/work.ts";
+import { taskStatusSchema } from "../../domain/task-status.ts";
 import { CurrentMember } from "../../../../interfaces/http/session.guard.ts";
 import { ZodPipe } from "../../../../interfaces/http/validation.pipe.ts";
 
 type Definition = z.infer<typeof definitionSchema>;
+const statusChangeSchema = z
+  .object({
+    status: taskStatusSchema,
+    expectedVersion: z.number().int().positive(),
+  })
+  .strict();
+type StatusChange = z.infer<typeof statusChangeSchema>;
 
 @Controller("api")
 export class WorkController {
@@ -97,6 +105,22 @@ export class WorkController {
     @CurrentMember() member: Member,
   ) {
     return this.work.getTask(id, member.id);
+  }
+
+  @Post("tasks/:id/status")
+  @HttpCode(200)
+  updateStatus(
+    @Param("id", new ZodPipe(z.uuid())) id: string,
+    @CurrentMember() member: Member,
+    @Body(new ZodPipe(statusChangeSchema)) input: StatusChange,
+  ) {
+    return this.work.updateStatus(
+      id,
+      member.id,
+      input.status,
+      input.expectedVersion,
+      "web",
+    ).task;
   }
 
   @Post("tasks/:id/save")

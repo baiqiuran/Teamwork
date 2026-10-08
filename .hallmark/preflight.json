@@ -1,0 +1,12 @@
+{
+  "date": "2026-10-08",
+  "scope": "project task list",
+  "designSystem": "design.md",
+  "font": "Existing --font-sans system stack, --font-mono",
+  "palette": "Existing --brand-*, --n-* and semantic tokens in src/style.css",
+  "motion": "Existing CSS transitions with reduced-motion fallback; no motion library",
+  "spacing": "Existing --s-* 4/8px scale",
+  "framework": "React 19, Vite 8, TypeScript",
+  "layout": "Project rail and inline task disclosure",
+  "verificationWidths": [1280, 1600, 1920]
+}

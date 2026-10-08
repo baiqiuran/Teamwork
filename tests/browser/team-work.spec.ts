@@ -89,6 +89,229 @@ test("任务编辑入口明确说明可修改名称和说明", async ({ page, or
   ).toHaveValue("保留任务说明");
 });
 
+for (const width of [1280, 1600, 1920]) {
+  test(`任务长标题只显示一次，详情按任务展开 · ${width}`, async ({
+    page,
+    origin,
+  }, testInfo) => {
+    await page.setViewportSize({ width, height: 1000 });
+    await createTeam(page, origin, "青山");
+    const { project } = await createWork(page, origin);
+    const longName =
+      "已查阅国内招投标文件，初步梳理需求、选位、审核、制作、安装及生命周期管理等环节，并参考国外电子标识平台 CBO。下周继续讨论模块入口、功能范围及所需配合人员";
+    const response = await page.request.post(
+      `${origin}/api/projects/${project.id}/tasks`,
+      {
+        headers: { Origin: origin },
+        data: { name: longName, description: "" },
+      },
+    );
+    expect(response.status()).toBe(201);
+    await page.goto(`${origin}/projects?project=${project.id}`);
+    const row = page.locator(".task-row").filter({ hasText: longName });
+    await expect(row).toHaveAttribute("aria-expanded", "false");
+    await expect(page.getByRole("region", { name: "任务详情" })).toHaveCount(0);
+    const title = row.locator(".task-name");
+    const titleSize = await title.evaluate((element) => ({
+      height: element.getBoundingClientRect().height,
+      lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+    }));
+    expect(titleSize.height).toBeLessThanOrEqual(titleSize.lineHeight * 2 + 1);
+    await noOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath("tasks-collapsed.png"),
+      fullPage: true,
+    });
+
+    await row.focus();
+    await row.press("Enter");
+    const detail = page.getByRole("region", { name: "任务详情", exact: true });
+    await expect(row).toHaveAttribute("aria-expanded", "true");
+    await expect(detail.getByRole("heading", { name: longName })).toBeVisible();
+    await expect(page.getByText(longName, { exact: true })).toHaveCount(1);
+    await expect(detail.getByText("原始说明", { exact: true })).toHaveCount(0);
+    await expect(detail.locator(".empty")).toHaveCount(0);
+    await expect(
+      detail.getByText("尚无状态变更。", { exact: true }),
+    ).toBeHidden();
+    await expect(
+      detail.getByText("暂无进展，可在日报中关联此任务并提交。"),
+    ).toBeVisible();
+    expect((await detail.boundingBox())!.height).toBeLessThan(360);
+    await detail.locator("summary").focus();
+    await detail.locator("summary").press("Space");
+    await expect(
+      detail.getByText("尚无状态变更。", { exact: true }),
+    ).toBeVisible();
+    await detail.locator("summary").press("Space");
+    await noOverflow(page);
+    await page.getByRole("heading", { name: "任务列表", exact: false }).click();
+    await page.screenshot({
+      path: testInfo.outputPath("tasks-expanded.png"),
+      fullPage: true,
+    });
+
+    const other = page.locator(".task-row").filter({ hasText: "任务编辑验证" });
+    await other.click();
+    await expect(row).toHaveAttribute("aria-expanded", "false");
+    await expect(detail).toHaveCount(1);
+    await expect(detail).toContainText("保留任务说明");
+    await other.press("Enter");
+    await expect(detail).toHaveCount(0);
+  });
+}
+
+test("任务列表直接修改状态，刷新后保留并记录网页操作", async ({
+  page,
+  origin,
+}, testInfo) => {
+  await createTeam(page, origin, "青山");
+  const { project, task } = await createWork(page, origin);
+  await page.goto(`${origin}/projects?project=${project.id}`);
+  const status = page.getByRole("combobox", {
+    name: `${task.name} 的状态`,
+    exact: true,
+  });
+  const row = page.locator(".task-row").filter({ hasText: task.name });
+  let updated = await post<Task>(page, `/tasks/${task.id}/status`, () =>
+    status.selectOption("in-progress"),
+  );
+  expect(updated).toMatchObject({ status: "in-progress", version: 2 });
+  await expect(status).toHaveValue("in-progress");
+  await expect(row).toHaveAttribute("aria-expanded", "false");
+  await expect(page.getByRole("region", { name: "任务详情" })).toHaveCount(0);
+  await row.click();
+  const detail = page.getByRole("region", { name: "任务详情", exact: true });
+  await detail.locator("summary").click();
+  await expect(detail).toContainText("待开始 → 进行中");
+  await expect(detail).toContainText("单独更新状态 / 网页");
+  updated = await post<Task>(page, `/tasks/${task.id}/status`, () =>
+    status.selectOption("done"),
+  );
+  expect(updated).toMatchObject({ status: "done", version: 3 });
+  await expect(status).toHaveValue("done");
+  await expect(detail).toContainText("进行中 → 已完成");
+  await expect(detail.locator("summary .count")).toHaveText("2");
+  await noOverflow(page);
+  await page.getByRole("heading", { name: "任务列表", exact: false }).click();
+  await page.screenshot({
+    path: testInfo.outputPath("task-status.png"),
+    fullPage: true,
+  });
+  await page.reload();
+  await expect(status).toHaveValue("done");
+  await row.click();
+  await detail.locator("summary").click();
+  await expect(detail.locator(".task-history-content > p")).toHaveCount(2);
+  await post<Task>(page, `/tasks/${task.id}/archive`, () =>
+    confirm(page, "归档任务", "历史进展"),
+  );
+  await expect(status).toBeDisabled();
+  await post<Task>(page, `/tasks/${task.id}/archive`, () =>
+    confirm(page, "恢复任务", "不会自动恢复"),
+  );
+  await expect(status).toBeEnabled();
+  await post<Project>(page, `/projects/${project.id}/archive`, () =>
+    confirm(page, "归档项目", "历史条目"),
+  );
+  await expect(status).toBeDisabled();
+});
+
+test("列表修改遇到并发更新时刷新状态，重新选择才允许保存", async ({
+  page,
+  origin,
+}) => {
+  await createTeam(page, origin, "青山");
+  const { project, task } = await createWork(page, origin);
+  await page.goto(`${origin}/projects?project=${project.id}`);
+  const status = page.getByRole("combobox", {
+    name: `${task.name} 的状态`,
+    exact: true,
+  });
+  await expect(status).toHaveValue("pending");
+  const concurrent = await page.request.post(
+    `${origin}/api/tasks/${task.id}/status`,
+    {
+      headers: { Origin: origin },
+      data: { status: "done", expectedVersion: task.version },
+    },
+  );
+  expect(concurrent.status()).toBe(200);
+  await post(
+    page,
+    `/tasks/${task.id}/status`,
+    () => status.selectOption("in-progress"),
+    409,
+  );
+  await expect(page.getByRole("alert")).toHaveText(
+    "任务状态已被其他成员更新，已刷新最新状态，请重新选择。",
+  );
+  await expect(status).toHaveValue("done");
+  let events = await read<TaskEvent[]>(
+    page,
+    origin,
+    `/tasks/${task.id}/events`,
+  );
+  expect(events).toHaveLength(1);
+  const changed = await post<Task>(page, `/tasks/${task.id}/status`, () =>
+    status.selectOption("in-progress"),
+  );
+  expect(changed).toMatchObject({ status: "in-progress", version: 3 });
+  await expect(status).toHaveValue("in-progress");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  events = await read<TaskEvent[]>(page, origin, `/tasks/${task.id}/events`);
+  expect(events).toHaveLength(2);
+});
+
+test("状态保存期间禁用控件，失败保留原状态并可重试", async ({
+  page,
+  origin,
+}) => {
+  await createTeam(page, origin, "青山");
+  const { project, task } = await createWork(page, origin);
+  await page.goto(`${origin}/projects?project=${project.id}`);
+  const status = page.getByRole("combobox", {
+    name: `${task.name} 的状态`,
+    exact: true,
+  });
+  await expect(status).toHaveValue("pending");
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const path = `**/api/tasks/${task.id}/status`;
+  await page.route(path, async (route) => {
+    await held;
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ error: "操作未完成，请稍后重试。" }),
+    });
+  });
+  const failed = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === `/api/tasks/${task.id}/status`,
+  );
+  await status.selectOption("in-progress");
+  await expect(status).toBeDisabled();
+  await expect(page.getByRole("status")).toHaveText("正在处理…");
+  release();
+  expect((await failed).status()).toBe(500);
+  await expect(page.getByRole("alert")).toHaveText("操作未完成，请稍后重试。");
+  await expect(status).toHaveValue("pending");
+  await expect(status).toBeEnabled();
+  expect(
+    await read<TaskEvent[]>(page, origin, `/tasks/${task.id}/events`),
+  ).toEqual([]);
+  await page.unroute(path);
+  const updated = await post<Task>(page, `/tasks/${task.id}/status`, () =>
+    status.selectOption("done"),
+  );
+  expect(updated).toMatchObject({ status: "done", version: 2 });
+  await expect(status).toHaveValue("done");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 function observeErrors(page: Page) {
   const allowed = new Set(["GET /api/me 401"]);
   const errors: string[] = [];
@@ -227,6 +450,7 @@ async function maintainWork(
   await expect(
     detail.getByRole("heading", { name: task.name, exact: true }),
   ).toBeVisible();
+  await detail.getByText("状态变更记录", { exact: false }).click();
   await expect(
     detail.getByText("尚无状态变更。", { exact: true }),
   ).toBeVisible();
@@ -291,7 +515,9 @@ async function maintainWork(
   await expect(page.getByRole("status")).toContainText("日报已提交");
 
   await page.goto(`${origin}/projects?project=${project.id}&task=${task.id}`);
-  await expect(detail).toContainText("当前任务状态：已完成");
+  await expect(
+    detail.getByRole("combobox", { name: `${task.name} 的状态` }),
+  ).toHaveValue("done");
   await expect(detail).toContainText("待开始 → 已完成");
   await expect(detail).toContainText("日报提交 / 网页");
   await expect(
@@ -344,8 +570,8 @@ async function maintainWork(
       ),
     );
     expect(task).toMatchObject({ archived, status: "done", version: 2 });
-    const row = page.getByRole("button", {
-      name: new RegExp(`${task.name} 已完成`),
+    const row = page.locator(".task-item").filter({
+      has: page.getByRole("heading", { name: task.name, exact: true }),
     });
     if (archived) await expect(row).toContainText("已归档");
     else await expect(row).not.toContainText("已归档");
