@@ -5,6 +5,8 @@ import {
   writeFileSync,
   accessSync,
   constants,
+  openSync,
+  closeSync,
 } from "node:fs";
 import { resolve } from "node:path";
 import type { FileStorage } from "../application/ports.ts";
@@ -19,7 +21,29 @@ export function localFiles(directory: string): FileStorage {
     return resolve(directory, id);
   }
   return {
-    write: (id, bytes) => writeFileSync(path(id), bytes, { flag: "wx" }),
+    write: (id, bytes) => {
+      const target = path(id);
+      // Establish ownership before writing. EEXIST must never delete someone
+      // else's file; close our descriptor before compensating on Windows.
+      const descriptor = openSync(target, "wx");
+      try {
+        try {
+          writeFileSync(descriptor, bytes);
+        } finally {
+          closeSync(descriptor);
+        }
+      } catch (error) {
+        try {
+          unlinkSync(target);
+        } catch (cleanupError) {
+          throw new AggregateError(
+            [error, cleanupError],
+            "Attachment write and cleanup failed",
+          );
+        }
+        throw error;
+      }
+    },
     remove: (id) => unlinkSync(path(id)),
     read: (id) => readFileSync(path(id)),
   };
