@@ -84,8 +84,21 @@ export function AiKeyCreate({
   const differentOrigin =
     targetUrl !== null && new URL(targetUrl).origin !== window.location.origin;
   const current = connections.find((connection) => connection.id === keyId);
-  const connected = current?.lastReadSucceededAt != null;
-  const status = connected ? "已连接" : "待测试";
+  const revoked = current?.revokedAt != null;
+  const missing = Boolean(keyId && !current && !busy);
+  const inactive = revoked || missing;
+  const connected =
+    current?.revokedAt === null && current.lastReadSucceededAt !== null;
+  const status = revoked
+    ? "已撤销"
+    : missing
+      ? "连接不存在"
+      : connected
+        ? "已连接"
+        : "待测试";
+  const inactiveMessage = revoked
+    ? "这个 Key 已撤销。请返回连接管理重新创建连接；旧 Key 不会自动撤销。"
+    : "连接不存在。请返回连接管理重新创建连接；旧 Key 不会自动撤销。";
   const configuration = [
     "[mcp_servers.daily_flow_node]",
     'command = "cmd"',
@@ -182,7 +195,7 @@ export function AiKeyCreate({
         </button>
       )}
       <h2>{keyId ? (current?.name ?? name) : "通过 Node 连接"}</h2>
-      {current && (
+      {(current || missing) && (
         <div className="ai-connection-info">
           <div className="ai-connection-primary">
             <span className="ai-connection-type">Node · 授权 Key</span>
@@ -190,24 +203,30 @@ export function AiKeyCreate({
               {status}
             </span>
           </div>
-          <p>
-            {current.scopes
-              .map(
-                (scope) =>
-                  options.find(([value]) => value === scope)?.[1] ?? scope,
-              )
-              .join(" · ")}
-          </p>
-          <p>
-            最近成功查询：
-            {current.lastReadSucceededAt === null
-              ? "暂无"
-              : new Date(current.lastReadSucceededAt).toLocaleString("zh-CN")}
-          </p>
-          <p>
-            创建：{new Date(current.createdAt).toLocaleString("zh-CN")} ·
-            最近活动：{new Date(current.lastUsedAt).toLocaleString("zh-CN")}
-          </p>
+          {current && (
+            <>
+              <p>
+                {current.scopes
+                  .map(
+                    (scope) =>
+                      options.find(([value]) => value === scope)?.[1] ?? scope,
+                  )
+                  .join(" · ")}
+              </p>
+              <p>
+                最近成功查询：
+                {current.lastReadSucceededAt === null
+                  ? "暂无"
+                  : new Date(current.lastReadSucceededAt).toLocaleString(
+                      "zh-CN",
+                    )}
+              </p>
+              <p>
+                创建：{new Date(current.createdAt).toLocaleString("zh-CN")} ·
+                最近活动：{new Date(current.lastUsedAt).toLocaleString("zh-CN")}
+              </p>
+            </>
+          )}
         </div>
       )}
       <Message error>{error}</Message>
@@ -403,9 +422,11 @@ export function AiKeyCreate({
               使用日序工具列出项目。这是只读测试，不会修改工作数据。
             </p>
             <p>
-              {connected
-                ? "已连接：这个 Key 已完成一次只读查询。"
-                : "待测试：完成列出项目后，点击下方按钮检查结果。即使项目为空也算成功。"}
+              {inactive
+                ? inactiveMessage
+                : connected
+                  ? "已连接：这个 Key 已完成一次只读查询。"
+                  : "待测试：完成列出项目后，点击下方按钮检查结果。即使项目为空也算成功。"}
             </p>
             <p className="field-hint">
               显示或复制 Key、启动、鉴权与工具发现不算连接成功。
@@ -421,13 +442,15 @@ export function AiKeyCreate({
               <p className="ai-setup-progress" role="status">
                 {checking
                   ? "正在检查最新查询状态…"
-                  : connected
-                    ? "检查完成：已检测到成功查询。"
-                    : "检查完成：尚未检测到成功查询，请让 Codex 列出项目后重试。"}
+                  : inactive
+                    ? `检查完成：${inactiveMessage}`
+                    : connected
+                      ? "检查完成：已检测到成功查询。"
+                      : "检查完成：尚未检测到成功查询，请让 Codex 列出项目后重试。"}
               </p>
             )}
             <Message error>{checkError}</Message>
-            {!connected && (
+            {!connected && !inactive && (
               <details>
                 <summary>仍待测试？检查配置与网络</summary>
                 <p>
@@ -459,7 +482,7 @@ export function AiKeyCreate({
             <p>
               若已使用 Codex OAuth 连接日序，建议只启用一条连接，以免工具重复。
             </p>
-            {onRevoke && (
+            {onRevoke && !inactive && (
               <button
                 className="text-button danger"
                 disabled={revoking}

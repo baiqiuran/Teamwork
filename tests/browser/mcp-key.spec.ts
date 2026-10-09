@@ -12,6 +12,103 @@ type Fixture = {
   close: () => Promise<void>;
 };
 
+for (const deleted of [false, true]) {
+  test(`外部${deleted ? "删除" : "撤销"}：新 Key 曾成功查询也不能引导撤销旧 Key`, async ({
+    page,
+    request,
+  }) => {
+    const f = await fixture(page, "external-key-revocation");
+    let client: Awaited<ReturnType<typeof mcpClient>> | undefined;
+    try {
+      const headers = { Origin: f.origin, Connection: "close" };
+      const oldResponse = await page.request.post(`${f.origin}/api/ai/keys`, {
+        headers,
+        data: { name: "保留旧连接", scopes: ["progress:read"] },
+      });
+      expect(oldResponse.status()).toBe(201);
+      const old = await oldResponse.json();
+      await page.goto(`${f.origin}/ai`);
+      await page
+        .getByRole("button", { name: "更换 Key / 调整能力", exact: true })
+        .click();
+      const panel = page.getByRole("region", {
+        name: "更换 Node 授权 Key",
+        exact: true,
+      });
+      const createdResponse = page.waitForResponse(
+        (response) =>
+          new URL(response.url()).pathname === "/api/ai/keys" &&
+          response.request().method() === "POST",
+      );
+      await panel
+        .getByRole("button", { name: "生成授权 Key", exact: true })
+        .click();
+      const created = await (await createdResponse).json();
+      client = await mcpClient(f.origin, created.key);
+      expect(
+        (await client.callTool({ name: "list_projects", arguments: {} }))
+          .isError,
+      ).not.toBe(true);
+      await panel
+        .getByRole("button", { name: "检查查询结果", exact: true })
+        .click();
+      await expect(panel.getByText("已连接", { exact: true })).toBeVisible();
+      await expect(
+        panel.getByRole("button", { name: "撤销旧 Key", exact: true }),
+      ).toBeVisible();
+      expect(
+        (
+          await request.post(`${f.origin}/api/login`, {
+            headers,
+            data: {
+              email: "key-ui@example.test",
+              password: "BrowserFixture2026!",
+            },
+          })
+        ).status(),
+      ).toBe(200);
+      expect(
+        (
+          await request.post(
+            `${f.origin}/api/ai/connections/${created.id}/revoke`,
+            { headers, data: {} },
+          )
+        ).status(),
+      ).toBe(201);
+      if (deleted)
+        expect(
+          (
+            await request.post(
+              `${f.origin}/api/ai/connections/${created.id}/delete`,
+              { headers, data: {} },
+            )
+          ).status(),
+        ).toBe(200);
+      await panel
+        .getByRole("button", { name: "检查查询结果", exact: true })
+        .click();
+      await expect(
+        panel.getByText(deleted ? "连接不存在" : "已撤销", { exact: true }),
+      ).toBeVisible();
+      await expect(panel.getByText("已连接", { exact: true })).toHaveCount(0);
+      await expect(
+        panel.getByRole("button", { name: "撤销旧 Key", exact: true }),
+      ).toHaveCount(0);
+      const connections = await (
+        await request.get(`${f.origin}/api/ai/connections`, { headers })
+      ).json();
+      expect(
+        connections.find(
+          (connection: { id: string }) => connection.id === old.id,
+        ).revokedAt,
+      ).toBeNull();
+    } finally {
+      await client?.close();
+      await f.close();
+    }
+  });
+}
+
 async function fixture(page: import("@playwright/test").Page, label: string) {
   const directory = await mkdtemp(join(tmpdir(), `daily-${label}-`));
   const app = await createApp({
