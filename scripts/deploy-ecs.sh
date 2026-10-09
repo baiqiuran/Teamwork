@@ -25,9 +25,19 @@ flock -n 9 || { echo 'Another release is running.' >&2; exit 1; }
 # A failed start may have migrated the database; require manual inspection before retry.
 [[ ! -e $ROOT/NEEDS_ATTENTION ]] || { echo "Inspect $ROOT/NEEDS_ATTENTION before another release." >&2; exit 1; }
 ID=$(date -u +%Y%m%dT%H%M%SZ)-$$
+STARTED=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 RELEASE="$ROOT/releases/$ID"
 SNAPSHOT="$ROOT/snapshots/$ID"
+UPLOAD=${ARCHIVE%/*}
+HELPER="$UPLOAD/ecs-release.mjs"
 STOPPED=0
+SNAPSHOT_READY=0
+publish_record() {
+  local snapshot_argument=-
+  if [[ $SNAPSHOT_READY == 1 ]]; then snapshot_argument=$SNAPSHOT; fi
+  "$NODE" "$HELPER" record "$RELEASE" "$1" "$RELEASE" "$snapshot_argument" "$STARTED" "$RELEASE/health.json"
+  install -m 644 "$RELEASE/release-record.json" "$UPLOAD/release-record.json"
+}
 on_error() {
   result=$?
   trap - ERR HUP INT TERM
@@ -35,6 +45,7 @@ on_error() {
     systemctl stop "$UNIT" || true
     printf 'Release %s failed. Inspect data and snapshot %s before restarting.\n' "$ID" "$SNAPSHOT" >"$ROOT/NEEDS_ATTENTION"
   fi
+  publish_record failed || true
   echo "Release failed; files retained. Logs: journalctl -u $UNIT -n 100" >&2
   exit "$result"
 }
@@ -44,8 +55,11 @@ trap 'false' HUP INT TERM
 # Install Linux runtime dependencies in an isolated release, before stopping the app.
 install -d -o new-chat -g new-chat -m 750 "$RELEASE"
 install -o new-chat -g new-chat -m 640 "$ARCHIVE" "$RELEASE/application.tar.gz"
+install -o new-chat -g new-chat -m 640 "$UPLOAD/receipt.json" "$RELEASE/receipt.json"
 runuser -u new-chat -- tar -xzf "$RELEASE/application.tar.gz" -C "$RELEASE" --no-same-owner
 [[ -f $RELEASE/build/server/main.js && -f $RELEASE/dist/index.html ]]
+"$NODE" "$HELPER" verify "$RELEASE" >/dev/null
+publish_record prepared
 runuser -u new-chat -- "$NPM" ci --prefix "$RELEASE" --omit=dev --ignore-scripts --no-bin-links --cache "$RELEASE/.npm-cache"
 # The application needs write access only to the persistent data directory.
 chown -R root:new-chat "$RELEASE"
@@ -68,6 +82,7 @@ elif [[ -e $ROOT/current ]]; then
   echo "$ROOT/current must be a symlink, not an existing directory." >&2
   false
 fi
+SNAPSHOT_READY=1
 ln -s "$RELEASE" "$ROOT/current.$ID"
 mv -Tf "$ROOT/current.$ID" "$ROOT/current"
 systemctl start "$UNIT"
@@ -80,6 +95,7 @@ for attempt in {1..30}; do
   sleep 1
 done
 [[ $READY == 1 ]]
+publish_record completed
 STOPPED=0
 printf 'Release: %s\nSnapshot: %s\n' "$RELEASE" "$SNAPSHOT"
 echo 'Service ready on 127.0.0.1:4312. Configure HTTPS proxy for public access.'

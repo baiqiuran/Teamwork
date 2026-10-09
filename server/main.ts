@@ -12,11 +12,29 @@ const databasePath = resolve(
 mkdirSync(dirname(databasePath), { recursive: true });
 const release = existsSync("release.json")
   ? z
-      .object({ commit: z.string().regex(/^[a-f0-9]{40}$/) })
+      .object({
+        commit: z.string().regex(/^[a-f0-9]{40}$/),
+        mode: z.string().optional(),
+        sourceDirty: z.boolean().optional(),
+        sourceDigest: z
+          .string()
+          .regex(/^[a-f0-9]{64}$/)
+          .optional(),
+      })
+      .refine(
+        (value) =>
+          value.mode !== "ecs-simple" ||
+          (typeof value.sourceDirty === "boolean" &&
+            value.sourceDigest !== undefined),
+        "ECS source identity is incomplete",
+      )
       .parse(JSON.parse(readFileSync("release.json", "utf8")))
   : undefined;
 const service = await createApp({
-  releaseCommit: release?.commit,
+  releaseCommit:
+    release?.mode === "ecs-simple" && release.sourceDirty
+      ? `${release.commit}-dirty.${release.sourceDigest!.slice(0, 12)}`
+      : release?.commit,
   healthToken: process.env.DAILY_HEALTH_TOKEN,
   databasePath,
   publicUrl: process.env.DAILY_PUBLIC_URL,

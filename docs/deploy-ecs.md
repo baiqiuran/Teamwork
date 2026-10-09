@@ -15,7 +15,7 @@
 
 ## 首次准备
 
-本机需要 Node.js 24.15.0 或更新的 24.x、npm、Windows OpenSSH、tar。私钥放工作区外，默认 `%USERPROFILE%\.ssh\bim-test-2025-ecs-key.pem`，也可作为第一个参数传入。SSH 用户写作 `ecs-user@120.25.176.6`，`@` 前不用反斜杠。首次 SSH 连接时核对服务器主机指纹。
+本机需要 Node.js 24.15.0 或更新的 24.x、npm、Git、Windows OpenSSH、tar。私钥放工作区外，默认 `%USERPROFILE%\.ssh\bim-test-2025-ecs-key.pem`，也可作为第一个参数传入。SSH 用户写作 `ecs-user@120.25.176.6`，`@` 前不用反斜杠。首次 SSH 连接时核对服务器主机指纹。
 
 服务器需要 Bash、systemd、tar、curl、flock、runuser，以及 Node.js 24.15.0 或更新的 24.x（建议与本机完全一致）。脚本和 service 约定 Node/npm 位于 `/usr/local/bin/node` 与 `/usr/local/bin/npm`；若装在别处，同步修改两个文件。服务器需要能访问 npm registry；不会上传 Windows 的 `node_modules`。
 
@@ -86,11 +86,15 @@ deploy.bat
 
 PowerShell 中使用 `./deploy.bat`。需要换私钥时，使用 `./deploy-ecs.bat '<私钥绝对路径>'`。
 
-脚本把构建所需源码复制到本机临时目录，安装依赖并构建，将 `build/`、`dist/`、包清单和锁文件打成压缩包，通过 SCP 上传，不改动开发目录的依赖和构建产物。服务器先在新版本目录安装 Linux 生产依赖，之后停服，在同一停服窗口复制数据库、WAL/SHM、附件和配置，记录旧版本路径，再切换链接并启动。旧版本目录完整保留；运行时只记录 Node 版本，并未复制运行时二进制。准备环境和排障时不要修改这些恢复材料。
+脚本在临时目录固定构建来源：相关源码干净时从 Git 提交导出；存在本地修改时复制当前源码并记录内容摘要。不会要求工作区干净或提交已推送。安装依赖并构建后，将 `build/`、`dist/`、包清单、锁文件和 `release.json` 打包；归档外的 `receipt.json` 保存归档 SHA-256。SCP 同时上传归档、摘要和固定来源中的安装脚本，不改动开发目录的依赖和构建产物。
+
+服务器核对接收归档的摘要和包内来源，先在新版本目录安装 Linux 生产依赖，之后停服，在同一停服窗口复制数据库、WAL/SHM、附件和配置，记录旧版本路径，再切换链接并启动。旧版本目录完整保留；运行时只记录 Node 版本，并未复制运行时二进制。准备环境和排障时不要修改这些恢复材料。
 
 失败返回非零退出码；若已进入停服阶段，会停止服务并写 `/bim/new-chat/NEEDS_ATTENTION`，后续发布拒绝继续。启动可能已迁移数据库，不能仅切回旧代码；先保留失败现场，再由管理员评估恢复同一副本的数据、附件、配置和旧版本。解除该标记前必须核对代码与数据已匹配。SSH 中断后也应先检查服务、标记和日志，不要直接重发。
 
-成功条件是 service 活跃且 `/health/ready` 返回成功；这不代表浏览器和业务流程已经验收。发布后手动检查页面、登录和原公开链接。该简化脚本在启动后即可接收请求，不会自动还原旧数据库。
+成功条件是 service 活跃、`/health/ready` 返回 `ready: true`，且版本与归档来源相符。纯提交的版本是完整提交号；含修改的版本为 `<提交号>-dirty.<源码摘要前12位>`，不能当作纯提交发布。无元数据的旧包仍报告 `development`，不补造历史版本。
+
+每次安装保存 `release-record.json`，包含来源、归档实际和预期摘要、时间、发布目录、完整发布前快照、健康版本和结果；本机下载到打包目录。失败保留 `failed` 记录；连接中断且未取到服务器记录时，本机记为 `unconfirmed`，需核对现场，不能据此判断成功或失败。记录不包含配置、凭证或业务内容。健康通过不代表浏览器和业务流程已经验收，仍须手动检查页面、登录和原公开链接。该简化脚本在启动后即可接收请求，不会自动还原旧数据库。
 
 只构建打包、不连接服务器：
 
@@ -99,6 +103,10 @@ deploy-ecs.bat --package-only
 ```
 
 本机包保留在输出的 `%TEMP%\new-chat-package-*` 路径；服务器上传包、`releases/` 和 `snapshots/` 均保留，按实际恢复需求人工管理磁盘空间。
+
+## 开发验证入口
+
+在 Windows 的 `app/` 执行 `npm run test:ecs`，使用临时 Git 仓库验证干净和含修改的包；不连接 SSH。`scripts/ecs-install.test.mjs` 用真实 systemd 和应用健康接口验证安装、损坏归档、来源不符和健康版本不符。它仅供专用一次性 Linux 容器使用：只读挂载 `scripts/` 到 `/repository/scripts`、仅打包的输出目录到 `/fixture-package`，创建 `/fixture-ecs-only` 标记，再显式设置 `DAILY_ECS_FIXTURE=1` 运行 `node --test --test-concurrency=1 /repository/scripts/ecs-install.test.mjs`。容器需要 Node 24.15+、npm、systemd、tar、curl、flock、runuser；不得挂载服务器数据或在实际服务器运行。测试创建自己的账号、服务和 `/bim/new-chat`，完成后关闭并删除专用容器。这些验证由开发者手动执行，不是发布时的自动门禁。
 
 持续查看日志：
 
