@@ -19,10 +19,19 @@ const children = [
     ],
     { stdio: "inherit", windowsHide: true },
   ),
-  spawn(process.execPath, ["--watch", "build/server/main.js"], {
-    stdio: "inherit",
-    windowsHide: true,
-  }),
+  spawn(
+    process.execPath,
+    [
+      "--watch",
+      "--import",
+      new URL("./local-observer.mjs", import.meta.url).href,
+      "build/server/main.js",
+    ],
+    {
+      stdio: "inherit",
+      windowsHide: true,
+    },
+  ),
 ];
 let stopping = false;
 function stop(code = 0) {

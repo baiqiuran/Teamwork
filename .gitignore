@@ -2,6 +2,7 @@ node_modules/
 dist/
 build/
 data/
+.local-run/
 test-results/
 playwright-report/
 .env

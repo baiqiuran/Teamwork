@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { rmSync, copyFileSync } from "node:fs";
 import { dirname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -20,3 +20,10 @@ const result = spawnSync(
 );
 if (result.error) throw result.error;
 process.exitCode = result.status ?? 1;
+if (result.status === 0)
+  for (const name of [
+    "local-service.mjs",
+    "local-observer.mjs",
+    "local-process.mjs",
+  ])
+    copyFileSync(resolve(app, "scripts", name), resolve(output, name));

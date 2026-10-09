@@ -7,9 +7,11 @@
     "node": ">=24.15.0 <25"
   },
   "scripts": {
-    "dev": "node scripts/dev.mjs",
+    "dev": "node scripts/local-service.mjs dev",
     "build": "npm run check:architecture && npm run typecheck && npm run build:server && vite build",
-    "start": "node build/server/main.js",
+    "start": "node build/server/local-service.mjs start",
+    "status": "node scripts/local-service.mjs status",
+    "test:local": "node --test scripts/local-service.test.mjs",
     "typecheck": "tsc --noEmit",
     "check:architecture": "node --test scripts/architecture-rules.test.mjs && node scripts/check-architecture.mjs",
     "test": "npm run build && npm run test:api && npm run test:ui",

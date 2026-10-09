@@ -80,6 +80,10 @@ npm start
 
 `npm start` 使用 Node 运行编译后的 NestJS 服务，同时提供构建后的前端页面和 `/api` 接口。停止服务可在运行终端按 `Ctrl+C`；重启后账号、日报及附件仍保留。
 
+`npm start` 和 `npm run dev` 同时记录本次启动的进程身份、时间、地址及 stdout/stderr 日志路径，材料位于被 Git 忽略的 `.local-run/<端口>/`。`npm run status` 只读查询默认端口；指定其他端口使用 `npm run status -- --port 4312`。结果区分未启动、启动中、尚未就绪、运行正常、退出后记录残留、PID 复用及其他进程占用端口。通过启动器运行的进程才有可信身份记录；直接启动的旧进程会显示为端口占用，按输出 PID 定位即可。
+
+普通状态查询只检查本地进程、端口和 `/health/ready`，不启动服务或创建数据库。需要另查公网时显式执行 `npm run status -- --public-url https://daily.hbads.cn`，本地和公网结果分别显示。`DAILY_LOCAL_RUN_DIR` 可将运行材料移到指定目录，不记录环境配置或凭证；检查与启动须使用相同目录。Windows 辅助进程使用隐藏窗口。Linux 查询端口依赖 `ss`。开发验证执行 `npm run test:local`，使用临时目录、端口和受控进程；systemd 发布仍直接运行编译后的应用，不使用本地启动器。
+
 ### 已有数据时启动或更新
 
 日常启动只需在仓库根目录执行 `npm start`。代码更新后，先停止旧服务，按[数据与备份](#数据与备份)保留数据库与附件，再执行 `npm ci`、`npm run build` 和 `npm start`。同一数据库只运行一个应用进程。
