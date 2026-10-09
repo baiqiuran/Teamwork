@@ -84,6 +84,8 @@ npm start
 
 普通状态查询只检查本地进程、端口和 `/health/ready`，不启动服务或创建数据库。需要另查公网时显式执行 `npm run status -- --public-url https://daily.hbads.cn`，本地和公网结果分别显示。`DAILY_LOCAL_RUN_DIR` 可将运行材料移到指定目录，不记录环境配置或凭证；检查与启动须使用相同目录。Windows 辅助进程使用隐藏窗口。Linux 查询端口依赖 `ss`。开发验证执行 `npm run test:local`，使用临时目录、端口和受控进程；systemd 发布仍直接运行编译后的应用，不使用本地启动器。
 
+PowerShell 中转发参数时使用 `npm.cmd run status -- --port 4312` 或 `npm.cmd run status -- --public-url https://daily.hbads.cn`，确保双短横线传给 npm；也可直接执行 `node scripts/local-service.mjs status --port 4312`。本机 npm.ps1 的参数转发会吞掉该分隔符。
+
 ### 已有数据时启动或更新
 
 日常启动只需在仓库根目录执行 `npm start`。代码更新后，先停止旧服务，按[数据与备份](#数据与备份)保留数据库与附件，再执行 `npm ci`、`npm run build` 和 `npm start`。同一数据库只运行一个应用进程。
