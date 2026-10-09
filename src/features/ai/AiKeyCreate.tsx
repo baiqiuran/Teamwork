@@ -73,6 +73,7 @@ export function AiKeyCreate({
   const [checking, setChecking] = useState(false);
   const [checkError, setCheckError] = useState("");
   const [checked, setChecked] = useState(false);
+  const [keyStateLoaded, setKeyStateLoaded] = useState(false);
   const [packagePath, setPackagePath] = useState("");
   const [keyFilePath, setKeyFilePath] = useState("");
   const normalizedKeyFilePath = keyFilePath.trim().replaceAll("\\", "/");
@@ -85,7 +86,7 @@ export function AiKeyCreate({
     targetUrl !== null && new URL(targetUrl).origin !== window.location.origin;
   const current = connections.find((connection) => connection.id === keyId);
   const revoked = current?.revokedAt != null;
-  const missing = Boolean(keyId && !current && !busy);
+  const missing = Boolean(keyId && keyStateLoaded && !current && !busy);
   const inactive = revoked || missing;
   const connected =
     current?.revokedAt === null && current.lastReadSucceededAt !== null;
@@ -119,6 +120,7 @@ export function AiKeyCreate({
       setKey(result.key);
       setKeyId(result.id);
       await reloadConnections();
+      setKeyStateLoaded(true);
     } catch (e) {
       setError(describeError(e));
     } finally {
@@ -151,6 +153,7 @@ export function AiKeyCreate({
     setChecked(false);
     try {
       await reloadConnections();
+      setKeyStateLoaded(true);
       setChecked(true);
     } catch (e) {
       setCheckError(

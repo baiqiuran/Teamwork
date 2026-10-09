@@ -12,6 +12,66 @@ type Fixture = {
   close: () => Promise<void>;
 };
 
+test("创建 Key 后列表刷新失败不能误报连接不存在，重试后可确认查询", async ({
+  page,
+}) => {
+  const f = await fixture(page, "key-create-refresh-failure");
+  let client: Awaited<ReturnType<typeof mcpClient>> | undefined;
+  try {
+    const headers = { Origin: f.origin, Connection: "close" };
+    const old = await (
+      await page.request.post(`${f.origin}/api/ai/keys`, {
+        headers,
+        data: { name: "保留旧 Key", scopes: ["progress:read"] },
+      })
+    ).json();
+    await page.goto(`${f.origin}/ai`);
+    await page
+      .getByRole("button", { name: "更换 Key / 调整能力", exact: true })
+      .click();
+    const panel = page.getByRole("region", {
+      name: "更换 Node 授权 Key",
+      exact: true,
+    });
+    await page.route("**/api/ai/connections", (route) => route.abort("failed"));
+    const createdResponse = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/ai/keys" &&
+        response.request().method() === "POST",
+    );
+    await panel
+      .getByRole("button", { name: "生成授权 Key", exact: true })
+      .click();
+    const created = await (await createdResponse).json();
+    await expect(
+      panel.getByRole("button", { name: "检查查询结果", exact: true }),
+    ).toBeEnabled();
+    await expect(panel.getByText("连接不存在", { exact: true })).toHaveCount(0);
+    await expect(
+      panel.getByRole("button", { name: "撤销旧 Key", exact: true }),
+    ).toHaveCount(0);
+    client = await mcpClient(f.origin, created.key);
+    expect(
+      (await client.callTool({ name: "list_projects", arguments: {} })).isError,
+    ).not.toBe(true);
+    await page.unroute("**/api/ai/connections");
+    await panel
+      .getByRole("button", { name: "检查查询结果", exact: true })
+      .click();
+    await expect(panel.getByText("已连接", { exact: true })).toBeVisible();
+    const connections = await (
+      await page.request.get(`${f.origin}/api/ai/connections`, { headers })
+    ).json();
+    expect(
+      connections.find((connection: { id: string }) => connection.id === old.id)
+        .revokedAt,
+    ).toBeNull();
+  } finally {
+    await client?.close();
+    await f.close();
+  }
+});
+
 for (const deleted of [false, true]) {
   test(`外部${deleted ? "删除" : "撤销"}：新 Key 曾成功查询也不能引导撤销旧 Key`, async ({
     page,
