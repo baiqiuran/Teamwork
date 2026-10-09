@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { fixture, run } from "./fixture.mjs";
 import { json, sha256 } from "../io.mjs";
 
-export async function manualFixture(t) {
+export async function manualFixture(t, { freshSnapshot = true } = {}) {
   const f = await fixture();
   t.after(async () => {
     run("systemctl", "stop", f.config.unit);
@@ -95,5 +95,9 @@ export async function manualFixture(t) {
     await rm(runtime, { recursive: true, force: true });
     return path;
   };
+  if (freshSnapshot) {
+    const backup = await f.control("backup", "--id", "baseline-backup");
+    assert.equal(backup.code, 0, backup.output + backup.error);
+  }
   return f;
 }

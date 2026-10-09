@@ -168,6 +168,18 @@ test("manual SSH controls uploads and detached releases without exposing shell o
     }),
   });
   assert.equal(setup.status, 201);
+  const initialSnapshot = JSON.parse(
+    run(
+      process.execPath,
+      "ops/control.mjs",
+      "--config",
+      `${f.root}/deploy.json`,
+      "backup",
+      "--id",
+      "baseline-backup",
+    ),
+  );
+  assert.equal(initialSnapshot.phase, "completed");
   const ssh = await sshFixture(t, f);
   const clientRoot = `${f.root}/client`;
   await mkdir(clientRoot, { mode: 0o700 });

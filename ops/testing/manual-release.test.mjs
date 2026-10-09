@@ -32,7 +32,7 @@ test("a failed manual release preserves its receipt and refuses replay or a new 
   const repeat = await f.control(...args);
   assert.equal(repeat.code, 1, repeat.output + repeat.error);
   assert.equal(await readFile(recordPath, "utf8"), before);
-  assert.deepEqual(await readdir(f.config.backupDir), []);
+  assert.deepEqual(await readdir(f.config.backupDir), ["baseline-backup"]);
   const next = await f.control(
     "manual-release",
     "--id",

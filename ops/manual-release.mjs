@@ -23,6 +23,7 @@ import {
 import { archiveSize, extract } from "./snapshots.mjs";
 import { freeze } from "./recovery.mjs";
 import { read } from "./http.mjs";
+import { requireFresh } from "./offsite.mjs";
 
 const checks = ["architecture", "types", "build", "production-startup"];
 const statePath = (config, operation) =>
@@ -322,11 +323,13 @@ export async function recoverManual(configPath, config, operation) {
 
 export async function manualRelease(configPath, config, operation) {
   let entered = false;
+  const snapshotConfig = { ...config, backupMode: "local" };
   const save = async (patch) => {
     operation = { ...operation, ...patch };
     await durable(statePath(config, operation), operation);
   };
   try {
+    await save({ backup: await requireFresh(snapshotConfig) });
     const target = await prepare(config, operation);
     await save({
       target,
@@ -335,6 +338,7 @@ export async function manualRelease(configPath, config, operation) {
       expectedSchema: target.expectedSchema,
       logCursor: await logPosition(config),
     });
+    await save({ backup: await requireFresh(snapshotConfig) });
     entered = true;
     await save({ phase: "stopping", maintenanceAt: new Date().toISOString() });
     await maintenance(config, true);
