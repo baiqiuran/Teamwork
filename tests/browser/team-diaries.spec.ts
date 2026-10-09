@@ -415,6 +415,17 @@ test("团队日报默认显示全部日期，快捷查看北京时间今天并�
     expect(todayOnly.query.get("memberId")).toBe(identity.member.id);
     expect(todayOnly.query.get("projectId")).toBe(project.id);
     expect(todayOnly.records.map((record) => record.id)).toEqual([today.id]);
+    await expect(page.locator(".record-card")).toHaveCount(1);
+    await expect(
+      page.getByRole("button", { name: "全部展开", exact: true }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "全部收起", exact: true }),
+    ).toBeVisible();
+    await page.getByRole("button", { name: "全部展开", exact: true }).click();
+    await expect(page.locator(".record-body:visible")).toHaveCount(1);
+    await page.getByRole("button", { name: "全部收起", exact: true }).click();
+    await expect(page.locator(".record-body:visible")).toHaveCount(0);
     await expect(page.getByLabel("开始日期", { exact: true })).toHaveValue(
       "2026-09-22",
     );

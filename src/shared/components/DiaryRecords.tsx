@@ -50,7 +50,7 @@ export function DiaryRecords({
   }, [records, layout]);
   return (
     <>
-      {layout === "masonry" && records.length > 1 && (
+      {layout === "masonry" && (
         <div className="record-fold-controls" aria-label="日报显示方式">
           <button
             className="secondary"

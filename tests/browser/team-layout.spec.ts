@@ -307,7 +307,16 @@ test("日报卡片默认收起，支持单独及批量展开并重排瀑布布�
   await expect(page.locator(".record-card")).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "全部展开", exact: true }),
-  ).toHaveCount(0);
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "全部展开", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: "全部收起", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "全部收起", exact: true }),
+  ).toBeDisabled();
   await page.getByLabel("开始日期", { exact: true }).fill(from);
   await page.getByLabel("结束日期", { exact: true }).fill(to);
   await page.getByRole("button", { name: "查看日报", exact: true }).click();
