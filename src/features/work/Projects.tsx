@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../../shared/api";
 import { DiaryRecords } from "../../shared/components/DiaryRecords";
 import { beijingToday } from "../../shared/time";
@@ -8,6 +8,9 @@ export function Projects({ memberId }: { memberId: string }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [selected, setSelected] = useState<Project | null>(null);
   const [records, setRecords] = useState<PublishedDiary[]>([]);
+  const progressQuery = useRef(0);
+  const [progressLoading, setProgressLoading] = useState(false);
+  const [progressError, setProgressError] = useState("");
   const [form, setForm] = useState<{
     name: string;
     description: string;
@@ -25,8 +28,13 @@ export function Projects({ memberId }: { memberId: string }) {
     );
     if (projectId)
       api<Project>(`/projects/${encodeURIComponent(projectId)}`)
-        .then(open)
+        .then((project) => {
+          if (progressQuery.current === 0) return open(project);
+        })
         .catch((e) => setError(e.message));
+    return () => {
+      progressQuery.current++;
+    };
   }, []);
   async function action(work: () => Promise<void>) {
     setBusy(true);
@@ -40,9 +48,23 @@ export function Projects({ memberId }: { memberId: string }) {
     }
   }
   async function open(p: Project) {
+    const query = ++progressQuery.current;
     setSelected(p);
     setForm(null);
-    setRecords(await api(`/projects/${p.id}/progress?from=${from}&to=${to}`));
+    setRecords([]);
+    setProgressError("");
+    setProgressLoading(true);
+    try {
+      const result = await api<PublishedDiary[]>(
+        `/projects/${p.id}/progress?from=${from}&to=${to}`,
+      );
+      if (query === progressQuery.current) setRecords(result);
+    } catch (error) {
+      if (query === progressQuery.current)
+        setProgressError((error as Error).message);
+    } finally {
+      if (query === progressQuery.current) setProgressLoading(false);
+    }
   }
   return (
     <>
@@ -126,7 +148,7 @@ export function Projects({ memberId }: { memberId: string }) {
                 key={p.id}
                 className={selected?.id === p.id ? "selected" : ""}
                 aria-current={selected?.id === p.id ? "true" : undefined}
-                onClick={() => action(() => open(p))}
+                onClick={() => void open(p)}
               >
                 <strong>{p.name}</strong>
                 <small>
@@ -209,7 +231,7 @@ export function Projects({ memberId }: { memberId: string }) {
                   className="filters"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    void action(() => open(selected));
+                    void open(selected);
                   }}
                 >
                   <label>
@@ -234,7 +256,17 @@ export function Projects({ memberId }: { memberId: string }) {
                     查看进展
                   </button>
                 </form>
-                <DiaryRecords records={records} layout="masonry" />
+                {progressLoading ? (
+                  <p role="status" className="muted">
+                    正在加载项目进展…
+                  </p>
+                ) : progressError ? (
+                  <p role="alert" className="message error">
+                    {progressError} 请重试查看进展。
+                  </p>
+                ) : (
+                  <DiaryRecords records={records} layout="masonry" />
+                )}
               </section>
             </>
           ) : (

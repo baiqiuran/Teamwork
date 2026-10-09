@@ -1,4 +1,5 @@
 import { expect, test as base, type Page } from "@playwright/test";
+import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -66,6 +67,207 @@ async function createWork(page: Page, origin: string) {
   expect(taskResponse.status()).toBe(201);
   return { project, task: await taskResponse.json() };
 }
+
+async function progressWork(page: Page, origin: string) {
+  await createTeam(page, origin, "青山");
+  const { project: a } = await createWork(page, origin);
+  const bResponse = await page.request.post(`${origin}/api/projects`, {
+    headers: { Origin: origin },
+    data: { name: "项目 B", description: "" },
+  });
+  expect(bResponse.status()).toBe(201);
+  const b = await bResponse.json();
+  for (const project of [a, b]) {
+    const draftResponse = await page.request.post(`${origin}/api/diaries`, {
+      headers: { Origin: origin },
+      data: {
+        title: `仅属于 ${project.name} 的进展`,
+        entries: [
+          {
+            id: randomUUID(),
+            body: `仅属于 ${project.name} 的进展`,
+            projectId: project.id,
+          },
+        ],
+      },
+    });
+    expect(draftResponse.status()).toBe(201);
+    const draft = await draftResponse.json();
+    const response = await page.request.post(
+      `${origin}/api/diaries/${draft.id}/submit`,
+      {
+        headers: { Origin: origin },
+        data: { version: draft.version, requestId: randomUUID() },
+      },
+    );
+    expect(response.status()).toBe(200);
+  }
+  await page.goto(`${origin}/projects`);
+  return { a, b };
+}
+
+async function painted(page: Page) {
+  await page.evaluate(
+    () =>
+      new Promise<void>((done) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => done())),
+      ),
+  );
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+for (const oldFails of [false, true]) {
+  test(`项目进展竞态：旧项目${oldFails ? "失败" : "慢响应"}不能替换当前项目内容`, async ({
+    page,
+    origin,
+  }) => {
+    const { a, b } = await progressWork(page, origin);
+    const gate = deferred();
+    const started = deferred();
+    await page.route(`**/api/projects/${a.id}/progress?*`, async (route) => {
+      const response = await route.fetch({ headers: { Connection: "close" } });
+      started.resolve();
+      await gate.promise;
+      await route.fulfill(
+        oldFails
+          ? { status: 500, json: { error: "旧查询失败" } }
+          : { response },
+      );
+    });
+    try {
+      await page
+        .getByRole("button", { name: `${a.name} 青山成员 创建`, exact: true })
+        .click();
+      await started.promise;
+      await page
+        .getByRole("button", { name: `${b.name} 青山成员 创建`, exact: true })
+        .click();
+      await expect(
+        page
+          .locator(".record-body")
+          .getByText(`仅属于 ${b.name} 的进展`, { exact: true }),
+      ).toHaveCount(1);
+      const oldResponse = page.waitForResponse(
+        (r) => new URL(r.url()).pathname === `/api/projects/${a.id}/progress`,
+      );
+      gate.resolve();
+      await (await oldResponse).finished();
+      await painted(page);
+      await expect(
+        page
+          .locator(".record-body")
+          .getByText(`仅属于 ${b.name} 的进展`, { exact: true }),
+      ).toHaveCount(1);
+      await expect(
+        page
+          .locator(".record-body")
+          .getByText(`仅属于 ${a.name} 的进展`, { exact: true }),
+      ).toHaveCount(0);
+      await expect(page.getByRole("alert")).toHaveCount(0);
+    } finally {
+      gate.resolve();
+    }
+  });
+}
+
+test("项目进展竞态：当前查询失败不保留旧内容且可以重试", async ({
+  page,
+  origin,
+}) => {
+  const { a, b } = await progressWork(page, origin);
+  await page
+    .getByRole("button", { name: `${a.name} 青山成员 创建`, exact: true })
+    .click();
+  await expect(
+    page
+      .locator(".record-body")
+      .getByText(`仅属于 ${a.name} 的进展`, { exact: true }),
+  ).toHaveCount(1);
+  let fail = true;
+  const gate = deferred();
+  const started = deferred();
+  await page.route(`**/api/projects/${b.id}/progress?*`, async (route) => {
+    if (!fail) return route.continue();
+    started.resolve();
+    await gate.promise;
+    await route.fulfill({ status: 500, json: { error: "当前查询失败" } });
+  });
+  try {
+    await page
+      .getByRole("button", { name: `${b.name} 青山成员 创建`, exact: true })
+      .click();
+    await started.promise;
+    await expect(page.getByRole("status")).toHaveText("正在加载项目进展…");
+    await expect(page.locator(".project-progress .record-card")).toHaveCount(0);
+    gate.resolve();
+    await expect(page.getByRole("alert")).toContainText("当前查询失败");
+    await expect(page.locator(".project-progress .record-card")).toHaveCount(0);
+    fail = false;
+    await page.getByRole("button", { name: "查看进展", exact: true }).click();
+    await expect(
+      page
+        .locator(".record-body")
+        .getByText(`仅属于 ${b.name} 的进展`, { exact: true }),
+    ).toHaveCount(1);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    gate.resolve();
+  }
+});
+
+test("项目进展竞态：同项目日期乱序只显示最后查询", async ({ page, origin }) => {
+  const { a } = await progressWork(page, origin);
+  await page
+    .getByRole("button", { name: `${a.name} 青山成员 创建`, exact: true })
+    .click();
+  const content = page
+    .locator(".record-body")
+    .getByText(`仅属于 ${a.name} 的进展`, { exact: true });
+  await expect(content).toHaveCount(1);
+  const from = page.getByLabel("开始日期", { exact: true });
+  const to = page.getByLabel("结束日期", { exact: true });
+  const today = await from.inputValue();
+  const gate = deferred();
+  const started = deferred();
+  await page.route(`**/api/projects/${a.id}/progress?*`, async (route) => {
+    if (
+      new URL(route.request().url()).searchParams.get("from") !== "2000-01-01"
+    )
+      return route.continue();
+    const response = await route.fetch({ headers: { Connection: "close" } });
+    started.resolve();
+    await gate.promise;
+    await route.fulfill({ response });
+  });
+  try {
+    await from.fill("2000-01-01");
+    await to.fill("2000-01-01");
+    await page.getByRole("button", { name: "查看进展", exact: true }).click();
+    await started.promise;
+    await from.fill(today);
+    await to.fill(today);
+    await page.getByRole("button", { name: "查看进展", exact: true }).click();
+    await expect(content).toHaveCount(1);
+    const response = page.waitForResponse(
+      (r) => new URL(r.url()).searchParams.get("from") === "2000-01-01",
+    );
+    gate.resolve();
+    await (await response).finished();
+    await painted(page);
+    await expect(content).toHaveCount(1);
+    await expect(from).toHaveValue(today);
+    await expect(page.getByRole("alert")).toHaveCount(0);
+  } finally {
+    gate.resolve();
+  }
+});
 
 test("任务编辑入口明确说明可修改名称和说明", async ({ page, origin }) => {
   await createTeam(page, origin, "青山");
