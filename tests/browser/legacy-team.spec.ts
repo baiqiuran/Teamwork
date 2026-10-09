@@ -59,7 +59,10 @@ for (const viewport of [
         .getByRole("button", { name: "项目与任务", exact: true })
         .click();
       await page.getByRole("button", { name: /原项目/ }).click();
-      await page.getByRole("button", { name: /原任务.*已完成/ }).click();
+      await expect(
+        page.getByRole("combobox", { name: "原任务 的状态", exact: true }),
+      ).toHaveValue("done");
+      await page.getByRole("button", { name: /原任务.*查看详情/ }).click();
       await expect(page.getByLabel("任务详情")).toContainText("原任务说明");
       await page.getByRole("button", { name: "我的账号", exact: true }).click();
       await expect(page.locator(".account-card")).toContainText(

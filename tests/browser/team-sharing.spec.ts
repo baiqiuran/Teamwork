@@ -327,6 +327,9 @@ for (const viewport of [
       await visitor
         .getByRole("button", { name: "进展日报", exact: true })
         .click();
+      await visitor
+        .getByRole("button", { name: "全部展开", exact: true })
+        .click();
       await expect(
         visitor.getByText(ownWork.diary.published.entries[0].body, {
           exact: true,

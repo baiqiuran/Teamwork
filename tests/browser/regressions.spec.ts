@@ -69,10 +69,10 @@ test("任务定义编辑不会串到另一任务", async ({ page }) => {
     });
   await page.getByRole("button", { name: "项目与任务", exact: true }).click();
   await page.getByRole("button", { name: /任务切换验证/ }).click();
-  await page.getByRole("button", { name: /任务甲 待开始/ }).click();
+  await page.getByRole("button", { name: /任务甲.*查看详情/ }).click();
   await page.getByRole("button", { name: "编辑任务名称和说明" }).click();
   await page.getByLabel("任务名称", { exact: true }).fill("甲的未保存修改");
-  await page.getByRole("button", { name: /任务乙 待开始/ }).click();
+  await page.getByRole("button", { name: /任务乙.*查看详情/ }).click();
   await expect(page.getByLabel("任务名称", { exact: true })).toHaveCount(0);
   await expect(page.getByLabel("任务详情")).toContainText("任务乙原始说明");
 });
@@ -111,6 +111,7 @@ test("失败附件需明确处理后才可提交，正文草稿保留", async ({
   await page.getByRole("button", { name: "提交日报", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("日报已提交");
   await page.getByRole("button", { name: "团队日报", exact: true }).click();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
   await expect(
     page.locator(".records").getByText("正文不能丢失", { exact: true }),
   ).toBeVisible();

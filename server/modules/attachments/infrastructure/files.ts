@@ -13,6 +13,15 @@ import type { FileStorage } from "../application/ports.ts";
 export function assertStorageAccessible(directory: string) {
   accessSync(directory, constants.R_OK | constants.W_OK | constants.X_OK);
 }
+function storageErrorCode(error: unknown) {
+  return error !== null &&
+    typeof error === "object" &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    /^[A-Z][A-Z0-9_]{1,31}$/.test(error.code)
+    ? error.code
+    : "UNKNOWN";
+}
 export function localFiles(directory: string): FileStorage {
   mkdirSync(directory, { recursive: true });
   function path(id: string) {
@@ -36,6 +45,12 @@ export function localFiles(directory: string): FileStorage {
         try {
           unlinkSync(target);
         } catch (cleanupError) {
+          console.error("Attachment compensation failed:", {
+            attachmentId: id,
+            phase: "partial-write",
+            writeCode: storageErrorCode(error),
+            cleanupCode: storageErrorCode(cleanupError),
+          });
           throw new AggregateError(
             [error, cleanupError],
             "Attachment write and cleanup failed",
@@ -44,7 +59,18 @@ export function localFiles(directory: string): FileStorage {
         throw error;
       }
     },
-    remove: (id) => unlinkSync(path(id)),
+    remove: (id) => {
+      try {
+        unlinkSync(path(id));
+      } catch (error) {
+        console.error("Attachment compensation failed:", {
+          attachmentId: id,
+          phase: "complete-write",
+          cleanupCode: storageErrorCode(error),
+        });
+        throw error;
+      }
+    },
     read: (id) => readFileSync(path(id)),
   };
 }

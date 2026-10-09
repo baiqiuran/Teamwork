@@ -157,6 +157,7 @@ test("提交后团队读取原版本，保存补充后仍保持原文，再提�
   await page.getByLabel("工作 2", { exact: true }).fill("未重提的例会补充");
   await page.getByRole("button", { name: "保存草稿", exact: true }).click();
   await page.getByRole("button", { name: "团队日报", exact: true }).click();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
   await expect(
     page.locator(".records").getByText("参加例会", { exact: true }),
   ).toBeVisible();
@@ -168,6 +169,7 @@ test("提交后团队读取原版本，保存补充后仍保持原文，再提�
   await page.getByRole("button", { name: "重新提交", exact: true }).click();
   await expect(page.getByRole("status")).toContainText("日报已提交");
   await page.getByRole("button", { name: "团队日报", exact: true }).click();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
   await expect(
     page.locator(".records").getByText("未重提的例会补充", { exact: true }),
   ).toBeVisible();
@@ -295,6 +297,9 @@ test("项目任务关联、附件、冲突选择和三类公开页，可归档�
     await publicPage
       .getByRole("button", { name: "进展日报", exact: true })
       .click();
+    await publicPage
+      .getByRole("button", { name: "全部展开", exact: true })
+      .click();
     await expect(
       publicPage.getByText("登录已联调\n- 已完成验证", { exact: true }),
     ).toBeVisible();
@@ -333,6 +338,9 @@ test("项目任务关联、附件、冲突选择和三类公开页，可归档�
   await publicPage.goto(paths[0]);
   await publicPage
     .getByRole("button", { name: "进展日报", exact: true })
+    .click();
+  await publicPage
+    .getByRole("button", { name: "全部展开", exact: true })
     .click();
   await expect(
     publicPage.getByText("登录已联调\n- 已完成验证", { exact: true }),
