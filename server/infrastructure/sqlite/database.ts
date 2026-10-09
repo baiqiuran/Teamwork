@@ -4,12 +4,19 @@ import { migrateAi, assertAiVersion } from "./ai-migrations.ts";
 
 export function openDatabase(path: string) {
   const db = new DatabaseSync(path);
+  let migrating = false;
   try {
     assertAiVersion(db);
     db.exec(`
     PRAGMA journal_mode = WAL;
-    PRAGMA foreign_keys = ON;
+    PRAGMA foreign_keys = OFF;
     PRAGMA busy_timeout = 5000;
+  `);
+    // All startup schema changes share one transaction, including pre-versioned
+    // databases. Foreign keys must be disabled before replacing legacy tables.
+    db.exec("BEGIN IMMEDIATE");
+    migrating = true;
+    db.exec(`
     CREATE TABLE IF NOT EXISTS team (id INTEGER PRIMARY KEY CHECK (id = 1), name TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS sessions (token_hash TEXT PRIMARY KEY, member_id TEXT NOT NULL REFERENCES members(id), expires_at INTEGER NOT NULL);
@@ -46,6 +53,9 @@ export function openDatabase(path: string) {
       }
     }
     migrateAi(db);
+    db.exec("COMMIT");
+    migrating = false;
+    db.exec("PRAGMA foreign_keys = ON");
     let active = false,
       rollbackOnly = false;
     const runSynchronous = <T>(work: () => T): T => {
@@ -102,7 +112,11 @@ export function openDatabase(path: string) {
       },
     };
   } catch (error) {
-    db.close();
+    try {
+      if (migrating) db.exec("ROLLBACK");
+    } finally {
+      db.close();
+    }
     throw error;
   }
 }
