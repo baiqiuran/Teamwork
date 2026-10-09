@@ -97,6 +97,7 @@ test("桌面日报筛选横向对齐，长短卡片多列排列且筛选后重�
 }) => {
   await page.setViewportSize({ width: 1640, height: 1000 });
   await seedReports(page);
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
   const from = await page.getByLabel("开始日期", { exact: true }).inputValue();
   const to = await page.getByLabel("结束日期", { exact: true }).inputValue();
   await page.screenshot({
@@ -200,4 +201,120 @@ test("桌面日报筛选横向对齐，长短卡片多列排列且筛选后重�
       }),
     )
     .toBeTruthy();
+});
+
+test("日报卡片默认收起，支持单独及批量展开并重排瀑布布局", async ({
+  page,
+}, testInfo) => {
+  await seedReports(page);
+  const from = await page.getByLabel("开始日期", { exact: true }).inputValue();
+  const to = await page.getByLabel("结束日期", { exact: true }).inputValue();
+  const card = page.locator(".record-card").filter({
+    has: page.getByRole("heading", { name: "日报阅读体验调整", exact: true }),
+  });
+  const toggle = card.locator(".record-fold-button");
+  const content = card.locator(".record-body");
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "POST") writes.push(request.url());
+  });
+  await expect(page.locator(".record-body:visible")).toHaveCount(0);
+  await expect(
+    page.locator(".record-fold-button[aria-expanded='false']"),
+  ).toHaveCount(7);
+  await expect(
+    page.getByRole("button", { name: "全部收起", exact: true }),
+  ).toBeDisabled();
+  await expect(
+    card.getByRole("heading", { name: "日报阅读体验调整" }),
+  ).toBeVisible();
+  await expect(card.getByText("林晓", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
+  async function noOverlap() {
+    await expect
+      .poll(() =>
+        page.locator(".record-card").evaluateAll((cards) => {
+          const boxes = cards.map((item) => item.getBoundingClientRect());
+          return boxes.every((a, index) =>
+            boxes
+              .slice(index + 1)
+              .every(
+                (b) =>
+                  a.right <= b.left + 1 ||
+                  b.right <= a.left + 1 ||
+                  a.bottom <= b.top + 1 ||
+                  b.bottom <= a.top + 1,
+              ),
+          );
+        }),
+      )
+      .toBeTruthy();
+  }
+  for (const width of [1280, 1640, 1920]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await noOverlap();
+    await expect(content).toBeVisible();
+    const originalHeight = (await card.locator("..").boundingBox())!.height;
+    await toggle.focus();
+    await toggle.press("Enter");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toBeFocused();
+    await expect(content).toBeHidden();
+    await expect(
+      card.getByRole("heading", { name: "日报阅读体验调整" }),
+    ).toBeVisible();
+    await expect(card.getByText("林晓", { exact: true })).toBeVisible();
+    await expect
+      .poll(async () => (await card.locator("..").boundingBox())!.height)
+      .toBeLessThan(originalHeight - 60);
+    await noOverlap();
+    await toggle.press("Space");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(content).toBeVisible();
+    await expect(content).toContainText("保留每份日报的完整条目");
+    await noOverlap();
+    await page.getByRole("button", { name: "全部收起", exact: true }).click();
+    await expect(page.locator(".record-card")).toHaveCount(7);
+    await expect(
+      page.locator(".record-fold-button[aria-expanded='false']"),
+    ).toHaveCount(7);
+    await expect(page.locator(".record-body:visible")).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "全部收起", exact: true }),
+    ).toBeDisabled();
+    await noOverlap();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: testInfo.outputPath(`diaries-collapsed-${width}.png`),
+      fullPage: true,
+    });
+    await page.getByRole("button", { name: "全部展开", exact: true }).click();
+    await expect(page.locator(".record-body:visible")).toHaveCount(7);
+    await expect(
+      page.getByRole("button", { name: "全部展开", exact: true }),
+    ).toBeDisabled();
+    await noOverlap();
+  }
+  expect(writes).toEqual([]);
+  await page.getByRole("button", { name: "全部收起", exact: true }).click();
+  await page.getByLabel("开始日期", { exact: true }).fill("2000-01-01");
+  await page.getByLabel("结束日期", { exact: true }).fill("2000-01-02");
+  await page.getByRole("button", { name: "查看日报", exact: true }).click();
+  await expect(page.locator(".record-card")).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "全部展开", exact: true }),
+  ).toHaveCount(0);
+  await page.getByLabel("开始日期", { exact: true }).fill(from);
+  await page.getByLabel("结束日期", { exact: true }).fill(to);
+  await page.getByRole("button", { name: "查看日报", exact: true }).click();
+  await expect(page.locator(".record-card")).toHaveCount(7);
+  await expect(page.locator(".record-body:visible")).toHaveCount(0);
+  await noOverlap();
+  await page.getByRole("button", { name: "全部展开", exact: true }).click();
+  await expect(content).toBeVisible();
+  await expect(content).toContainText("较短的记录不会留下整行空白");
 });

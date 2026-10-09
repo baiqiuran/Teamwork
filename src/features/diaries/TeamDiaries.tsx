@@ -7,30 +7,37 @@ import type {
   PublishedDiary,
   TeamMember,
 } from "../../shared/contracts";
+import "./TeamDiaries.css";
 export function TeamDiaries() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [memberId, setMemberId] = useState("");
   const [projectId, setProjectId] = useState("");
-  const [from, setFrom] = useState(beijingToday());
-  const [to, setTo] = useState(beijingToday());
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
   const [records, setRecords] = useState<PublishedDiary[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  async function load() {
+  async function load(range = { from, to }) {
     setError("");
     setLoading(true);
     try {
-      setRecords(
-        await api(
-          `/team-diaries?from=${from}&to=${to}${memberId ? `&memberId=${memberId}` : ""}${projectId ? `&projectId=${projectId}` : ""}`,
-        ),
-      );
+      const query = new URLSearchParams();
+      if (range.from) query.set("from", range.from);
+      if (range.to) query.set("to", range.to);
+      if (memberId) query.set("memberId", memberId);
+      if (projectId) query.set("projectId", projectId);
+      setRecords(await api(`/team-diaries${query.size ? `?${query}` : ""}`));
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setLoading(false);
     }
+  }
+  function showDates(from: string, to: string) {
+    setFrom(from);
+    setTo(to);
+    void load({ from, to });
   }
   useEffect(() => {
     void load();
@@ -47,7 +54,30 @@ export function TeamDiaries() {
         <div>
           <h1>团队日报</h1>
         </div>
-        <span className="team-reading-note">已提交内容 · 北京时间</span>
+        <div className="team-diary-heading-actions">
+          <span className="team-reading-note">已提交内容 · 北京时间</span>
+          <div className="team-diary-date-shortcuts" aria-label="快捷日期筛选">
+            <button
+              type="button"
+              className="secondary"
+              disabled={loading}
+              onClick={() => showDates("", "")}
+            >
+              全部日期
+            </button>
+            <button
+              type="button"
+              className="secondary"
+              disabled={loading}
+              onClick={() => {
+                const today = beijingToday();
+                showDates(today, today);
+              }}
+            >
+              只看今天
+            </button>
+          </div>
+        </div>
       </header>
       <form
         className="filters team-diary-filters"
@@ -61,7 +91,6 @@ export function TeamDiaries() {
           开始日期
           <input
             type="date"
-            required
             value={from}
             onChange={(e) => setFrom(e.target.value)}
           />
@@ -70,7 +99,6 @@ export function TeamDiaries() {
           结束日期
           <input
             type="date"
-            required
             value={to}
             onChange={(e) => setTo(e.target.value)}
           />

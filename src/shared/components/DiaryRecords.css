@@ -1,0 +1,66 @@
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R5 V4
+ * component: diary disclosure · genre: modern-minimal · design-system: design.md
+ * macrostructure: masonry with foldable content · existing indigo tokens
+ */
+.record-fold-controls {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--s-2);
+  margin-bottom: var(--s-3);
+}
+.record-fold-controls .secondary {
+  min-height: var(--control-h-sm);
+  padding-inline: var(--s-3);
+  font-size: var(--t-xs);
+  box-shadow: none;
+}
+.records--masonry .record-heading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: var(--s-2);
+  margin-top: var(--s-4);
+}
+.records--masonry .record-card .record-heading h2 {
+  min-width: 0;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.record-fold-button {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-1);
+  min-height: var(--control-h-sm);
+  padding: var(--s-1) var(--s-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.record-fold-button svg {
+  flex: none;
+}
+.record-fold-button[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+.record-fold-button:focus-visible {
+  outline: 2px solid var(--brand-500);
+  outline-offset: 2px;
+}
+@media (hover: hover) {
+  .record-fold-button:hover:not(:disabled) {
+    background: var(--accent-soft);
+    color: var(--accent);
+  }
+}
+.record-fold-button:active:not(:disabled) {
+  background: var(--brand-100);
+  color: var(--brand-700);
+}
+.record-fold-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}

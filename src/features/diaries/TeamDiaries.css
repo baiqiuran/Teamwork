@@ -1,0 +1,28 @@
+/* Hallmark · pre-emit critique: P4 H4 E4 S5 R5 V4
+ * component: team diary date shortcuts · genre: modern-minimal · theme: design.md indigo system
+ * states: existing button hover/focus/active, disabled while loading; query errors and live results in TeamDiaries
+ */
+.team-diaries .team-diary-heading {
+  flex-wrap: wrap;
+}
+
+.team-diary-heading-actions,
+.team-diary-date-shortcuts {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+.team-diary-heading-actions {
+  flex-wrap: wrap;
+  gap: var(--s-4);
+}
+
+.team-diary-date-shortcuts .secondary {
+  min-height: var(--control-h-sm);
+  height: var(--control-h-sm);
+  padding: 0 var(--s-3);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  box-shadow: none;
+}

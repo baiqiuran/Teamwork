@@ -2,6 +2,7 @@ import { expect, test as base, type Page } from "@playwright/test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { createApp } from "../application.ts";
 import type {
   Diary,
@@ -316,10 +317,136 @@ async function visibleRecord(page: Page, diary: Diary) {
   await expect(
     records.getByRole("heading", { name: diary.published!.title, exact: true }),
   ).toBeVisible();
+  const card = records.locator(".record-card").filter({
+    has: page.getByRole("heading", {
+      name: diary.published!.title,
+      exact: true,
+    }),
+  });
+  const toggle = card.locator(".record-fold-button");
+  if ((await toggle.getAttribute("aria-expanded")) === "false")
+    await toggle.click();
   await expect(
     records.getByText(diary.published!.entries[0].body, { exact: true }),
   ).toBeVisible();
 }
+
+test("团队日报默认显示全部日期，快捷查看北京时间今天并保留其他筛选", async ({
+  page,
+  service,
+}, testInfo) => {
+  const monitor = observeErrors(page);
+  try {
+    const identity = await createTeam(page, service.origin, "青山");
+    const { project } = await createWork(page, service.origin, "交付");
+    const otherProject = await seed<Project>(
+      page,
+      service.origin,
+      "/projects",
+      {
+        name: "资料整理",
+        description: "其他项目",
+      },
+    );
+    async function publish(title: string, projectId: string) {
+      const draft = await seed<Diary>(page, service.origin, "/diaries", {
+        title,
+        entries: [{ id: randomUUID(), body: title, projectId }],
+      });
+      return seed<Diary>(
+        page,
+        service.origin,
+        `/diaries/${draft.id}/submit`,
+        { version: draft.version, requestId: randomUUID() },
+        200,
+      );
+    }
+    const yesterday = await publish("昨天的交付记录", project.id);
+    const now = Date.parse("2026-09-21T17:00:00Z");
+    service.setTime(now);
+    await page.clock.setFixedTime(now);
+    const today = await publish("今天的交付记录", project.id);
+    await publish("今天的资料记录", otherProject.id);
+    await page.goto(`${service.origin}/diaries`);
+    const initial = await teamQuery(page, () =>
+      page.getByRole("button", { name: "团队日报", exact: true }).click(),
+    );
+    expect(initial.query.has("from")).toBe(false);
+    expect(initial.query.has("to")).toBe(false);
+    expect(initial.records.map((record) => record.diaryDate)).toEqual([
+      "2026-09-22",
+      "2026-09-22",
+      "2026-09-21",
+    ]);
+    await expect(page.getByLabel("开始日期", { exact: true })).toHaveValue("");
+    await expect(page.getByLabel("结束日期", { exact: true })).toHaveValue("");
+    await expect(page.locator(".record-card")).toHaveCount(3);
+    await expect(page.locator(".record-body:visible")).toHaveCount(0);
+    for (const width of [1280, 1600, 1920]) {
+      await page.setViewportSize({ width, height: 1000 });
+      await noOverflow(page);
+      const shortcuts = await page
+        .locator(".team-diary-date-shortcuts button")
+        .evaluateAll((buttons) =>
+          buttons.map((button) => ({
+            height: button.getBoundingClientRect().height,
+            lineHeight: parseFloat(getComputedStyle(button).lineHeight),
+          })),
+        );
+      expect(
+        shortcuts.every(({ height, lineHeight }) => height >= lineHeight),
+      ).toBe(true);
+      await page.screenshot({
+        path: testInfo.outputPath(`team-diary-dates-${width}.png`),
+        fullPage: true,
+      });
+    }
+    await page
+      .getByRole("combobox", { name: "成员", exact: true })
+      .selectOption(identity.member.id);
+    await page
+      .getByRole("combobox", { name: "项目", exact: true })
+      .selectOption(project.id);
+    const todayOnly = await teamQuery(page, () =>
+      page.getByRole("button", { name: "只看今天", exact: true }).click(),
+    );
+    expect(todayOnly.query.get("from")).toBe("2026-09-22");
+    expect(todayOnly.query.get("to")).toBe("2026-09-22");
+    expect(todayOnly.query.get("memberId")).toBe(identity.member.id);
+    expect(todayOnly.query.get("projectId")).toBe(project.id);
+    expect(todayOnly.records.map((record) => record.id)).toEqual([today.id]);
+    await expect(page.getByLabel("开始日期", { exact: true })).toHaveValue(
+      "2026-09-22",
+    );
+    await expect(page.getByLabel("结束日期", { exact: true })).toHaveValue(
+      "2026-09-22",
+    );
+    const allDates = await teamQuery(page, () =>
+      page.getByRole("button", { name: "全部日期", exact: true }).click(),
+    );
+    expect(allDates.query.has("from")).toBe(false);
+    expect(allDates.query.has("to")).toBe(false);
+    expect(allDates.query.get("memberId")).toBe(identity.member.id);
+    expect(allDates.query.get("projectId")).toBe(project.id);
+    expect(allDates.records.map((record) => record.id)).toEqual([
+      today.id,
+      yesterday.id,
+    ]);
+    await page.getByLabel("结束日期", { exact: true }).fill("2026-09-21");
+    const untilYesterday = await filter(page);
+    expect(untilYesterday.query.has("from")).toBe(false);
+    expect(untilYesterday.records.map((record) => record.id)).toEqual([
+      yesterday.id,
+    ]);
+    await page.getByLabel("开始日期", { exact: true }).fill("2026-09-22");
+    await page.getByLabel("结束日期", { exact: true }).fill("");
+    const sinceToday = await filter(page);
+    expect(sinceToday.query.has("to")).toBe(false);
+    expect(sinceToday.records.map((record) => record.id)).toEqual([today.id]);
+  } finally {
+    monitor.check();
+  }
+});
 
 test("日报入口直接说明保存草稿与提交的区别", async ({ page, service }) => {
   const monitor = observeErrors(page);
